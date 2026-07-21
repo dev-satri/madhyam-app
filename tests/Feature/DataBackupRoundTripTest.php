@@ -27,12 +27,13 @@ class DataBackupRoundTripTest extends TestCase
         $this->svc = new DataBackupService;
     }
 
-    public function test_export_returns_all_29_tables(): void
+    public function test_export_returns_all_30_tables(): void
     {
         $export = $this->svc->export();
-        $this->assertCount(29, $export);
+        $this->assertCount(30, $export);
         $this->assertArrayHasKey('users', $export);
         $this->assertArrayHasKey('clients', $export);
+        $this->assertArrayHasKey('approvals', $export);
         $this->assertArrayHasKey('settings', $export);
     }
 
