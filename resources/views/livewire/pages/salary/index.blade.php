@@ -3,6 +3,7 @@
 use Livewire\Volt\Component;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Computed;
+use Livewire\WithPagination;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
 use App\Services\SalaryCalculator;
@@ -10,6 +11,7 @@ use App\Services\SalaryCalculator;
 new #[Layout('components.layouts.app')] class extends Component
 {
     use \Livewire\WithFileUploads;
+    use WithPagination;
 
     public string $search = '';
     public int $monthFilter = 0;
@@ -104,7 +106,7 @@ new #[Layout('components.layouts.app')] class extends Component
                 'departments.name as dept_name'
             )
             ->orderBy('users.name')
-            ->get();
+            ->paginate(50);
     }
 
     public function getSelectedSalary()
@@ -414,10 +416,10 @@ new #[Layout('components.layouts.app')] class extends Component
                                     @endif
                                 </td>
                                 <td>
-                                    <div class="flex gap-1">
-                                        <button wire:click="openBreakdown({{ $s->id }})" class="text-gray-400 hover:text-blue-500" title="View Breakdown"><i class="fas fa-eye text-xs"></i></button>
+                                    <div class="flex items-center gap-1">
+                                        <button wire:click="openBreakdown({{ $s->id }})" class="btn btn-icon btn-ghost" title="View Breakdown"><i class="fas fa-eye text-gray-400 hover:text-[var(--brand)] text-xs"></i></button>
                                         @if($this->isMgr)
-                                            <button wire:click="deleteSalary({{ $s->id }})" wire:confirm="Are you sure you want to delete this salary record?" class="text-gray-400 hover:text-red-500" title="Delete"><i class="fas fa-trash text-xs"></i></button>
+                                            <button wire:click="deleteSalary({{ $s->id }})" wire:confirm="Are you sure you want to delete this salary record?" class="btn btn-icon btn-ghost" title="Delete"><i class="fas fa-trash text-gray-400 hover:text-red-500 text-xs"></i></button>
                                         @endif
                                     </div>
                                 </td>
@@ -435,6 +437,10 @@ new #[Layout('components.layouts.app')] class extends Component
                 </table>
             </div>
 
+            <div class="mt-4">
+                {{ $this->getSalaries()->links() }}
+            </div>
+
             {{-- Base Salary Edit Modal --}}
             @if($showBaseEdit && $this->selectedSalary)
                 <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" wire:click.self="$set('showBaseEdit', false)" x-on:keydown.escape.window="$wire.set('showBaseEdit', false)">
@@ -448,6 +454,7 @@ new #[Layout('components.layouts.app')] class extends Component
                             <div>
                                 <label class="form-label">Base Salary</label>
                                 <input type="number" wire:model="editBaseSalary" class="form-input" step="100" min="0">
+                                <span wire:error="editBaseSalary" class="text-red-500 text-xs mt-1 block"></span>
                             </div>
                             <div class="bg-gray-50 rounded-xl p-3 text-sm space-y-1">
                                 <div class="flex justify-between"><span class="text-gray-500">New Base:</span><span class="font-semibold">{{ fmtCurrency($editBaseSalary) }}</span></div>
@@ -460,7 +467,7 @@ new #[Layout('components.layouts.app')] class extends Component
                         </div>
                         <div class="sticky bottom-0 bg-white flex justify-end gap-2 p-4 border-t">
                             <button wire:click="$set('showBaseEdit', false)" class="btn btn-secondary">Cancel</button>
-                            <button wire:click="saveBaseEdit" class="btn btn-primary">Save</button>
+                            <button wire:click="saveBaseEdit" class="btn btn-primary" wire:loading.attr="disabled" wire:target="saveBaseEdit"><span wire:loading.remove wire:target="saveBaseEdit">Save</span><span wire:loading wire:target="saveBaseEdit" class="flex items-center gap-2"><svg class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Saving...</span></button>
                         </div>
                     </div>
                 </div>
@@ -479,6 +486,7 @@ new #[Layout('components.layouts.app')] class extends Component
                             <div>
                                 <label class="form-label">Bonus</label>
                                 <input type="number" wire:model="editBonus" class="form-input" step="100" min="0">
+                                <span wire:error="editBonus" class="text-red-500 text-xs mt-1 block"></span>
                             </div>
                             <div class="bg-gray-50 rounded-xl p-3 text-sm space-y-1">
                                 <div class="flex justify-between"><span class="text-gray-500">Base:</span><span>{{ fmtCurrency($this->selectedSalary->base_salary) }}</span></div>
@@ -491,7 +499,7 @@ new #[Layout('components.layouts.app')] class extends Component
                         </div>
                         <div class="sticky bottom-0 bg-white flex justify-end gap-2 p-4 border-t">
                             <button wire:click="$set('showBonusEdit', false)" class="btn btn-secondary">Cancel</button>
-                            <button wire:click="saveBonusEdit" class="btn btn-primary">Save</button>
+                            <button wire:click="saveBonusEdit" class="btn btn-primary" wire:loading.attr="disabled" wire:target="saveBonusEdit"><span wire:loading.remove wire:target="saveBonusEdit">Save</span><span wire:loading wire:target="saveBonusEdit" class="flex items-center gap-2"><svg class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Saving...</span></button>
                         </div>
                     </div>
                 </div>

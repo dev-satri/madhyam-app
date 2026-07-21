@@ -591,6 +591,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                 @error ('formTitle')
                                     <span class="text-xs text-red-500 mt-1 block">{{ $message }}</span>
                                 @enderror
+                                <span wire:error="formTitle" class="text-red-500 text-xs mt-1 block"></span>
                             </div>
 
                             <div class="md:col-span-2">

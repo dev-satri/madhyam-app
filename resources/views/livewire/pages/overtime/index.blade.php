@@ -5,9 +5,12 @@ use Livewire\Attributes\Layout;
 use Livewire\Attributes\Computed;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
+use Livewire\WithPagination;
 
 new #[Layout('components.layouts.app')] class extends Component
 {
+    use WithPagination;
+
     public string $search = '';
     public string $monthFilter = '';
     public string $statusFilter = '';
@@ -96,7 +99,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
         return $q->select('overtime_logs.*', 'users.name as member_name')
             ->orderBy('overtime_logs.date', 'desc')
-            ->get();
+            ->paginate(50);
     }
 
     public function getStaffSummary()
@@ -316,9 +319,9 @@ new #[Layout('components.layouts.app')] class extends Component
                                     @endif
                                 </td>
                                 <td>
-                                    <div class="flex gap-1">
-                                        <button wire:click="openForm({{ $log->id }})" class="text-gray-400 hover:text-blue-500"><i class="fas fa-pen text-xs"></i></button>
-                                        <button wire:click="deleteLog({{ $log->id }})" wire:confirm="Are you sure you want to delete this overtime log?" class="text-gray-400 hover:text-red-500"><i class="fas fa-trash text-xs"></i></button>
+                                    <div class="flex items-center gap-1">
+                                        <button wire:click="openForm({{ $log->id }})" class="btn btn-icon btn-ghost" title="Edit"><i class="fas fa-pen text-gray-400 hover:text-[var(--brand)] text-xs"></i></button>
+                                        <button wire:click="deleteLog({{ $log->id }})" wire:confirm="Are you sure you want to delete this overtime log?" class="btn btn-icon btn-ghost" title="Delete"><i class="fas fa-trash text-gray-400 hover:text-red-500 text-xs"></i></button>
                                     </div>
                                 </td>
                             </tr>
@@ -333,6 +336,10 @@ new #[Layout('components.layouts.app')] class extends Component
                         @endforelse
                     </tbody>
                 </table>
+            </div>
+
+            <div class="mt-4">
+                {{ $this->logs->links() }}
             </div>
 
             {{-- Overtime Form Modal --}}
@@ -358,15 +365,18 @@ new #[Layout('components.layouts.app')] class extends Component
                             <div>
                                 <label class="form-label">Date</label>
                                 <input type="date" wire:model="formDate" class="form-input">
+                                <span wire:error="formDate" class="text-red-500 text-xs mt-1 block"></span>
                             </div>
                             <div class="grid grid-cols-2 gap-3">
                                 <div>
                                     <label class="form-label">Hours (0.5 step)</label>
                                     <input type="number" wire:model="formHours" class="form-input" step="0.5" min="0.5" max="24">
+                                    <span wire:error="formHours" class="text-red-500 text-xs mt-1 block"></span>
                                 </div>
                                 <div>
                                     <label class="form-label">Rate per Hour</label>
                                     <input type="number" wire:model="formRate" class="form-input" step="0.01" min="0">
+                                    <span wire:error="formRate" class="text-red-500 text-xs mt-1 block"></span>
                                 </div>
                             </div>
                             <div>
@@ -380,7 +390,7 @@ new #[Layout('components.layouts.app')] class extends Component
                         </div>
                         <div class="sticky bottom-0 bg-white flex justify-end gap-2 p-4 border-t">
                             <button wire:click="$set('showForm', false)" class="btn btn-secondary">Cancel</button>
-                            <button wire:click="save" class="btn btn-primary">Save</button>
+                            <button wire:click="save" class="btn btn-primary" wire:loading.attr="disabled" wire:target="save"><span wire:loading.remove wire:target="save">Save</span><span wire:loading wire:target="save" class="flex items-center gap-2"><svg class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Saving...</span></button>
                         </div>
                     </div>
                 </div>

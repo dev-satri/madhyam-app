@@ -1356,6 +1356,26 @@ body {
 }
 
 /* ============================================================
+   Accessibility
+   ============================================================ */
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border-width: 0;
+}
+
+.table-scroll {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+/* ============================================================
    Responsive Breakpoints
    ============================================================ */
 @media (max-width: 640px) {
@@ -1364,6 +1384,8 @@ body {
     }
     .modal-box {
         border-radius: 12px;
+        max-width: 100%;
+        margin: 0;
     }
     .toast {
         min-width: auto;
@@ -1378,5 +1400,10 @@ body {
     }
     .cal-event {
         font-size: 7px;
+    }
+    .table-scroll {
+        margin-left: -20px;
+        margin-right: -20px;
+        padding: 0 20px;
     }
 }

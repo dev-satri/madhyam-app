@@ -7,9 +7,12 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use App\Services\RbacService;
+use Livewire\WithPagination;
 
 new #[Layout('components.layouts.app')] class extends Component
 {
+    use WithPagination;
+
     public string $activeTab = 'members';
     public string $search = '';
     public string $roleFilter = '';
@@ -81,11 +84,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
         return $q->select('users.*', 'departments.name as dept_name')
             ->orderBy('users.name')
-            ->get()
-            ->map(function ($m) {
-                $m->role_class = 'role-' . $m->role;
-                return $m;
-            });
+            ->paginate(50);
     }
 
     public function getDepartments()
@@ -289,8 +288,21 @@ new #[Layout('components.layouts.app')] class extends Component
                 @endif
             </div>
 
+            {{-- Skeleton loader --}}
+            <div wire:loading.delay class="space-y-4 p-6">
+                <div class="h-8 bg-gray-200 rounded animate-pulse w-1/3"></div>
+                <div class="h-4 bg-gray-200 rounded animate-pulse w-2/3"></div>
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <div class="h-20 bg-gray-200 rounded-xl animate-pulse"></div>
+                    <div class="h-20 bg-gray-200 rounded-xl animate-pulse"></div>
+                    <div class="h-20 bg-gray-200 rounded-xl animate-pulse"></div>
+                    <div class="h-20 bg-gray-200 rounded-xl animate-pulse"></div>
+                </div>
+                <div class="h-64 bg-gray-200 rounded-2xl animate-pulse"></div>
+            </div>
+
             {{-- Role Count Cards --}}
-            <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3">
+            <div wire:loading.remove.delay class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3">
                 @foreach($this->roleCounts as $role => $count)
                     <div class="stat-card text-center">
                         <div class="stat-value text-lg">{{ $count }}</div>
@@ -338,7 +350,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                         </div>
                                     </td>
                                     <td>
-                                        <span class="badge {{ $m->role_class }}">
+                                        <span class="badge {{ 'role-' . $m->role }}">
                                             @if($m->role === 'super-admin') <i class="fas fa-crown text-[10px]"></i> @endif
                                             {{ roleName($m->role) }}
                                         </span>
@@ -357,10 +369,10 @@ new #[Layout('components.layouts.app')] class extends Component
                                     </td>
                                     <td>
                                         @if($this->canEditMember)
-                                            <div class="flex gap-1">
-                                                <button wire:click="openMemberForm({{ $m->id }})" class="text-gray-400 hover:text-blue-500"><i class="fas fa-pen text-xs"></i></button>
+                                            <div class="flex items-center gap-1">
+                                                <button wire:click="openMemberForm({{ $m->id }})" class="btn btn-icon btn-ghost" title="Edit"><i class="fas fa-pen text-gray-400 hover:text-[var(--brand)] text-xs"></i></button>
                                                 @if($m->role !== 'super-admin' && $m->id !== Auth::id())
-                                                    <button wire:click="deleteMember({{ $m->id }})" wire:confirm="Are you sure you want to delete this team member?" class="text-gray-400 hover:text-red-500"><i class="fas fa-trash text-xs"></i></button>
+                                                    <button wire:click="deleteMember({{ $m->id }})" wire:confirm="Are you sure you want to delete this team member?" class="btn btn-icon btn-ghost" title="Delete"><i class="fas fa-trash text-gray-400 hover:text-red-500 text-xs"></i></button>
                                                 @endif
                                             </div>
                                         @endif
@@ -378,6 +390,7 @@ new #[Layout('components.layouts.app')] class extends Component
                         </tbody>
                     </table>
                 </div>
+                {{ $this->getMembers()->links() }}
             @endif
 
             {{-- Departments Tab --}}
@@ -398,9 +411,9 @@ new #[Layout('components.layouts.app')] class extends Component
                                     <td class="text-sm">{{ $d->member_count }}</td>
                                     <td>
                                         @if($this->canEditMember)
-                                            <div class="flex gap-1">
-                                                <button wire:click="openDeptForm({{ $d->id }})" class="text-gray-400 hover:text-blue-500"><i class="fas fa-pen text-xs"></i></button>
-                                                <button wire:click="deleteDept({{ $d->id }})" wire:confirm="Are you sure you want to delete this department?" class="text-gray-400 hover:text-red-500"><i class="fas fa-trash text-xs"></i></button>
+                                            <div class="flex items-center gap-1">
+                                                <button wire:click="openDeptForm({{ $d->id }})" class="btn btn-icon btn-ghost" title="Edit"><i class="fas fa-pen text-gray-400 hover:text-[var(--brand)] text-xs"></i></button>
+                                                <button wire:click="deleteDept({{ $d->id }})" wire:confirm="Are you sure you want to delete this department?" class="btn btn-icon btn-ghost" title="Delete"><i class="fas fa-trash text-gray-400 hover:text-red-500 text-xs"></i></button>
                                             </div>
                                         @endif
                                     </td>
@@ -432,8 +445,8 @@ new #[Layout('components.layouts.app')] class extends Component
                                 <div class="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-700"><i class="fas fa-shield-alt mr-1"></i> Password left blank to keep current.</div>
                             @endif
                             <div class="grid grid-cols-2 gap-3">
-                                <div><label class="form-label">Full Name</label><input type="text" wire:model="formName" class="form-input"></div>
-                                <div><label class="form-label">Email</label><input type="email" wire:model="formEmail" class="form-input"></div>
+                                <div><label class="form-label">Full Name</label><input type="text" wire:model="formName" class="form-input"><span wire:error="formName" class="text-red-500 text-xs mt-1 block"></span></div>
+                                <div><label class="form-label">Email</label><input type="email" wire:model="formEmail" class="form-input"><span wire:error="formEmail" class="text-red-500 text-xs mt-1 block"></span></div>
                             </div>
                             <div class="grid grid-cols-2 gap-3">
                                 <div><label class="form-label">Phone</label><input type="text" wire:model="formPhone" class="form-input"></div>
@@ -469,12 +482,13 @@ new #[Layout('components.layouts.app')] class extends Component
                                 <div>
                                     <label class="form-label">Password {{ $editingMemberId ? '(optional)' : '' }}</label>
                                     <input type="password" wire:model="formPassword" class="form-input" placeholder="{{ $editingMemberId ? 'Leave blank to keep' : 'Min 8 chars' }}">
+                                    <span wire:error="formPassword" class="text-red-500 text-xs mt-1 block"></span>
                                 </div>
                             </div>
                         </div>
                         <div class="sticky bottom-0 bg-white flex justify-end gap-2 p-4 border-t">
                             <button wire:click="$set('showMemberForm', false)" class="btn btn-secondary">Cancel</button>
-                            <button wire:click="saveMember" class="btn btn-primary">Save</button>
+                            <button wire:click="saveMember" class="btn btn-primary" wire:loading.attr="disabled" wire:target="saveMember"><span wire:loading.remove wire:target="saveMember">Save</span><span wire:loading wire:target="saveMember" class="flex items-center gap-2"><svg class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Saving...</span></button>
                         </div>
                     </div>
                 </div>
@@ -489,7 +503,7 @@ new #[Layout('components.layouts.app')] class extends Component
                             <button wire:click="$set('showDeptForm', false)" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
                         </div>
                         <div class="p-4 space-y-4">
-                            <div><label class="form-label">Name</label><input type="text" wire:model="formDeptName" class="form-input"></div>
+                            <div><label class="form-label">Name</label><input type="text" wire:model="formDeptName" class="form-input"><span wire:error="formDeptName" class="text-red-500 text-xs mt-1 block"></span></div>
                             <div><label class="form-label">Description</label><textarea wire:model="formDeptDesc" class="form-input" rows="2"></textarea></div>
                         </div>
                         <div class="sticky bottom-0 bg-white flex justify-end gap-2 p-4 border-t">

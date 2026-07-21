@@ -18,6 +18,7 @@ class Workflow extends Model
 
     protected $casts = [
         'deadline' => 'date',
+        'tags' => 'array',
     ];
 
     public function client(): BelongsTo

@@ -16,6 +16,8 @@ class Approval extends Model
         'submitted_by', 'notes', 'reference_file',
     ];
 
+    protected $casts = [];
+
     public function client(): BelongsTo
     {
         return $this->belongsTo(Client::class);

@@ -348,7 +348,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                 <div><label class="form-label">Base Salary Default</label><input type="number" wire:model="baseSalaryDefault" class="form-input" step="100" min="0"></div>
                                 <div><label class="form-label">Overtime Rate Default</label><input type="number" wire:model="overtimeRateDefault" class="form-input" step="10" min="0"></div>
                             </div>
-                            <div class="flex justify-end"><button wire:click="saveGeneral" class="btn btn-primary">Save Changes</button></div>
+                            <div class="flex justify-end"><button wire:click="saveGeneral" class="btn btn-primary" wire:loading.attr="disabled" wire:target="saveGeneral"><span wire:loading.remove wire:target="saveGeneral">Save Changes</span><span wire:loading wire:target="saveGeneral" class="flex items-center gap-2"><svg class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Saving...</span></button></div>
                         </div>
                     @endif
 
@@ -532,7 +532,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                     </tbody>
                                 </table>
                             </div>
-                            <div class="flex justify-end"><button wire:click="saveDataAccess" class="btn btn-primary">Save Permissions</button></div>
+                            <div class="flex justify-end"><button wire:click="saveDataAccess" class="btn btn-primary" wire:loading.attr="disabled" wire:target="saveDataAccess"><span wire:loading.remove wire:target="saveDataAccess">Save Permissions</span><span wire:loading wire:target="saveDataAccess" class="flex items-center gap-2"><svg class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Saving...</span></button></div>
                         </div>
                     @endif
 
@@ -634,9 +634,9 @@ new #[Layout('components.layouts.app')] class extends Component
                                                 <div class="font-medium text-sm">{{ $role->name }}</div>
                                                 <div class="text-xs text-gray-400">{{ $role->description ?? 'No description' }}</div>
                                             </div>
-                                            <div class="flex gap-1">
-                                                <button wire:click="openRoleForm({{ $role->id }})" class="text-gray-400 hover:text-blue-500"><i class="fas fa-pen text-xs"></i></button>
-                                                <button wire:click="deleteRole({{ $role->id }})" wire:confirm="Are you sure you want to delete this role?" class="text-gray-400 hover:text-red-500"><i class="fas fa-trash text-xs"></i></button>
+                                            <div class="flex items-center gap-1">
+                                                <button wire:click="openRoleForm({{ $role->id }})" class="btn btn-icon btn-ghost" title="Edit"><i class="fas fa-pen text-gray-400 hover:text-[var(--brand)] text-xs"></i></button>
+                                                <button wire:click="deleteRole({{ $role->id }})" wire:confirm="Are you sure you want to delete this role?" class="btn btn-icon btn-ghost" title="Delete"><i class="fas fa-trash text-gray-400 hover:text-red-500 text-xs"></i></button>
                                             </div>
                                         </div>
                                     @endforeach
@@ -649,14 +649,14 @@ new #[Layout('components.layouts.app')] class extends Component
                             <div class="border-t pt-4">
                                 <h4 class="font-semibold text-sm mb-3">{{ $editingRoleId ? 'Edit' : 'Add' }} Role</h4>
                                 <div class="space-y-3">
-                                    <div><label class="form-label">Role Name</label><input type="text" wire:model="formRoleName" class="form-input" placeholder="e.g. Senior Designer"></div>
+                                    <div><label class="form-label">Role Name</label><input type="text" wire:model="formRoleName" class="form-input" placeholder="e.g. Senior Designer"><span wire:error="formRoleName" class="text-red-500 text-xs mt-1 block"></span></div>
                                     <div><label class="form-label">Description</label><textarea wire:model="formRoleDesc" class="form-input" rows="2"></textarea></div>
                                 </div>
                             </div>
                         </div>
                         <div class="sticky bottom-0 bg-white flex justify-end gap-2 p-4 border-t">
                             <button wire:click="$set('showRoleForm', false)" class="btn btn-secondary">Cancel</button>
-                            <button wire:click="saveRole" class="btn btn-primary">Save</button>
+                            <button wire:click="saveRole" class="btn btn-primary" wire:loading.attr="disabled" wire:target="saveRole"><span wire:loading.remove wire:target="saveRole">Save</span><span wire:loading wire:target="saveRole" class="flex items-center gap-2"><svg class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Saving...</span></button>
                         </div>
                     </div>
                 </div>

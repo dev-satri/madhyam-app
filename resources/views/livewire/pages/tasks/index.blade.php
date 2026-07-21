@@ -284,8 +284,21 @@ new #[Layout('components.layouts.app')] class extends Component
                 <div><label class="form-label">Client</label><select wire:model.live="clientFilter" class="form-select"><option value="">All Clients</option>@foreach($this->clients as $c)<option value="{{ $c->id }}">{{ $c->name }}</option>@endforeach</select></div>
             </div>
 
+            {{-- Skeleton loader --}}
+            <div wire:loading.delay class="space-y-4 p-6">
+                <div class="h-8 bg-gray-200 rounded animate-pulse w-1/3"></div>
+                <div class="h-4 bg-gray-200 rounded animate-pulse w-2/3"></div>
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <div class="h-20 bg-gray-200 rounded-xl animate-pulse"></div>
+                    <div class="h-20 bg-gray-200 rounded-xl animate-pulse"></div>
+                    <div class="h-20 bg-gray-200 rounded-xl animate-pulse"></div>
+                    <div class="h-20 bg-gray-200 rounded-xl animate-pulse"></div>
+                </div>
+                <div class="h-64 bg-gray-200 rounded-2xl animate-pulse"></div>
+            </div>
+
             {{-- Table --}}
-            <div class="bg-white rounded-2xl border border-gray-100 overflow-hidden" wire:loading.target="search,statusFilter,priorityFilter,clientFilter,tab">
+            <div wire:loading.remove.delay class="bg-white rounded-2xl border border-gray-100 overflow-hidden" wire:loading.target="search,statusFilter,priorityFilter,clientFilter,tab">
                 <div wire:loading class="p-6 space-y-3">
                     @for($i = 0; $i < 5; $i++)
                         <div class="skeleton-row"><div class="skeleton" style="width:120px;height:12px"></div><div class="skeleton" style="width:80px;height:12px"></div><div class="skeleton" style="width:60px;height:12px"></div><div class="skeleton" style="width:100px;height:12px"></div></div>
@@ -329,7 +342,7 @@ new #[Layout('components.layouts.app')] class extends Component
                 <div class="modal-box max-w-lg">
                     <div class="modal-header"><h3 class="text-base font-bold text-gray-900">{{ $editingId ? 'Edit Task' : 'New Task' }}</h3><button wire:click="$set('showForm',false)" class="btn btn-ghost btn-icon btn-sm"><i class="fas fa-times"></i></button></div>
                     <form wire:submit="save" class="modal-body space-y-4">
-                        <div><label class="form-label">Title *</label><input type="text" wire:model="formTitle" class="form-input" required></div>
+                        <div><label class="form-label">Title *</label><input type="text" wire:model="formTitle" class="form-input" required><span wire:error="formTitle" class="text-red-500 text-xs mt-1 block"></span></div>
                         <div class="grid grid-cols-2 gap-4">
                             <div><label class="form-label">Type</label><select wire:model="formType" class="form-select"><option value="task">Task</option><option value="shoot">Shoot</option><option value="editing">Editing</option></select></div>
                             <div><label class="form-label">Priority</label><select wire:model="formPriority" class="form-select"><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="urgent">Urgent</option></select></div>

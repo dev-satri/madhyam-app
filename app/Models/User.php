@@ -75,6 +75,16 @@ class User extends Authenticatable
         return $this->hasMany(ActivityLog::class);
     }
 
+    public function scopeActive($query)
+    {
+        return $query->where('status', 'active');
+    }
+
+    public function scopeByRole($query, string $role)
+    {
+        return $query->where('role', $role);
+    }
+
     public function getInitialsAttribute(): string
     {
         $parts = preg_split('/\s+/', trim($this->name ?? ''));

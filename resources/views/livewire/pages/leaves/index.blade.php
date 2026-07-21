@@ -256,12 +256,12 @@ new #[Layout('components.layouts.app')] class extends Component
                                 <td><span class="badge {{ $l->status_class }}">{{ ucfirst($l->status) }}</span></td>
                                 <td>
                                     @if($l->status === 'pending' && $this->isMgr)
-                                        <div class="flex gap-1">
-                                            <button wire:click="approveLeave({{ $l->id }})" class="text-green-500 hover:text-green-700"><i class="fas fa-check text-sm"></i></button>
-                                            <button wire:click="rejectLeave({{ $l->id }})" class="text-red-500 hover:text-red-700"><i class="fas fa-times text-sm"></i></button>
+                                        <div class="flex items-center gap-1">
+                                            <button wire:click="approveLeave({{ $l->id }})" class="btn btn-icon btn-ghost" title="Approve"><i class="fas fa-check text-gray-400 hover:text-green-500 text-xs"></i></button>
+                                            <button wire:click="rejectLeave({{ $l->id }})" class="btn btn-icon btn-ghost" title="Reject"><i class="fas fa-times text-gray-400 hover:text-red-500 text-xs"></i></button>
                                         </div>
                                     @else
-                                        <button wire:click="deleteLeave({{ $l->id }})" wire:confirm="Are you sure you want to delete this leave request?" class="text-gray-400 hover:text-red-500"><i class="fas fa-trash text-sm"></i></button>
+                                        <button wire:click="deleteLeave({{ $l->id }})" wire:confirm="Are you sure you want to delete this leave request?" class="btn btn-icon btn-ghost" title="Delete"><i class="fas fa-trash text-gray-400 hover:text-red-500 text-xs"></i></button>
                                     @endif
                                 </td>
                             </tr>
@@ -301,14 +301,14 @@ new #[Layout('components.layouts.app')] class extends Component
                                 </div>
                             @endif
                             <div class="grid grid-cols-2 gap-3">
-                                <div><label class="form-label">Start Date</label><input type="date" wire:model="formStartDate" class="form-input"></div>
-                                <div><label class="form-label">End Date</label><input type="date" wire:model="formEndDate" class="form-input"></div>
+                                <div><label class="form-label">Start Date</label><input type="date" wire:model="formStartDate" class="form-input"><span wire:error="formStartDate" class="text-red-500 text-xs mt-1 block"></span></div>
+                                <div><label class="form-label">End Date</label><input type="date" wire:model="formEndDate" class="form-input"><span wire:error="formEndDate" class="text-red-500 text-xs mt-1 block"></span></div>
                             </div>
                             <div><label class="form-label">Reason</label><textarea wire:model="formReason" class="form-input" rows="2" placeholder="Optional reason"></textarea></div>
                         </div>
                         <div class="sticky bottom-0 bg-white flex justify-end gap-2 p-4 border-t">
                             <button wire:click="$set('showForm', false)" class="btn btn-secondary">Cancel</button>
-                            <button wire:click="save" class="btn btn-primary">Submit</button>
+                            <button wire:click="save" class="btn btn-primary" wire:loading.attr="disabled" wire:target="save"><span wire:loading.remove wire:target="save">Submit</span><span wire:loading wire:target="save" class="flex items-center gap-2"><svg class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Submitting...</span></button>
                         </div>
                     </div>
                 </div>

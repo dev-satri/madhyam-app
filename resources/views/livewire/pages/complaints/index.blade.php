@@ -3,11 +3,14 @@
 use Livewire\Volt\Component;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Computed;
+use Livewire\WithPagination;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
 
 new #[Layout('components.layouts.app')] class extends Component
 {
+    use WithPagination;
+
     public string $tabFilter = 'all';
     public string $search = '';
     public bool $showForm = false;
@@ -76,22 +79,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
         return $q->select('complaints.*', 'clients.name as client_name', 'users.name as assignee_name')
             ->orderBy('complaints.created_at', 'desc')
-            ->get()
-            ->map(function ($c) {
-                $c->status_icon = match($c->status) {
-                    'open' => 'fa-exclamation-circle', 'in-progress' => 'fa-spinner', 'resolved' => 'fa-check-circle',
-                };
-                $c->status_color = match($c->status) {
-                    'open' => 'text-red-500', 'in-progress' => 'text-amber-500', 'resolved' => 'text-green-500',
-                };
-                $c->priority_class = match($c->priority) {
-                    'urgent' => 'badge-urgent', 'high' => 'badge-high', 'medium' => 'badge-medium', 'low' => 'badge-low',
-                };
-                $c->next_status = match($c->status) {
-                    'open' => 'in-progress', 'in-progress' => 'resolved', default => null,
-                };
-                return $c;
-            });
+            ->paginate(50);
     }
 
     public function getReplies(int $complaintId)
@@ -270,13 +258,13 @@ new #[Layout('components.layouts.app')] class extends Component
                     <div class="bg-white border border-gray-100 rounded-2xl overflow-hidden">
                         <div class="p-5">
                             <div class="flex items-start gap-4">
-                                <div class="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center {{ $c->status_color }}">
-                                    <i class="fas {{ $c->status_icon }}"></i>
+                                <div class="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center {{ match($c->status) { 'open' => 'text-red-500', 'in-progress' => 'text-amber-500', 'resolved' => 'text-green-500', default => '' } }}">
+                                    <i class="fas {{ match($c->status) { 'open' => 'fa-exclamation-circle', 'in-progress' => 'fa-spinner', 'resolved' => 'fa-check-circle', default => '' } }}"></i>
                                 </div>
                                 <div class="flex-1 min-w-0">
                                     <div class="flex items-center gap-2 flex-wrap">
                                         <h3 class="font-bold text-base">{{ $c->title }}</h3>
-                                        <span class="badge {{ $c->priority_class }}">{{ ucfirst($c->priority) }}</span>
+                                        <span class="badge {{ match($c->priority) { 'urgent' => 'badge-urgent', 'high' => 'badge-high', 'medium' => 'badge-medium', 'low' => 'badge-low', default => '' } }}">{{ ucfirst($c->priority) }}</span>
                                         <span class="badge badge-{{ $c->status }}">{{ ucfirst(str_replace('-', ' ', $c->status)) }}</span>
                                     </div>
                                     <div class="text-xs text-gray-500 mt-1">
@@ -286,14 +274,15 @@ new #[Layout('components.layouts.app')] class extends Component
                                     <p class="text-sm text-gray-600 mt-2">{{ $c->description }}</p>
                                 </div>
                                 <div class="flex gap-2 flex-shrink-0">
-                                    @if($c->next_status && !$this->isClientUser)
+                                    @php $nextStatus = match($c->status) { 'open' => 'in-progress', 'in-progress' => 'resolved', default => null }; @endphp
+                                    @if($nextStatus && !$this->isClientUser)
                                         <button wire:click="advanceStatus({{ $c->id }})" class="btn btn-sm {{ $c->status === 'open' ? 'btn-primary' : 'btn-success' }}">
-                                            Mark {{ ucfirst(str_replace('-', ' ', $c->next_status)) }}
+                                            Mark {{ ucfirst(str_replace('-', ' ', $nextStatus)) }}
                                         </button>
                                     @endif
                                     @if(!$this->isClientUser)
-                                        <button wire:click="openForm({{ $c->id }})" class="text-gray-400 hover:text-blue-500"><i class="fas fa-pen text-sm"></i></button>
-                                        <button wire:click="deleteComplaint({{ $c->id }})" wire:confirm="Are you sure you want to delete this complaint?" class="text-gray-400 hover:text-red-500"><i class="fas fa-trash text-sm"></i></button>
+                                        <button wire:click="openForm({{ $c->id }})" class="btn btn-icon btn-ghost" title="Edit"><i class="fas fa-pen text-gray-400 hover:text-[var(--brand)] text-xs"></i></button>
+                                        <button wire:click="deleteComplaint({{ $c->id }})" wire:confirm="Are you sure you want to delete this complaint?" class="btn btn-icon btn-ghost" title="Delete"><i class="fas fa-trash text-gray-400 hover:text-red-500 text-xs"></i></button>
                                     @endif
                                 </div>
                             </div>
@@ -342,6 +331,10 @@ new #[Layout('components.layouts.app')] class extends Component
                 @endforelse
             </div>
 
+            <div class="mt-4">
+                {{ $this->complaints->links() }}
+            </div>
+
             {{-- Complaint Form Modal --}}
             @if($showForm)
                 <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" wire:click.self="$set('showForm', false)" x-on:keydown.escape.window="$wire.set('showForm', false)">
@@ -351,8 +344,8 @@ new #[Layout('components.layouts.app')] class extends Component
                             <button wire:click="$set('showForm', false)" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
                         </div>
                         <div class="p-4 space-y-4">
-                            <div><label class="form-label">Title</label><input type="text" wire:model="formTitle" class="form-input" placeholder="Brief description of the issue"></div>
-                            <div><label class="form-label">Description</label><textarea wire:model="formDescription" class="form-input" rows="4" placeholder="Detailed description..."></textarea></div>
+                            <div><label class="form-label">Title</label><input type="text" wire:model="formTitle" class="form-input" placeholder="Brief description of the issue"><span wire:error="formTitle" class="text-red-500 text-xs mt-1 block"></span></div>
+                            <div><label class="form-label">Description</label><textarea wire:model="formDescription" class="form-input" rows="4" placeholder="Detailed description..."></textarea><span wire:error="formDescription" class="text-red-500 text-xs mt-1 block"></span></div>
                             <div class="grid grid-cols-2 gap-3">
                                 @if(!$this->isClientUser)
                                     <div>
@@ -387,7 +380,7 @@ new #[Layout('components.layouts.app')] class extends Component
                         </div>
                         <div class="sticky bottom-0 bg-white flex justify-end gap-2 p-4 border-t">
                             <button wire:click="$set('showForm', false)" class="btn btn-secondary">Cancel</button>
-                            <button wire:click="save" class="btn btn-primary">Save</button>
+                            <button wire:click="save" class="btn btn-primary" wire:loading.attr="disabled" wire:target="save"><span wire:loading.remove wire:target="save">Save</span><span wire:loading wire:target="save" class="flex items-center gap-2"><svg class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Saving...</span></button>
                         </div>
                     </div>
                 </div>

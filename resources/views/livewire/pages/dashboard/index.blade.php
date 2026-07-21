@@ -276,8 +276,21 @@ new #[Layout('components.layouts.app')] class extends Component
                 </div>
             </div>
 
+            {{-- Skeleton loader --}}
+            <div wire:loading.delay class="space-y-4 p-6">
+                <div class="h-8 bg-gray-200 rounded animate-pulse w-1/3"></div>
+                <div class="h-4 bg-gray-200 rounded animate-pulse w-2/3"></div>
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <div class="h-20 bg-gray-200 rounded-xl animate-pulse"></div>
+                    <div class="h-20 bg-gray-200 rounded-xl animate-pulse"></div>
+                    <div class="h-20 bg-gray-200 rounded-xl animate-pulse"></div>
+                    <div class="h-20 bg-gray-200 rounded-xl animate-pulse"></div>
+                </div>
+                <div class="h-64 bg-gray-200 rounded-2xl animate-pulse"></div>
+            </div>
+
             {{-- Stat Cards --}}
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div wire:loading.remove.delay class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 @if(($stats['type'] ?? 'admin') === 'admin')
                 <div class="stat-card flex items-center gap-4">
                     <div class="stat-icon flex h-11 w-11 items-center justify-center rounded-xl bg-[rgba(var(--brand-rgb),0.08)] text-[var(--brand)]"><i class="fas fa-users text-lg"></i></div>

@@ -25,6 +25,7 @@ class Package extends Model
     protected $casts = [
         'features' => 'array',
         'included_platforms' => 'array',
+        'deliverables' => 'array',
         'monthly_amount' => 'decimal:2',
         'priority_support' => 'boolean',
     ];

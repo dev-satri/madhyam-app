@@ -626,6 +626,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                 @error ('title')
                                     <span class="text-xs text-red-500 mt-1 block">{{ $message }}</span>
                                 @enderror
+                                <span wire:error="title" class="text-red-500 text-xs mt-1 block"></span>
                             </div>
 
                             <div>
@@ -639,6 +640,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                 @error ('formClientId')
                                     <span class="text-xs text-red-500 mt-1 block">{{ $message }}</span>
                                 @enderror
+                                <span wire:error="formClientId" class="text-red-500 text-xs mt-1 block"></span>
                             </div>
 
                             <div>
@@ -647,6 +649,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                 @error ('formDate')
                                     <span class="text-xs text-red-500 mt-1 block">{{ $message }}</span>
                                 @enderror
+                                <span wire:error="formDate" class="text-red-500 text-xs mt-1 block"></span>
                             </div>
 
                             <div>

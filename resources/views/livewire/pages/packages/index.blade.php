@@ -991,7 +991,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
     {{-- Package Form Modal --}}
     @if ($showPkgForm)
-        <div class="fixed inset-0 z-50 flex items-center justify-center p-4" x-data x-transition>
+        <div class="fixed inset-0 z-50 flex items-center justify-center p-4" x-data x-transition x-on:keydown.escape.window="$wire.set('showPkgForm', false)">
             <div class="fixed inset-0 bg-black/50" wire:click="$set('showPkgForm', false)"></div>
             <div
                 class="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto"
@@ -1020,6 +1020,7 @@ new #[Layout('components.layouts.app')] class extends Component
                             @error ('pkgName')
                                 <span class="text-red-500 text-xs">{{ $message }}</span>
                             @enderror
+                            <span wire:error="pkgName" class="text-red-500 text-xs mt-1 block"></span>
                         </div>
                         <div>
                             <label class="block text-xs font-semibold text-gray-600 mb-1">Slug *</label>
@@ -1032,12 +1033,14 @@ new #[Layout('components.layouts.app')] class extends Component
                             @error ('pkgSlug')
                                 <span class="text-red-500 text-xs">{{ $message }}</span>
                             @enderror
+                            <span wire:error="pkgSlug" class="text-red-500 text-xs mt-1 block"></span>
                         </div>
                     </div>
                     <div class="grid grid-cols-2 gap-4">
                         <div>
                             <label class="block text-xs font-semibold text-gray-600 mb-1">Monthly Price (NPR) *</label>
                             <input type="number" wire:model="pkgAmount" class="form-input w-full text-sm" min="0" />
+                            <span wire:error="pkgAmount" class="text-red-500 text-xs mt-1 block"></span>
                         </div>
                         <div>
                             <label class="block text-xs font-semibold text-gray-600 mb-1">Status</label>
@@ -1141,7 +1144,7 @@ new #[Layout('components.layouts.app')] class extends Component
     {{-- Package Detail Modal --}}
     @if ($showDetailModal)
         @php $summary = $this->detailSummary; @endphp
-        <div class="fixed inset-0 z-50 flex items-center justify-center p-4" x-data x-transition>
+        <div class="fixed inset-0 z-50 flex items-center justify-center p-4" x-data x-transition x-on:keydown.escape.window="$wire.set('showDetailModal', false)">
             <div class="fixed inset-0 bg-black/50" wire:click="$set('showDetailModal', false)"></div>
             <div
                 class="relative bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto"
@@ -1360,7 +1363,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
     {{-- Client Detail Modal --}}
     @if ($showClientModal && !empty($clientDetail))
-        <div class="fixed inset-0 z-50 flex items-center justify-center p-4" x-data x-transition>
+        <div class="fixed inset-0 z-50 flex items-center justify-center p-4" x-data x-transition x-on:keydown.escape.window="$wire.set('showClientModal', false)">
             <div class="fixed inset-0 bg-black/50" wire:click="$set('showClientModal', false)"></div>
             <div
                 class="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto"

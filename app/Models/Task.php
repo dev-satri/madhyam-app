@@ -18,6 +18,7 @@ class Task extends Model
     protected $casts = [
         'due_date' => 'date',
         'progress' => 'integer',
+        'checklist' => 'array',
     ];
 
     public function client(): BelongsTo

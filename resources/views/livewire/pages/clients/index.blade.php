@@ -279,8 +279,21 @@ new #[Layout('components.layouts.app')] class extends Component
         </div>
     </div>
 
+    {{-- Skeleton loader --}}
+    <div wire:loading.delay class="space-y-4 p-6">
+        <div class="h-8 bg-gray-200 rounded animate-pulse w-1/3"></div>
+        <div class="h-4 bg-gray-200 rounded animate-pulse w-2/3"></div>
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div class="h-20 bg-gray-200 rounded-xl animate-pulse"></div>
+            <div class="h-20 bg-gray-200 rounded-xl animate-pulse"></div>
+            <div class="h-20 bg-gray-200 rounded-xl animate-pulse"></div>
+            <div class="h-20 bg-gray-200 rounded-xl animate-pulse"></div>
+        </div>
+        <div class="h-64 bg-gray-200 rounded-2xl animate-pulse"></div>
+    </div>
+
     {{-- ========== CLIENTS TABLE ========== --}}
-    <div class="bg-white rounded-2xl border border-gray-100 overflow-hidden" wire:loading.target="search,statusFilter">
+    <div wire:loading.remove.delay class="bg-white rounded-2xl border border-gray-100 overflow-hidden" wire:loading.target="search,statusFilter">
         <div wire:loading class="p-6 space-y-3">
             @for ($i = 0; $i < 5; $i++)
                 <div class="skeleton-row">
@@ -423,6 +436,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                 @error ('name')
                                     <span class="text-xs text-red-500 mt-1 block">{{ $message }}</span>
                                 @enderror
+                                <span wire:error="name" class="text-red-500 text-xs mt-1 block"></span>
                             </div>
                             <div>
                                 <label class="form-label">Contact Person</label>
@@ -444,6 +458,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                 @error ('email')
                                     <span class="text-xs text-red-500 mt-1 block">{{ $message }}</span>
                                 @enderror
+                                <span wire:error="email" class="text-red-500 text-xs mt-1 block"></span>
                             </div>
                             <div>
                                 <label class="form-label">Phone</label>
@@ -457,6 +472,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                     <option value="enterprise">Enterprise</option>
                                     <option value="custom">Custom</option>
                                 </select>
+                                <span wire:error="package" class="text-red-500 text-xs mt-1 block"></span>
                             </div>
                             <div>
                                 <label class="form-label">Monthly Amount (NPR)</label>

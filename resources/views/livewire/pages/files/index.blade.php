@@ -132,15 +132,35 @@ new #[Layout('components.layouts.app')] class extends Component
         } else {
             $query->whereNull('parent_id');
         }
-        return $query->orderBy('name')
-            ->get()
-            ->map(function ($f) {
-                $f->file_count = DB::table('files')->where('folder_id', $f->id)->count();
-                $f->subfolder_count = DB::table('folders')->where('parent_id', $f->id)->count();
-                $f->total_size = DB::table('files')->where('folder_id', $f->id)->sum('size');
-                $f->total_size_label = $this->formatSize($f->total_size);
-                return $f;
-            });
+        $folders = $query->orderBy('name')->get();
+
+        $folderIds = $folders->pluck('id')->toArray();
+        if (!empty($folderIds)) {
+            $fileStats = DB::table('files')
+                ->whereIn('folder_id', $folderIds)
+                ->selectRaw('folder_id, COUNT(*) as file_count, COALESCE(SUM(size), 0) as total_size')
+                ->groupBy('folder_id')
+                ->get()
+                ->keyBy('folder_id');
+
+            $subfolderCounts = DB::table('folders')
+                ->whereIn('parent_id', $folderIds)
+                ->selectRaw('parent_id, COUNT(*) as cnt')
+                ->groupBy('parent_id')
+                ->get()
+                ->keyBy('parent_id');
+        } else {
+            $fileStats = collect();
+            $subfolderCounts = collect();
+        }
+
+        return $folders->map(function ($f) use ($fileStats, $subfolderCounts) {
+            $f->file_count = $fileStats[$f->id]->file_count ?? 0;
+            $f->total_size = $fileStats[$f->id]->total_size ?? 0;
+            $f->subfolder_count = $subfolderCounts[$f->id]->cnt ?? 0;
+            $f->total_size_label = $this->formatSize($f->total_size);
+            return $f;
+        });
     }
 
     public function getFiles()
@@ -830,6 +850,7 @@ new #[Layout('components.layouts.app')] class extends Component
                             <div>
                                 <label class="form-label">Folder Name</label>
                                 <input type="text" wire:model="folderName" class="form-input" placeholder="Enter folder name" x-ref="folderNameInput" x-init="$nextTick(() => $refs.folderNameInput.focus())">
+                                <span wire:error="folderName" class="text-red-500 text-xs mt-1 block"></span>
                             </div>
                             <div>
                                 <label class="form-label">Client (optional)</label>

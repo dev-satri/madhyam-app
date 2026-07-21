@@ -94,19 +94,29 @@ new #[Layout('components.layouts.app')] class extends Component
         if ($this->statusFilter) $q->where('invoices.status', $this->statusFilter);
         if ($this->clientFilter) $q->where('invoices.client_id', $this->clientFilter);
 
-        return $q->select('invoices.*', 'clients.name as client_name')
+        $invoices = $q->select('invoices.*', 'clients.name as client_name')
             ->orderBy('invoices.due_date', 'desc')
-            ->get()
-            ->map(function ($inv) {
-                $paid = DB::table('invoice_payments')->where('invoice_id', $inv->id)->sum('amount');
-                $inv->total_paid = $paid;
-                $inv->remaining = $inv->amount - $inv->discount_amount - $paid;
-                if ($inv->payment_status === 'installment' && $inv->installment_plan) {
-                    $plan = is_string($inv->installment_plan) ? json_decode($inv->installment_plan, true) : $inv->installment_plan;
-                    $inv->installment_progress = ($plan['paidInstallments'] ?? 0) . '/' . ($plan['totalInstallments'] ?? 0);
-                }
-                return $inv;
-            });
+            ->get();
+
+        $invoiceIds = $invoices->pluck('id')->toArray();
+        $payments = !empty($invoiceIds)
+            ? DB::table('invoice_payments')
+                ->whereIn('invoice_id', $invoiceIds)
+                ->selectRaw('invoice_id, SUM(amount) as total_paid')
+                ->groupBy('invoice_id')
+                ->get()
+                ->keyBy('invoice_id')
+            : collect();
+
+        return $invoices->map(function ($inv) use ($payments) {
+            $inv->total_paid = $payments[$inv->id]->total_paid ?? 0;
+            $inv->remaining = $inv->amount - $inv->discount_amount - $inv->total_paid;
+            if ($inv->payment_status === 'installment' && $inv->installment_plan) {
+                $plan = is_string($inv->installment_plan) ? json_decode($inv->installment_plan, true) : $inv->installment_plan;
+                $inv->installment_progress = ($plan['paidInstallments'] ?? 0) . '/' . ($plan['totalInstallments'] ?? 0);
+            }
+            return $inv;
+        });
     }
 
     public function getPayments(int $invoiceId)
@@ -505,8 +515,21 @@ new #[Layout('components.layouts.app')] class extends Component
                 @endunless
             </div>
 
+            {{-- Skeleton loader --}}
+            <div wire:loading.delay class="space-y-4 p-6">
+                <div class="h-8 bg-gray-200 rounded animate-pulse w-1/3"></div>
+                <div class="h-4 bg-gray-200 rounded animate-pulse w-2/3"></div>
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <div class="h-20 bg-gray-200 rounded-xl animate-pulse"></div>
+                    <div class="h-20 bg-gray-200 rounded-xl animate-pulse"></div>
+                    <div class="h-20 bg-gray-200 rounded-xl animate-pulse"></div>
+                    <div class="h-20 bg-gray-200 rounded-xl animate-pulse"></div>
+                </div>
+                <div class="h-64 bg-gray-200 rounded-2xl animate-pulse"></div>
+            </div>
+
             {{-- Global Stats --}}
-            <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div wire:loading.remove.delay class="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div class="stat-card"><div class="stat-icon bg-green-100 text-green-600"><i class="fas fa-dollar-sign"></i></div><div class="stat-value">{{ fmtCurrency($this->stats['revenue']) }}</div><div class="stat-label">{{ $this->isClient ? 'Total Billed' : 'Total Revenue' }}</div></div>
                 <div class="stat-card"><div class="stat-icon bg-blue-100 text-blue-600"><i class="fas fa-check-circle"></i></div><div class="stat-value">{{ fmtCurrency($this->stats['paid']) }}</div><div class="stat-label">Paid</div></div>
                 <div class="stat-card"><div class="stat-icon bg-amber-100 text-amber-600"><i class="fas fa-clock"></i></div><div class="stat-value">{{ fmtCurrency($this->stats['pending']) }}</div><div class="stat-label">Pending</div></div>
@@ -577,13 +600,13 @@ new #[Layout('components.layouts.app')] class extends Component
                                     </td>
                                     <td class="text-sm">{{ fmtDate($inv->due_date) }}</td>
                                     <td>
-                                        <div class="flex gap-1">
+                                        <div class="flex items-center gap-1">
                                             @unless($this->isClient)
-                                                <button wire:click="openRecordPayment({{ $inv->id }})" class="text-green-500 hover:text-green-700" title="Record Payment"><i class="fas fa-money-bill-wave text-sm"></i></button>
+                                                <button wire:click="openRecordPayment({{ $inv->id }})" class="btn btn-icon btn-ghost" title="Record Payment"><i class="fas fa-money-bill-wave text-gray-400 hover:text-green-500 text-xs"></i></button>
                                             @endunless
-                                            <button wire:click="openDetail({{ $inv->id }})" class="text-blue-500 hover:text-blue-700" title="View Details"><i class="fas fa-eye text-sm"></i></button>
+                                            <button wire:click="openDetail({{ $inv->id }})" class="btn btn-icon btn-ghost" title="View Details"><i class="fas fa-eye text-gray-400 hover:text-[var(--brand)] text-xs"></i></button>
                                             @unless($this->isClient)
-                                                <button wire:click="deleteInvoice({{ $inv->id }})" wire:confirm="Are you sure you want to delete this invoice?" class="text-red-500 hover:text-red-700" title="Delete"><i class="fas fa-trash text-sm"></i></button>
+                                                <button wire:click="deleteInvoice({{ $inv->id }})" wire:confirm="Are you sure you want to delete this invoice?" class="btn btn-icon btn-ghost" title="Delete"><i class="fas fa-trash text-gray-400 hover:text-red-500 text-xs"></i></button>
                                             @endunless
                                         </div>
                                     </td>
@@ -694,10 +717,11 @@ new #[Layout('components.layouts.app')] class extends Component
                                 <select wire:model="formClientId" class="form-select"><option value="">Select Client</option>
                                     @foreach($this->clients as $c)<option value="{{ $c->id }}">{{ $c->name }}</option>@endforeach
                                 </select>
+                                <span wire:error="formClientId" class="text-red-500 text-xs mt-1 block"></span>
                             </div>
                             <div class="grid grid-cols-2 gap-3">
-                                <div><label class="form-label">Amount</label><input type="number" wire:model="formAmount" class="form-input" step="0.01"></div>
-                                <div><label class="form-label">Due Date</label><input type="date" wire:model="formDueDate" class="form-input"></div>
+                                <div><label class="form-label">Amount</label><input type="number" wire:model="formAmount" class="form-input" step="0.01"><span wire:error="formAmount" class="text-red-500 text-xs mt-1 block"></span></div>
+                                <div><label class="form-label">Due Date</label><input type="date" wire:model="formDueDate" class="form-input"><span wire:error="formDueDate" class="text-red-500 text-xs mt-1 block"></span></div>
                             </div>
                             <div><label class="form-label">Description</label><input type="text" wire:model="formDescription" class="form-input"></div>
                             <div class="grid grid-cols-2 gap-3">
@@ -726,7 +750,7 @@ new #[Layout('components.layouts.app')] class extends Component
                         </div>
                         <div class="sticky bottom-0 bg-white flex justify-end gap-2 p-4 border-t">
                             <button wire:click="$set('showInvoiceForm', false)" class="btn btn-secondary">Cancel</button>
-                            <button wire:click="saveInvoice" class="btn btn-primary">Save</button>
+                            <button wire:click="saveInvoice" class="btn btn-primary" wire:loading.attr="disabled" wire:target="saveInvoice"><span wire:loading.remove wire:target="saveInvoice">Save</span><span wire:loading wire:target="saveInvoice" class="flex items-center gap-2"><svg class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Saving...</span></button>
                         </div>
                     </div>
                 </div>
@@ -748,8 +772,8 @@ new #[Layout('components.layouts.app')] class extends Component
                                 <div class="flex justify-between"><span>Discount:</span><span>{{ fmtCurrency($inv->discount_amount) }}</span></div>
                                 <div class="flex justify-between"><span>Remaining:</span><span class="font-semibold text-red-600">{{ fmtCurrency($inv->amount - $inv->discount_amount - DB::table('invoice_payments')->where('invoice_id', $inv->id)->sum('amount')) }}</span></div>
                             </div>
-                            <div><label class="form-label">Amount</label><input type="number" wire:model="payAmount" class="form-input" step="0.01"></div>
-                            <div><label class="form-label">Date</label><input type="date" wire:model="payDate" class="form-input"></div>
+                            <div><label class="form-label">Amount</label><input type="number" wire:model="payAmount" class="form-input" step="0.01"><span wire:error="payAmount" class="text-red-500 text-xs mt-1 block"></span></div>
+                            <div><label class="form-label">Date</label><input type="date" wire:model="payDate" class="form-input"><span wire:error="payDate" class="text-red-500 text-xs mt-1 block"></span></div>
                             <div><label class="form-label">Method</label>
                                 <select wire:model="payMethod" class="form-select">
                                     <option value="cash">Cash</option><option value="bank">Bank Transfer</option><option value="card">Card</option>
@@ -779,7 +803,7 @@ new #[Layout('components.layouts.app')] class extends Component
                         </div>
                         <div class="sticky bottom-0 bg-white flex justify-end gap-2 p-4 border-t">
                             <button wire:click="$set('showRecordPayment', false)" class="btn btn-secondary">Cancel</button>
-                            <button wire:click="savePayment" class="btn btn-primary">Save Payment</button>
+                            <button wire:click="savePayment" class="btn btn-primary" wire:loading.attr="disabled" wire:target="savePayment"><span wire:loading.remove wire:target="savePayment">Save Payment</span><span wire:loading wire:target="savePayment" class="flex items-center gap-2"><svg class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Saving...</span></button>
                         </div>
                         @endif
                     </div>

@@ -16,6 +16,8 @@ class Complaint extends Model
         'status', 'assigned_to', 'priority',
     ];
 
+    protected $casts = [];
+
     public function client(): BelongsTo
     {
         return $this->belongsTo(Client::class);

@@ -28,6 +28,9 @@ class Client extends Model
         'contract_start' => 'date',
         'contract_end' => 'date',
         'amount' => 'decimal:2',
+        'deliverables' => 'array',
+        'brand_guide' => 'array',
+        'social_links' => 'array',
     ];
 
     public function accounts(): HasMany

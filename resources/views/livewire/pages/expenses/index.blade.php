@@ -5,9 +5,11 @@ use Livewire\Attributes\Layout;
 use Livewire\Attributes\Computed;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
+use Livewire\WithPagination;
 
 new #[Layout('components.layouts.app')] class extends Component
 {
+    use WithPagination;
     public string $search = '';
     public string $categoryFilter = '';
     public string $statusFilter = '';
@@ -127,45 +129,13 @@ new #[Layout('components.layouts.app')] class extends Component
 
         if ($this->clientFilter) $q->where('expenses.client_id', $this->clientFilter);
 
-        $results = $q->select(
+        return $q->select(
                 'expenses.*',
                 'clients.name as client_name',
                 'users.name as staff_name'
             )
             ->orderBy('expenses.date', 'desc')
-            ->get()
-            ->map(function ($e) {
-                $e->meta_line = match($e->category) {
-                    'office' => $e->location ?? '-',
-                    'equipment' => $e->item_name ?? '-',
-                    'travel' => $e->destination ?? '-',
-                    default => '',
-                };
-                $e->category_icon = match($e->category) {
-                    'office' => 'fa-building', 'operations' => 'fa-cogs',
-                    'software' => 'fa-laptop-code', 'equipment' => 'fa-tools', 'travel' => 'fa-plane',
-                    'marketing' => 'fa-bullhorn', 'other' => 'fa-ellipsis-h',
-                    default => 'fa-ellipsis-h',
-                };
-                $e->category_color = match($e->category) {
-                    'office' => 'bg-amber-100 text-amber-700',
-                    'operations' => 'bg-green-100 text-green-700',
-                    'software' => 'bg-purple-100 text-purple-700',
-                    'equipment' => 'bg-red-100 text-red-700',
-                    'travel' => 'bg-cyan-100 text-cyan-700',
-                    'marketing' => 'bg-pink-100 text-pink-700',
-                    'other' => 'bg-gray-100 text-gray-700',
-                    default => 'bg-gray-100 text-gray-700',
-                };
-                $e->method_icon = match($e->payment_method) {
-                    'cash' => 'fa-money-bill-wave', 'bank' => 'fa-university',
-                    'card' => 'fa-credit-card', 'cheque' => 'fa-file-invoice',
-                    default => 'fa-wallet',
-                };
-                return $e;
-            });
-
-        return $results;
+            ->paginate(50);
     }
 
     public function openForm(?int $id = null): void
@@ -382,7 +352,7 @@ new #[Layout('components.layouts.app')] class extends Component
             {{-- Filter summary --}}
             @if($this->hasActiveFilters)
                 <div class="text-xs text-gray-500">
-                    Showing {{ $this->expenses->count() }} expenses · Total: {{ fmtCurrency($this->expenses->sum('amount')) }}
+                    Showing {{ $this->expenses->total() }} expenses · Total: {{ fmtCurrency($this->expenses->sum('amount')) }}
                 </div>
             @endif
 
@@ -396,24 +366,54 @@ new #[Layout('components.layouts.app')] class extends Component
                                 <td class="text-sm whitespace-nowrap">{{ fmtDate($e->date) }}</td>
                                 <td>
                                     <div class="font-medium text-sm">{{ $e->description ?: '-' }}</div>
-                                    @if($e->meta_line)
-                                        <div class="text-xs text-gray-400">{{ $e->meta_line }}</div>
+                                    @php
+                                        $metaLine = match($e->category) {
+                                            'office' => $e->location ?? '-',
+                                            'equipment' => $e->item_name ?? '-',
+                                            'travel' => $e->destination ?? '-',
+                                            default => '',
+                                        };
+                                    @endphp
+                                    @if($metaLine)
+                                        <div class="text-xs text-gray-400">{{ $metaLine }}</div>
                                     @endif
                                 </td>
-                                <td><span class="badge {{ $e->category_color }}"><i class="fas {{ $e->category_icon }} text-[10px]"></i> {{ ucfirst($e->category) }}</span></td>
+                                <td><span class="badge {{ match($e->category) {
+                                    'office' => 'bg-amber-100 text-amber-700',
+                                    'operations' => 'bg-green-100 text-green-700',
+                                    'software' => 'bg-purple-100 text-purple-700',
+                                    'equipment' => 'bg-red-100 text-red-700',
+                                    'travel' => 'bg-cyan-100 text-cyan-700',
+                                    'marketing' => 'bg-pink-100 text-pink-700',
+                                    default => 'bg-gray-100 text-gray-700',
+                                } }}"><i class="fas {{ match($e->category) {
+                                    'office' => 'fa-building',
+                                    'operations' => 'fa-cogs',
+                                    'software' => 'fa-laptop-code',
+                                    'equipment' => 'fa-tools',
+                                    'travel' => 'fa-plane',
+                                    'marketing' => 'fa-bullhorn',
+                                    default => 'fa-ellipsis-h',
+                                } }} text-[10px]"></i> {{ ucfirst($e->category) }}</span></td>
                                 <td class="text-sm">{{ $e->client_name ?? '-' }}</td>
                                 <td class="text-right font-semibold">{{ fmtCurrency($e->amount) }}</td>
                                 <td class="text-sm text-gray-600">{{ $e->paid_to ?? '-' }}</td>
-                                <td><i class="fas {{ $e->method_icon }} text-gray-400 text-sm"></i></td>
+                                <td><i class="fas {{ match($e->payment_method) {
+                                    'cash' => 'fa-money-bill-wave',
+                                    'bank' => 'fa-university',
+                                    'card' => 'fa-credit-card',
+                                    'cheque' => 'fa-file-invoice',
+                                    default => 'fa-wallet',
+                                } }} text-gray-400 text-sm"></i></td>
                                 <td>
                                     <button wire:click="toggleStatus({{ $e->id }})" class="badge {{ $e->status === 'paid' ? 'badge-paid' : 'badge-pending' }} cursor-pointer hover:opacity-80">
                                         {{ ucfirst($e->status) }}
                                     </button>
                                 </td>
                                 <td>
-                                    <div class="flex gap-1">
-                                        <button wire:click="openForm({{ $e->id }})" class="text-gray-400 hover:text-blue-500"><i class="fas fa-pen text-xs"></i></button>
-                                        <button wire:click="deleteExpense({{ $e->id }})" wire:confirm="Are you sure you want to delete this expense?" class="text-gray-400 hover:text-red-500"><i class="fas fa-trash text-xs"></i></button>
+                                    <div class="flex items-center gap-1">
+                                        <button wire:click="openForm({{ $e->id }})" class="btn btn-icon btn-ghost" title="Edit"><i class="fas fa-pen text-gray-400 hover:text-[var(--brand)] text-xs"></i></button>
+                                        <button wire:click="deleteExpense({{ $e->id }})" wire:confirm="Are you sure you want to delete this expense?" class="btn btn-icon btn-ghost" title="Delete"><i class="fas fa-trash text-gray-400 hover:text-red-500 text-xs"></i></button>
                                     </div>
                                 </td>
                             </tr>
@@ -430,13 +430,17 @@ new #[Layout('components.layouts.app')] class extends Component
                     @if($this->expenses->count())
                         <tfoot>
                             <tr class="font-bold bg-gray-50">
-                                <td colspan="4" class="text-sm">Total ({{ $this->expenses->count() }} expenses)</td>
+                                <td colspan="4" class="text-sm">Total ({{ $this->expenses->total() }} expenses)</td>
                                 <td class="text-right text-green-600">{{ fmtCurrency($this->expenses->sum('amount')) }}</td>
                                 <td colspan="4"></td>
                             </tr>
                         </tfoot>
                     @endif
                 </table>
+            </div>
+
+            <div class="mt-4">
+                {{ $this->expenses->links() }}
             </div>
 
             {{-- Expense Form Modal --}}
@@ -464,6 +468,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                 <div>
                                     <label class="form-label">Date</label>
                                     <input type="date" wire:model="formDate" class="form-input">
+                                    <span wire:error="formDate" class="text-red-500 text-xs mt-1 block"></span>
                                 </div>
                             </div>
 
@@ -496,6 +501,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                 <div>
                                     <label class="form-label">Amount</label>
                                     <input type="number" wire:model="formAmount" class="form-input" step="0.01" min="0">
+                                    <span wire:error="formAmount" class="text-red-500 text-xs mt-1 block"></span>
                                 </div>
                                 <div>
                                     <label class="form-label">Paid To</label>
@@ -532,7 +538,7 @@ new #[Layout('components.layouts.app')] class extends Component
                         </div>
                         <div class="sticky bottom-0 bg-white flex justify-end gap-2 p-4 border-t">
                             <button wire:click="$set('showForm', false)" class="btn btn-secondary">Cancel</button>
-                            <button wire:click="save" class="btn btn-primary">Save</button>
+                            <button wire:click="save" class="btn btn-primary" wire:loading.attr="disabled" wire:target="save"><span wire:loading.remove wire:target="save">Save</span><span wire:loading wire:target="save" class="flex items-center gap-2"><svg class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Saving...</span></button>
                         </div>
                     </div>
                 </div>
