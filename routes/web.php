@@ -1,0 +1,205 @@
+<?php
+
+use App\Livewire\Actions\Logout;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\Storage;
+use Livewire\Volt\Volt;
+
+/*
+|--------------------------------------------------------------------------
+| Root
+|--------------------------------------------------------------------------
+| Redirect based on active guard. Spec §22 has no public marketing page.
+*/
+Route::get('/', function () {
+    if (Auth::guard('web')->check()) {
+        return redirect()->route('dashboard');
+    }
+    if (Auth::guard('client')->check()) {
+        return redirect()->route('client.dashboard');
+    }
+
+    return redirect()->route('login');
+})->name('welcome');
+
+/*
+|--------------------------------------------------------------------------
+| Guest Auth Routes
+|--------------------------------------------------------------------------
+| Combined staff/client login (single Volt view with tab toggle).
+| Spec explicitly defers self-serve registration + password reset.
+*/
+Route::middleware('guest:web,client')->group(function () {
+    Volt::route('login', 'pages.auth.login')->name('login');
+    Volt::route('client/login', 'pages.auth.login')->name('client.login');
+});
+
+/*
+|--------------------------------------------------------------------------
+| Staff Routes (auth:web)
+|--------------------------------------------------------------------------
+| Feature-gated only. Per plan §17, the 7 data-access permissions
+| (seeAllTasks, seeAllWorkflow, seeAllPerformance, seeAllActivity,
+|  canAddTasks, canMoveWorkflow, canEditWorkflow) are RUNTIME checks
+| applied inside pages via RbacService::hasDataAccess — NEVER as route
+| middleware. Page-level access is `feature:{key}` only.
+*/
+Route::middleware('auth:web')->group(function () {
+    Volt::route('dashboard', 'pages.dashboard.index')->name('dashboard');
+
+    Route::middleware('feature:clients')->group(function () {
+        Volt::route('clients', 'pages.clients.index')->name('clients');
+    });
+
+    Route::middleware('feature:packages')->group(function () {
+        Volt::route('packages', 'pages.packages.index')->name('packages');
+    });
+
+    Route::middleware('feature:contentPlanner')->group(function () {
+        Volt::route('content-planner', 'pages.calendar.index')->name('content-planner');
+    });
+
+    Route::middleware('feature:workflow')->group(function () {
+        Volt::route('workflow', 'pages.workflow.index')->name('workflow');
+    });
+
+    Route::middleware('feature:tasks')->group(function () {
+        Volt::route('tasks', 'pages.tasks.index')->name('tasks');
+    });
+
+    Route::middleware('feature:approvals')->group(function () {
+        Volt::route('approvals', 'pages.approvals.index')->name('approvals');
+    });
+
+    Route::middleware('feature:files')->group(function () {
+        Volt::route('files', 'pages.files.index')->name('files');
+        Route::get('files/{id}/download', function (int $id) {
+            $file = DB::table('files')->where('id', $id)->first();
+            abort_unless($file, 404);
+
+            return Storage::download($file->path, $file->name);
+        })->name('files.download');
+    });
+
+    Route::middleware('feature:reports')->group(function () {
+        Volt::route('reports', 'pages.reports.index')->name('reports');
+    });
+
+    Route::middleware('feature:leaves')->group(function () {
+        Volt::route('leaves', 'pages.leaves.index')->name('leaves');
+    });
+
+    Route::middleware('feature:expenses')->group(function () {
+        Volt::route('expenses', 'pages.expenses.index')->name('expenses');
+    });
+
+    Route::middleware('feature:salary')->group(function () {
+        Volt::route('salary', 'pages.salary.index')->name('salary');
+        Route::get('salary/{id}/slip', function (int $id) {
+            $salary = DB::table('salaries')->join('users', 'salaries.member_id', '=', 'users.id')
+                ->where('salaries.id', $id)
+                ->select('salaries.*', 'users.name as member_name', 'users.role as member_role', 'users.phone')
+                ->first();
+            abort_unless($salary, 404);
+            $agency = DB::table('settings')->where('id', 1)->first();
+
+            return response()->view('livewire.pages.salary.slip', compact('salary', 'agency'), 200);
+        })->name('salary.slip');
+    });
+
+    Route::middleware('feature:overtime')->group(function () {
+        Volt::route('overtime', 'pages.overtime.index')->name('overtime');
+        Route::get('overtime/export', function () {
+            $userId = Auth::id();
+            $isMgr = in_array(Auth::user()->role, ['super-admin', 'admin', 'manager']);
+            $q = DB::table('overtime_logs')->join('users', 'overtime_logs.member_id', '=', 'users.id');
+            if (! $isMgr) {
+                $q->where('overtime_logs.member_id', $userId);
+            }
+            $logs = $q->select('overtime_logs.*', 'users.name as member_name')->orderBy('overtime_logs.date', 'desc')->get();
+
+            $headers = ['Staff', 'Date', 'Hours', 'Rate', 'Amount', 'Description', 'Approved'];
+            $rows = $logs->map(fn ($l) => [$l->member_name, $l->date, $l->hours, $l->rate, round((float) $l->hours * (float) $l->rate, 2), $l->description ?? '', $l->approved ? 'Yes' : 'No']);
+            $totalHours = $logs->sum('hours');
+            $totalAmount = $logs->sum(fn ($l) => (float) $l->hours * (float) $l->rate);
+            $rows->push(['TOTAL', '', $totalHours, '', round($totalAmount, 2), '', '']);
+
+            $csv = implode("\n", array_map(fn ($r) => '"'.implode('","', $r).'"', array_merge([$headers], $rows->toArray())));
+
+            return response($csv, 200, ['Content-Type' => 'text/csv', 'Content-Disposition' => 'attachment; filename="overtime-logs-'.now()->format('Y-m').'.csv"']);
+        })->name('overtime.export');
+    });
+
+    Route::middleware('feature:team')->group(function () {
+        Volt::route('team', 'pages.team.index')->name('team');
+    });
+
+    Route::middleware('feature:settings')->group(function () {
+        Volt::route('settings', 'pages.settings.index')->name('settings');
+        Route::get('settings/export', function () {
+            abort_unless(in_array(Auth::user()->role, ['super-admin', 'admin']), 403);
+            $tables = ['users', 'clients', 'departments', 'tasks', 'workflows', 'workflow_stages', 'contents',
+                'files', 'folders', 'file_expiries', 'invoices', 'leaves', 'salaries', 'overtime_logs',
+                'expenses', 'complaints', 'complaint_replies', 'settings', 'working_hours',
+                'feature_access', 'data_access', 'custom_roles', 'notifications', 'notification_rules', 'activity_logs'];
+            $data = [];
+            foreach ($tables as $t) {
+                $data[$t] = DB::table($t)->get()->map(fn ($r) => (array) $r)->toArray();
+            }
+
+            return response(json_encode($data, JSON_PRETTY_PRINT), 200, [
+                'Content-Type' => 'application/json',
+                'Content-Disposition' => 'attachment; filename="madhyam-backup-'.now()->format('Y-m-d').'.json"',
+            ]);
+        })->name('settings.export');
+    });
+
+    Route::middleware('feature:userGuide')->group(function () {
+        Volt::route('user-guide', 'pages.userguide.index')->name('user-guide');
+    });
+
+    Route::middleware('feature:complaints')->group(function () {
+        Volt::route('complaints', 'pages.complaints.index')->name('complaints');
+    });
+
+    // Profile is always available to authenticated staff (no feature gate)
+    Volt::route('profile', 'pages.profile.index')->name('profile');
+
+    Route::post('logout', Logout::class)->name('logout');
+});
+
+/*
+|--------------------------------------------------------------------------
+| Client Portal Routes (auth:client + client whitelist)
+|--------------------------------------------------------------------------
+| The `client` middleware enforces the 7-item whitelist declared in
+| EnsureClientPortalAccess. Each route passes its feature key so any
+| accidental additions outside the whitelist are rejected.
+*/
+Route::middleware('auth:client')->prefix('client')->group(function () {
+    Route::middleware('client:dashboard')->group(function () {
+        Volt::route('dashboard', 'pages.dashboard.client-dashboard')->name('client.dashboard');
+    });
+    Route::middleware('client:contentPlanner')->group(function () {
+        Volt::route('content-planner', 'pages.calendar.index')->name('client.content-planner');
+    });
+    Route::middleware('client:workflow')->group(function () {
+        Volt::route('workflow', 'pages.workflow.index')->name('client.workflow');
+    });
+    Route::middleware('client:approvals')->group(function () {
+        Volt::route('approvals', 'pages.approvals.index')->name('client.approvals');
+    });
+    Route::middleware('client:complaints')->group(function () {
+        Volt::route('complaints', 'pages.complaints.index')->name('client.complaints');
+    });
+    Route::middleware('client:reports')->group(function () {
+        Volt::route('billing', 'pages.reports.index')->name('client.billing');
+    });
+    Route::middleware('client:profile')->group(function () {
+        Volt::route('profile', 'pages.profile.index')->name('client.profile');
+    });
+
+    Route::post('logout', Logout::class)->name('client.logout');
+});
