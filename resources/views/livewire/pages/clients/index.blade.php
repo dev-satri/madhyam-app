@@ -241,145 +241,161 @@ new #[Layout('components.layouts.app')] class extends Component
             <h1 class="text-2xl font-extrabold text-gray-900">Clients</h1>
             <p class="text-sm text-gray-500 mt-1">Manage your clients and their projects</p>
         </div>
-        <button wire:click="create" class="btn btn-primary">
-            <i class="fas fa-plus text-xs"></i> Add Client
-        </button>
+        <button wire:click="create" class="btn btn-primary"><i class="fas fa-plus text-xs"></i> Add Client</button>
     </div>
 
     {{-- ========== FILTERS BAR ========== --}}
     <div class="mb-4 grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
-        <div><label class="form-label">Search</label><div class="relative">
-            <input type="text" wire:model.live.debounce.250ms="search" placeholder="Search clients..." class="form-input pl-10" />
-            <i class="fas fa-search absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
-        </div></div>
-        <div><label class="form-label">Status</label><select wire:model.live="statusFilter" class="form-select">
-            <option value="">All Status</option>
-            <option value="active">Active</option>
-            <option value="inactive">Inactive</option>
-            <option value="pending">Pending</option>
-        </select></div>
-        <div><label class="form-label">Package</label><select wire:model.live="packageFilter" class="form-select">
-            <option value="">All Packages</option>
-            <option value="basic">Basic</option>
-            <option value="pro">Pro</option>
-            <option value="enterprise">Enterprise</option>
-            <option value="custom">Custom</option>
-        </select></div>
+        <div>
+            <label class="form-label">Search</label>
+            <div class="relative">
+                <input
+                    type="text"
+                    wire:model.live.debounce.250ms="search"
+                    placeholder="Search clients..."
+                    class="form-input pl-10"
+                />
+                <i class="fas fa-search absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
+            </div>
+        </div>
+        <div>
+            <label class="form-label">Status</label
+            ><select wire:model.live="statusFilter" class="form-select">
+                <option value="">All Status</option>
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+                <option value="pending">Pending</option>
+            </select>
+        </div>
+        <div>
+            <label class="form-label">Package</label
+            ><select wire:model.live="packageFilter" class="form-select">
+                <option value="">All Packages</option>
+                <option value="basic">Basic</option>
+                <option value="pro">Pro</option>
+                <option value="enterprise">Enterprise</option>
+                <option value="custom">Custom</option>
+            </select>
+        </div>
     </div>
 
     {{-- ========== CLIENTS TABLE ========== --}}
     <div class="bg-white rounded-2xl border border-gray-100 overflow-hidden" wire:loading.target="search,statusFilter">
         <div wire:loading class="p-6 space-y-3">
-            @for($i = 0; $i < 5; $i++)
-                <div class="skeleton-row"><div class="skeleton skeleton-avatar"></div><div class="flex-1"><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text-sm"></div></div></div>
+            @for ($i = 0; $i < 5; $i++)
+                <div class="skeleton-row">
+                    <div class="skeleton skeleton-avatar"></div>
+                    <div class="flex-1">
+                        <div class="skeleton skeleton-text"></div>
+                        <div class="skeleton skeleton-text-sm"></div>
+                    </div>
+                </div>
             @endfor
         </div>
         <div wire:loading.remove wire:target="search,statusFilter">
-        <div class="overflow-x-auto">
-            <table class="data-table">
-                <thead>
-                    <tr>
-                        <th>Name</th>
-                        <th>Contact</th>
-                        <th>Email</th>
-                        <th>Phone</th>
-                        <th>Package</th>
-                        <th>Status</th>
-                        <th>Contract End</th>
-                        <th class="text-right">Actions</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @forelse($this->clients as $client)
+            <div class="overflow-x-auto">
+                <table class="data-table">
+                    <thead>
                         <tr>
-                            <td>
-                                <div class="flex items-center gap-3">
-                                    <div class="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-[rgba(var(--brand-rgb),0.1)] text-xs font-bold text-[var(--brand)]">
-                                        {{ $client->initials }}
-                                    </div>
-                                    <span class="font-semibold text-gray-900">{{ $client->name }}</span>
-                                </div>
-                            </td>
-                            <td class="text-gray-600">{{ $client->contact ?? '-' }}</td>
-                            <td class="text-gray-600">{{ $client->email ?? '-' }}</td>
-                            <td class="text-gray-600">{{ $client->phone ?? '-' }}</td>
-                            <td>
-                                <span class="badge badge-{{ $client->package }}">{{ ucfirst($client->package) }}</span>
-                            </td>
-                            <td>
-                                <livewire:clickable-status
-                                    :status="$client->status"
-                                    :cycle="['active', 'inactive', 'pending']"
-                                    entityType="clients"
-                                    :entityId="$client->id"
-                                    wire:key="status-{{ $client->id }}"
-                                />
-                            </td>
-                            <td class="text-gray-600">
-                                {{ $client->contract_end ? $client->contract_end->format('M d, Y') : '-' }}
-                            </td>
-                            <td>
-                                <div class="flex items-center justify-end gap-1">
-                                    <button
-                                        wire:click="view({{ $client->id }})"
-                                        class="btn btn-icon btn-ghost"
-                                        title="View Details"
-                                    >
-                                        <i class="fas fa-eye text-gray-400 hover:text-[var(--brand)]"></i>
-                                    </button>
-                                    <button
-                                        wire:click="edit({{ $client->id }})"
-                                        class="btn btn-icon btn-ghost"
-                                        title="Edit Client"
-                                    >
-                                        <i class="fas fa-pen text-gray-400 hover:text-[var(--brand)]"></i>
-                                    </button>
-                                    <button
-                                        wire:click="delete({{ $client->id }})"
-                                        class="btn btn-icon btn-ghost"
-                                        title="Delete Client"
-                                    >
-                                        <i class="fas fa-trash text-gray-400 hover:text-red-500"></i>
-                                    </button>
-                                </div>
-                            </td>
+                            <th>Name</th>
+                            <th>Contact</th>
+                            <th>Email</th>
+                            <th>Phone</th>
+                            <th>Package</th>
+                            <th>Status</th>
+                            <th>Contract End</th>
+                            <th class="text-right">Actions</th>
                         </tr>
-                    @empty
-                        <tr>
-                            <td colspan="8">
-                                <div class="py-16 text-center">
-                                    <div class="flex h-14 w-14 mx-auto items-center justify-center rounded-2xl bg-gray-100 mb-4">
-                                        <i class="fas fa-users text-2xl text-gray-300"></i>
+                    </thead>
+                    <tbody>
+                        @forelse ($this->clients as $client)
+                            <tr>
+                                <td>
+                                    <div class="flex items-center gap-3">
+                                        <div
+                                            class="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-[rgba(var(--brand-rgb),0.1)] text-xs font-bold text-[var(--brand)]"
+                                        >
+                                            {{ $client->initials }}
+                                        </div>
+                                        <span class="font-semibold text-gray-900">{{ $client->name }}</span>
                                     </div>
-                                    <p class="text-gray-500 font-medium text-sm">No clients found</p>
-                                    <p class="text-gray-400 text-xs mt-1">Try adjusting your filters or add a new client</p>
-                                </div>
-                            </td>
-                        </tr>
-                    @endforelse
-                </tbody>
-            </table>
-        </div>
-
-        @if($this->clients->hasPages())
-            <div class="border-t border-gray-100 px-4 py-3">
-                {{ $this->clients->links() }}
+                                </td>
+                                <td class="text-gray-600">{{ $client->contact ?? '-' }}</td>
+                                <td class="text-gray-600">{{ $client->email ?? '-' }}</td>
+                                <td class="text-gray-600">{{ $client->phone ?? '-' }}</td>
+                                <td>
+                                    <span
+                                        class="badge badge-{{ $client->package }}"
+                                        >{{ ucfirst($client->package) }}</span
+                                    >
+                                </td>
+                                <td>
+                                    <livewire:clickable-status
+                                        :status="$client->status"
+                                        :cycle="['active', 'inactive', 'pending']"
+                                        entityType="clients"
+                                        :entityId="$client->id"
+                                        wire:key="status-{{ $client->id }}"
+                                    />
+                                </td>
+                                <td class="text-gray-600">
+                                    {{ $client->contract_end ? $client->contract_end->format('M d, Y') : '-' }}
+                                </td>
+                                <td>
+                                    <div class="flex items-center justify-end gap-1">
+                                        <button
+                                            wire:click="view({{ $client->id }})"
+                                            class="btn btn-icon btn-ghost"
+                                            title="View Details"
+                                        >
+                                            <i class="fas fa-eye text-gray-400 hover:text-[var(--brand)]"></i>
+                                        </button>
+                                        <button
+                                            wire:click="edit({{ $client->id }})"
+                                            class="btn btn-icon btn-ghost"
+                                            title="Edit Client"
+                                        >
+                                            <i class="fas fa-pen text-gray-400 hover:text-[var(--brand)]"></i>
+                                        </button>
+                                        <button
+                                            wire:click="delete({{ $client->id }})"
+                                            class="btn btn-icon btn-ghost"
+                                            title="Delete Client"
+                                        >
+                                            <i class="fas fa-trash text-gray-400 hover:text-red-500"></i>
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                        @empty
+                            <tr>
+                                <td colspan="8">
+                                    <div class="py-16 text-center">
+                                        <div
+                                            class="flex h-14 w-14 mx-auto items-center justify-center rounded-2xl bg-gray-100 mb-4"
+                                        >
+                                            <i class="fas fa-users text-2xl text-gray-300"></i>
+                                        </div>
+                                        <p class="text-gray-500 font-medium text-sm">No clients found</p>
+                                        <p class="text-gray-400 text-xs mt-1">Try adjusting your filters or add a new client</p>
+                                    </div>
+                                </td>
+                            </tr>
+                        @endforelse
+                    </tbody>
+                </table>
             </div>
-        @endif
+
+            @if ($this->clients->hasPages())
+                <div class="border-t border-gray-100 px-4 py-3">{{ $this->clients->links() }}</div>
+            @endif
         </div>
     </div>
 
     {{-- ========== CLIENT FORM MODAL (Create / Edit) ========== --}}
-    @if($showForm)
-        <div
-            class="modal-overlay"
-            x-data
-            x-on:keydown.escape.window="$wire.set('showForm', false)"
-        >
-            <div
-                class="modal-box max-w-3xl max-h-[90vh]"
-                x-on:click.stop
-            >
+    @if ($showForm)
+        <div class="modal-overlay" x-data x-on:keydown.escape.window="$wire.set('showForm', false)">
+            <div class="modal-box max-w-3xl max-h-[90vh]" x-on:click.stop>
                 <div class="modal-header">
                     <h3 class="text-base font-bold text-gray-900">
                         <i class="fas fa-{{ $formMode === 'edit' ? 'pen' : 'plus' }} text-[var(--brand)] mr-2"></i>
@@ -398,17 +414,36 @@ new #[Layout('components.layouts.app')] class extends Component
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div>
                                 <label class="form-label">Client Name <span class="text-red-500">*</span></label>
-                                <input type="text" wire:model="name" class="form-input" placeholder="Enter client name" />
-                                @error('name') <span class="text-xs text-red-500 mt-1 block">{{ $message }}</span> @enderror
+                                <input
+                                    type="text"
+                                    wire:model="name"
+                                    class="form-input"
+                                    placeholder="Enter client name"
+                                />
+                                @error ('name')
+                                    <span class="text-xs text-red-500 mt-1 block">{{ $message }}</span>
+                                @enderror
                             </div>
                             <div>
                                 <label class="form-label">Contact Person</label>
-                                <input type="text" wire:model="contact" class="form-input" placeholder="Contact person name" />
+                                <input
+                                    type="text"
+                                    wire:model="contact"
+                                    class="form-input"
+                                    placeholder="Contact person name"
+                                />
                             </div>
                             <div>
                                 <label class="form-label">Email</label>
-                                <input type="email" wire:model="email" class="form-input" placeholder="client@example.com" />
-                                @error('email') <span class="text-xs text-red-500 mt-1 block">{{ $message }}</span> @enderror
+                                <input
+                                    type="email"
+                                    wire:model="email"
+                                    class="form-input"
+                                    placeholder="client@example.com"
+                                />
+                                @error ('email')
+                                    <span class="text-xs text-red-500 mt-1 block">{{ $message }}</span>
+                                @enderror
                             </div>
                             <div>
                                 <label class="form-label">Phone</label>
@@ -425,7 +460,14 @@ new #[Layout('components.layouts.app')] class extends Component
                             </div>
                             <div>
                                 <label class="form-label">Monthly Amount (NPR)</label>
-                                <input type="number" wire:model="amount" step="0.01" min="0" class="form-input" placeholder="0.00" />
+                                <input
+                                    type="number"
+                                    wire:model="amount"
+                                    step="0.01"
+                                    min="0"
+                                    class="form-input"
+                                    placeholder="0.00"
+                                />
                             </div>
                             <div>
                                 <label class="form-label">Contract Start</label>
@@ -434,7 +476,9 @@ new #[Layout('components.layouts.app')] class extends Component
                             <div>
                                 <label class="form-label">Contract End</label>
                                 <input type="date" wire:model="contract_end" class="form-input" />
-                                @error('contract_end') <span class="text-xs text-red-500 mt-1 block">{{ $message }}</span> @enderror
+                                @error ('contract_end')
+                                    <span class="text-xs text-red-500 mt-1 block">{{ $message }}</span>
+                                @enderror
                             </div>
                             <div>
                                 <label class="form-label">Status <span class="text-red-500">*</span></label>
@@ -449,28 +493,44 @@ new #[Layout('components.layouts.app')] class extends Component
                         <div class="mt-4 space-y-4">
                             <div>
                                 <label class="form-label">Deliverables</label>
-                                <textarea wire:model="deliverables" class="form-textarea" rows="2" placeholder="List of deliverables..."></textarea>
+                                <textarea
+                                    wire:model="deliverables"
+                                    class="form-textarea"
+                                    rows="2"
+                                    placeholder="List of deliverables..."
+                                ></textarea>
                             </div>
                             <div>
                                 <label class="form-label">Brand Guide</label>
-                                <textarea wire:model="brand_guide" class="form-textarea" rows="2" placeholder="Brand guidelines and notes..."></textarea>
+                                <textarea
+                                    wire:model="brand_guide"
+                                    class="form-textarea"
+                                    rows="2"
+                                    placeholder="Brand guidelines and notes..."
+                                ></textarea>
                             </div>
                             <div>
                                 <label class="form-label">Social Links</label>
-                                <textarea wire:model="social_links" class="form-textarea" rows="2" placeholder="One URL per line..."></textarea>
+                                <textarea
+                                    wire:model="social_links"
+                                    class="form-textarea"
+                                    rows="2"
+                                    placeholder="One URL per line..."
+                                ></textarea>
                             </div>
                             <div>
                                 <label class="form-label">Notes</label>
-                                <textarea wire:model="notes" class="form-textarea" rows="2" placeholder="Additional notes..."></textarea>
+                                <textarea
+                                    wire:model="notes"
+                                    class="form-textarea"
+                                    rows="2"
+                                    placeholder="Additional notes..."
+                                ></textarea>
                             </div>
                         </div>
 
                         <div class="mt-6 flex items-center justify-end gap-3 border-t border-gray-100 pt-5">
-                            <button
-                                type="button"
-                                wire:click="$set('showForm', false)"
-                                class="btn btn-secondary"
-                            >
+                            <button type="button" wire:click="$set('showForm', false)" class="btn btn-secondary">
                                 Cancel
                             </button>
                             <button type="submit" class="btn btn-primary">
@@ -485,26 +545,21 @@ new #[Layout('components.layouts.app')] class extends Component
     @endif
 
     {{-- ========== CLIENT DETAIL MODAL ========== --}}
-    @if($showDetail && $selectedClient)
-        <div
-            class="modal-overlay"
-            x-data
-            x-on:keydown.escape.window="$wire.set('showDetail', false)"
-        >
-            <div
-                class="modal-box max-w-5xl max-h-[90vh]"
-                x-on:click.stop
-            >
+    @if ($showDetail && $selectedClient)
+        <div class="modal-overlay" x-data x-on:keydown.escape.window="$wire.set('showDetail', false)">
+            <div class="modal-box max-w-5xl max-h-[90vh]" x-on:click.stop>
                 <div class="modal-header">
                     <div class="flex items-center gap-3 flex-1 min-w-0">
-                        <div class="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-[rgba(var(--brand-rgb),0.1)] text-sm font-bold text-[var(--brand)]">
+                        <div
+                            class="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-[rgba(var(--brand-rgb),0.1)] text-sm font-bold text-[var(--brand)]"
+                        >
                             {{ $selectedClient->initials }}
                         </div>
                         <div class="min-w-0">
                             <h3 class="text-base font-bold text-gray-900 truncate">{{ $selectedClient->name }}</h3>
                             <p class="text-xs text-gray-500 truncate">
                                 {{ $selectedClient->contact ?? 'No contact' }}
-                                @if($selectedClient->email) · {{ $selectedClient->email }} @endif
+                                @if ($selectedClient->email) ·{{ $selectedClient->email }} @endif
                             </p>
                         </div>
                         @php
@@ -515,7 +570,9 @@ new #[Layout('components.layouts.app')] class extends Component
                                 default    => 'bg-gray-100 text-gray-600',
                             };
                         @endphp
-                        <span @class(['inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold', $statusBadgeClass])>
+                        <span
+                            @class (['inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold', $statusBadgeClass])
+                        >
                             {{ ucfirst($selectedClient->status) }}
                         </span>
                     </div>
@@ -586,12 +643,15 @@ new #[Layout('components.layouts.app')] class extends Component
                     </div>
 
                     {{-- Tab: Overview --}}
-                    @if($detailTab === 'overview')
+                    @if ($detailTab === 'overview')
                         <div class="space-y-5">
                             <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
                                 <div>
                                     <p class="text-[11px] font-semibold uppercase tracking-wider text-gray-400 mb-1">Package</p>
-                                    <span class="badge badge-{{ $selectedClient->package }}">{{ ucfirst($selectedClient->package) }}</span>
+                                    <span
+                                        class="badge badge-{{ $selectedClient->package }}"
+                                        >{{ ucfirst($selectedClient->package) }}</span
+                                    >
                                 </div>
                                 <div>
                                     <p class="text-[11px] font-semibold uppercase tracking-wider text-gray-400 mb-1">Monthly Amount</p>
@@ -609,35 +669,35 @@ new #[Layout('components.layouts.app')] class extends Component
 
                             <hr class="border-gray-100" />
 
-                            @if($selectedClient->deliverables)
+                            @if ($selectedClient->deliverables)
                                 <div>
                                     <p class="text-[11px] font-semibold uppercase tracking-wider text-gray-400 mb-2">Deliverables</p>
                                     <p class="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{{ $selectedClient->deliverables }}</p>
                                 </div>
                             @endif
 
-                            @if($selectedClient->brand_guide)
+                            @if ($selectedClient->brand_guide)
                                 <div>
                                     <p class="text-[11px] font-semibold uppercase tracking-wider text-gray-400 mb-2">Brand Guide</p>
                                     <p class="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{{ $selectedClient->brand_guide }}</p>
                                 </div>
                             @endif
 
-                            @if($selectedClient->social_links)
+                            @if ($selectedClient->social_links)
                                 <div>
                                     <p class="text-[11px] font-semibold uppercase tracking-wider text-gray-400 mb-2">Social Links</p>
                                     <p class="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{{ $selectedClient->social_links }}</p>
                                 </div>
                             @endif
 
-                            @if($selectedClient->notes)
+                            @if ($selectedClient->notes)
                                 <div>
                                     <p class="text-[11px] font-semibold uppercase tracking-wider text-gray-400 mb-2">Notes</p>
                                     <p class="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{{ $selectedClient->notes }}</p>
                                 </div>
                             @endif
 
-                            @if(!$selectedClient->deliverables && !$selectedClient->brand_guide && !$selectedClient->social_links && !$selectedClient->notes)
+                            @if (!$selectedClient->deliverables && !$selectedClient->brand_guide && !$selectedClient->social_links && !$selectedClient->notes)
                                 <div class="py-8 text-center">
                                     <i class="fas fa-file-alt text-2xl text-gray-200 mb-2"></i>
                                     <p class="text-gray-400 text-xs">No additional details added yet</p>
@@ -647,11 +707,13 @@ new #[Layout('components.layouts.app')] class extends Component
                     @endif
 
                     {{-- Tab: Workflows --}}
-                    @if($detailTab === 'workflows')
+                    @if ($detailTab === 'workflows')
                         @php $workflows = $this->getClientWorkflows($selectedClient); @endphp
-                        @if($workflows->isEmpty())
+                        @if ($workflows->isEmpty())
                             <div class="py-12 text-center">
-                                <div class="flex h-12 w-12 mx-auto items-center justify-center rounded-2xl bg-gray-100 mb-3">
+                                <div
+                                    class="flex h-12 w-12 mx-auto items-center justify-center rounded-2xl bg-gray-100 mb-3"
+                                >
                                     <i class="fas fa-project-diagram text-xl text-gray-300"></i>
                                 </div>
                                 <p class="text-gray-500 text-sm font-medium">No workflows yet</p>
@@ -670,7 +732,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        @foreach($workflows as $wf)
+                                        @foreach ($workflows as $wf)
                                             <tr>
                                                 <td class="font-medium text-gray-900">{{ $wf->title }}</td>
                                                 <td class="text-gray-600">{{ $wf->type ?? '-' }}</td>
@@ -679,7 +741,10 @@ new #[Layout('components.layouts.app')] class extends Component
                                                     {{ $wf->deadline ? $wf->deadline->format('M d, Y') : '-' }}
                                                 </td>
                                                 <td>
-                                                    <span class="badge badge-{{ $wf->status }}">{{ ucfirst($wf->status) }}</span>
+                                                    <span
+                                                        class="badge badge-{{ $wf->status }}"
+                                                        >{{ ucfirst($wf->status) }}</span
+                                                    >
                                                 </td>
                                             </tr>
                                         @endforeach
@@ -690,11 +755,13 @@ new #[Layout('components.layouts.app')] class extends Component
                     @endif
 
                     {{-- Tab: Content --}}
-                    @if($detailTab === 'content')
+                    @if ($detailTab === 'content')
                         @php $contents = $this->getClientContents($selectedClient); @endphp
-                        @if($contents->isEmpty())
+                        @if ($contents->isEmpty())
                             <div class="py-12 text-center">
-                                <div class="flex h-12 w-12 mx-auto items-center justify-center rounded-2xl bg-gray-100 mb-3">
+                                <div
+                                    class="flex h-12 w-12 mx-auto items-center justify-center rounded-2xl bg-gray-100 mb-3"
+                                >
                                     <i class="fas fa-calendar-alt text-xl text-gray-300"></i>
                                 </div>
                                 <p class="text-gray-500 text-sm font-medium">No content yet</p>
@@ -713,18 +780,24 @@ new #[Layout('components.layouts.app')] class extends Component
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        @foreach($contents as $c)
+                                        @foreach ($contents as $c)
                                             <tr>
                                                 <td class="font-medium text-gray-900">{{ $c->title }}</td>
                                                 <td>
-                                                    <span class="badge badge-{{ $c->platform }}">{{ ucfirst($c->platform) }}</span>
+                                                    <span
+                                                        class="badge badge-{{ $c->platform }}"
+                                                        >{{ ucfirst($c->platform) }}</span
+                                                    >
                                                 </td>
                                                 <td class="text-gray-600">{{ $c->type ?? '-' }}</td>
                                                 <td class="text-gray-600">
                                                     {{ $c->date ? $c->date->format('M d, Y') : '-' }}
                                                 </td>
                                                 <td>
-                                                    <span class="badge badge-{{ $c->status }}">{{ ucfirst($c->status) }}</span>
+                                                    <span
+                                                        class="badge badge-{{ $c->status }}"
+                                                        >{{ ucfirst($c->status) }}</span
+                                                    >
                                                 </td>
                                             </tr>
                                         @endforeach
@@ -735,11 +808,13 @@ new #[Layout('components.layouts.app')] class extends Component
                     @endif
 
                     {{-- Tab: Invoices --}}
-                    @if($detailTab === 'invoices')
+                    @if ($detailTab === 'invoices')
                         @php $invoices = $this->getClientInvoices($selectedClient); @endphp
-                        @if($invoices->isEmpty())
+                        @if ($invoices->isEmpty())
                             <div class="py-12 text-center">
-                                <div class="flex h-12 w-12 mx-auto items-center justify-center rounded-2xl bg-gray-100 mb-3">
+                                <div
+                                    class="flex h-12 w-12 mx-auto items-center justify-center rounded-2xl bg-gray-100 mb-3"
+                                >
                                     <i class="fas fa-receipt text-xl text-gray-300"></i>
                                 </div>
                                 <p class="text-gray-500 text-sm font-medium">No invoices yet</p>
@@ -757,14 +832,22 @@ new #[Layout('components.layouts.app')] class extends Component
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        @foreach($invoices as $inv)
+                                        @foreach ($invoices as $inv)
                                             <tr>
-                                                <td class="font-semibold text-gray-900">NPR {{ number_format($inv->amount, 2) }}</td>
-                                                <td>
-                                                    <span class="badge badge-{{ $inv->status }}">{{ ucfirst($inv->status) }}</span>
+                                                <td class="font-semibold text-gray-900">
+                                                    NPR {{ number_format($inv->amount, 2) }}
                                                 </td>
                                                 <td>
-                                                    <span class="badge badge-{{ $inv->payment_status }}">{{ ucfirst($inv->payment_status) }}</span>
+                                                    <span
+                                                        class="badge badge-{{ $inv->status }}"
+                                                        >{{ ucfirst($inv->status) }}</span
+                                                    >
+                                                </td>
+                                                <td>
+                                                    <span
+                                                        class="badge badge-{{ $inv->payment_status }}"
+                                                        >{{ ucfirst($inv->payment_status) }}</span
+                                                    >
                                                 </td>
                                                 <td class="text-gray-600">
                                                     {{ $inv->due_date ? $inv->due_date->format('M d, Y') : '-' }}
@@ -782,22 +865,16 @@ new #[Layout('components.layouts.app')] class extends Component
     @endif
 
     {{-- ========== DELETE CONFIRMATION DIALOG ========== --}}
-    @if($showDeleteConfirm)
-        <div
-            class="confirm-overlay"
-            x-data
-            x-on:keydown.escape.window="$wire.cancelDelete()"
-        >
+    @if ($showDeleteConfirm)
+        <div class="confirm-overlay" x-data x-on:keydown.escape.window="$wire.cancelDelete()">
             <div class="confirm-box">
                 <div class="confirm-icon danger">
                     <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                     </svg>
                 </div>
                 <h3 class="mb-2 text-lg font-bold text-gray-900">Delete Client</h3>
-                <p class="mb-6 text-sm text-gray-500">
-                    Are you sure you want to delete this client? All associated data will be permanently removed. This action cannot be undone.
-                </p>
+                <p class="mb-6 text-sm text-gray-500">Are you sure you want to delete this client? All associated data will be permanently removed. This action cannot be undone.</p>
                 <div class="flex gap-3">
                     <button
                         wire:click="cancelDelete"

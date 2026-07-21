@@ -248,9 +248,31 @@ composer run setup
 
 This runs: `composer install` → `.env` copy → `key:generate` → `migrate` → `npm install` → `npm run build`
 
-### Default Credentials
+### Default Demo Accounts
 
-After seeding, demo accounts are created with predictable credentials. Check the `DemoAccountsSeeder` for the full list.
+After seeding, the following demo accounts are available:
+
+#### Staff Accounts
+
+| Email | Password | Role |
+|-------|----------|------|
+| super@madhyam.com | admin123 | Super Admin |
+| rajesh@madhyam.com | pass123 | Manager |
+| sita@madhyam.com | pass123 | Videographer |
+| anil@madhyam.com | pass123 | Editor |
+| priya@madhyam.com | pass123 | Designer |
+| bikash@madhyam.com | pass123 | Social Media |
+| karma@madhyam.com | pass123 | Copywriter |
+
+#### Client Portal Accounts
+
+| Email | Password | Client |
+|-------|----------|--------|
+| ram@himalayancoffee.com | client123 | Himalayan Coffee |
+| maya@treknepal.com | client123 | Trek Nepal |
+| devi@greenleaf.com | client123 | Green Leaf |
+
+> **Note:** Client portal users log in via the "Client Portal" tab on the login page.
 
 ---
 

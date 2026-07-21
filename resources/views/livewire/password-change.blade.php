@@ -85,8 +85,11 @@ new class extends Component
             >
                 <div class="modal-header flex items-center justify-between border-b border-gray-100 px-6 py-4">
                     <h3 class="text-base font-bold text-gray-900">Change Password</h3>
-                    <button wire:click="close" class="flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 transition-colors">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                    <button
+                        wire:click="close"
+                        class="flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 transition-colors"
+                    >
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
                     </button>
                 </div>
 
@@ -101,11 +104,18 @@ new class extends Component
                                 class="form-input pr-10"
                                 placeholder="Enter current password"
                             />
-                            <button type="button" wire:click="$toggle('showCurrentPassword')" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600" tabindex="-1">
+                            <button
+                                type="button"
+                                wire:click="$toggle('showCurrentPassword')"
+                                class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                                tabindex="-1"
+                            >
                                 <i class="fas {{ $showCurrentPassword ? 'fa-eye-slash' : 'fa-eye' }} text-sm"></i>
                             </button>
                         </div>
-                        @error('current_password') <p class="mt-1 text-xs text-red-500">{{ $message }}</p> @enderror
+                        @error ('current_password')
+                            <p class="mt-1 text-xs text-red-500">{{ $message }}</p>
+                        @enderror
                     </div>
 
                     <div>
@@ -118,11 +128,18 @@ new class extends Component
                                 class="form-input pr-10"
                                 placeholder="Min 4 characters"
                             />
-                            <button type="button" wire:click="$toggle('showNewPassword')" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600" tabindex="-1">
+                            <button
+                                type="button"
+                                wire:click="$toggle('showNewPassword')"
+                                class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                                tabindex="-1"
+                            >
                                 <i class="fas {{ $showNewPassword ? 'fa-eye-slash' : 'fa-eye' }} text-sm"></i>
                             </button>
                         </div>
-                        @error('new_password') <p class="mt-1 text-xs text-red-500">{{ $message }}</p> @enderror
+                        @error ('new_password')
+                            <p class="mt-1 text-xs text-red-500">{{ $message }}</p>
+                        @enderror
                     </div>
 
                     <div>
@@ -135,11 +152,18 @@ new class extends Component
                                 class="form-input pr-10"
                                 placeholder="Confirm new password"
                             />
-                            <button type="button" wire:click="$toggle('showConfirmPassword')" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600" tabindex="-1">
+                            <button
+                                type="button"
+                                wire:click="$toggle('showConfirmPassword')"
+                                class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                                tabindex="-1"
+                            >
                                 <i class="fas {{ $showConfirmPassword ? 'fa-eye-slash' : 'fa-eye' }} text-sm"></i>
                             </button>
                         </div>
-                        @error('confirm_password') <p class="mt-1 text-xs text-red-500">{{ $message }}</p> @enderror
+                        @error ('confirm_password')
+                            <p class="mt-1 text-xs text-red-500">{{ $message }}</p>
+                        @enderror
                     </div>
 
                     <div class="flex items-center gap-3 pt-2">

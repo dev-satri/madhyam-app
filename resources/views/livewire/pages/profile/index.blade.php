@@ -128,7 +128,9 @@ new #[Layout('components.layouts.app')] class extends Component
     <div class="max-w-xl mx-auto">
         <div class="bg-white rounded-2xl border border-gray-100 p-6">
             <div class="flex items-center gap-4 mb-6">
-                <div class="flex h-16 w-16 items-center justify-center rounded-full bg-[rgba(var(--brand-rgb),0.1)] text-xl font-bold text-[var(--brand)]">
+                <div
+                    class="flex h-16 w-16 items-center justify-center rounded-full bg-[rgba(var(--brand-rgb),0.1)] text-xl font-bold text-[var(--brand)]"
+                >
                     {{ initials($name) }}
                 </div>
                 <div>
@@ -140,17 +142,39 @@ new #[Layout('components.layouts.app')] class extends Component
             <form wire:submit="save" class="space-y-4">
                 <div>
                     <label class="form-label" for="profile_name">Full Name</label>
-                    <input type="text" id="profile_name" wire:model="name" class="form-input" placeholder="Enter your name" />
-                    @error('name') <p class="mt-1 text-xs text-red-500">{{ $message }}</p> @enderror
+                    <input
+                        type="text"
+                        id="profile_name"
+                        wire:model="name"
+                        class="form-input"
+                        placeholder="Enter your name"
+                    />
+                    @error ('name')
+                        <p class="mt-1 text-xs text-red-500">{{ $message }}</p>
+                    @enderror
                 </div>
                 <div>
                     <label class="form-label" for="profile_email">Email</label>
-                    <input type="email" id="profile_email" class="form-input bg-gray-50" value="{{ $email }}" readonly />
+                    <input
+                        type="email"
+                        id="profile_email"
+                        class="form-input bg-gray-50"
+                        value="{{ $email }}"
+                        readonly
+                    />
                 </div>
                 <div>
                     <label class="form-label" for="profile_phone">Phone</label>
-                    <input type="text" id="profile_phone" wire:model="phone" class="form-input" placeholder="Enter your phone number" />
-                    @error('phone') <p class="mt-1 text-xs text-red-500">{{ $message }}</p> @enderror
+                    <input
+                        type="text"
+                        id="profile_phone"
+                        wire:model="phone"
+                        class="form-input"
+                        placeholder="Enter your phone number"
+                    />
+                    @error ('phone')
+                        <p class="mt-1 text-xs text-red-500">{{ $message }}</p>
+                    @enderror
                 </div>
                 <div class="flex items-center gap-3 pt-2">
                     <button type="submit" class="btn btn-primary">
@@ -182,8 +206,11 @@ new #[Layout('components.layouts.app')] class extends Component
             >
                 <div class="flex items-center justify-between border-b border-gray-100 px-6 py-4">
                     <h3 class="text-base font-bold text-gray-900">Change Password</h3>
-                    <button wire:click="closePasswordModal" class="flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 transition-colors">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                    <button
+                        wire:click="closePasswordModal"
+                        class="flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 transition-colors"
+                    >
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
                     </button>
                 </div>
 
@@ -198,11 +225,18 @@ new #[Layout('components.layouts.app')] class extends Component
                                 class="form-input pr-10"
                                 placeholder="Enter current password"
                             />
-                            <button type="button" wire:click="$toggle('showCurrentPassword')" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600" tabindex="-1">
+                            <button
+                                type="button"
+                                wire:click="$toggle('showCurrentPassword')"
+                                class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                                tabindex="-1"
+                            >
                                 <i class="fas {{ $showCurrentPassword ? 'fa-eye-slash' : 'fa-eye' }} text-sm"></i>
                             </button>
                         </div>
-                        @error('current_password') <p class="mt-1 text-xs text-red-500">{{ $message }}</p> @enderror
+                        @error ('current_password')
+                            <p class="mt-1 text-xs text-red-500">{{ $message }}</p>
+                        @enderror
                     </div>
 
                     <div>
@@ -215,11 +249,18 @@ new #[Layout('components.layouts.app')] class extends Component
                                 class="form-input pr-10"
                                 placeholder="Min 8 characters"
                             />
-                            <button type="button" wire:click="$toggle('showNewPassword')" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600" tabindex="-1">
+                            <button
+                                type="button"
+                                wire:click="$toggle('showNewPassword')"
+                                class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                                tabindex="-1"
+                            >
                                 <i class="fas {{ $showNewPassword ? 'fa-eye-slash' : 'fa-eye' }} text-sm"></i>
                             </button>
                         </div>
-                        @error('new_password') <p class="mt-1 text-xs text-red-500">{{ $message }}</p> @enderror
+                        @error ('new_password')
+                            <p class="mt-1 text-xs text-red-500">{{ $message }}</p>
+                        @enderror
                     </div>
 
                     <div>
@@ -232,15 +273,24 @@ new #[Layout('components.layouts.app')] class extends Component
                                 class="form-input pr-10"
                                 placeholder="Confirm new password"
                             />
-                            <button type="button" wire:click="$toggle('showConfirmPassword')" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600" tabindex="-1">
+                            <button
+                                type="button"
+                                wire:click="$toggle('showConfirmPassword')"
+                                class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                                tabindex="-1"
+                            >
                                 <i class="fas {{ $showConfirmPassword ? 'fa-eye-slash' : 'fa-eye' }} text-sm"></i>
                             </button>
                         </div>
-                        @error('confirm_password') <p class="mt-1 text-xs text-red-500">{{ $message }}</p> @enderror
+                        @error ('confirm_password')
+                            <p class="mt-1 text-xs text-red-500">{{ $message }}</p>
+                        @enderror
                     </div>
 
                     <div class="flex items-center gap-3 pt-2">
-                        <button type="button" wire:click="closePasswordModal" class="btn btn-secondary flex-1">Cancel</button>
+                        <button type="button" wire:click="closePasswordModal" class="btn btn-secondary flex-1">
+                            Cancel
+                        </button>
                         <button type="submit" class="btn btn-primary flex-1">
                             <i class="fas fa-save text-sm"></i> Update Password
                         </button>

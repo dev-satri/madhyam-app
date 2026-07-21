@@ -25,7 +25,10 @@ class SendBackupReminderCommand extends Command
         $lastReminder = $settings->last_backup_reminder ?? null;
         $intervalDays = $settings->backup_reminder_days ?? 7;
 
-        if ($lastReminder && now()->diffInDays(Carbon::parse($lastReminder)) < $intervalDays) {
+        // Carbon 3's diffInDays returns a signed float — without absolute:true it
+        // is negative when the target is in the past, causing the < comparison to
+        // always be true and the command to skip forever after the first set.
+        if ($lastReminder && now()->diffInDays(Carbon::parse($lastReminder), true) < $intervalDays) {
             $this->info('Backup reminder already sent within the interval. Skipping.');
 
             return Command::SUCCESS;

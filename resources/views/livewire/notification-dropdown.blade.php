@@ -86,7 +86,9 @@ new class extends Component
     >
         <i class="fas fa-bell text-lg"></i>
         @if ($unreadCount > 0)
-            <span class="absolute -top-0.5 -right-0.5 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
+            <span
+                class="absolute -top-0.5 -right-0.5 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white"
+            >
                 {{ $unreadCount > 99 ? '99+' : $unreadCount }}
             </span>
         @endif
@@ -115,7 +117,7 @@ new class extends Component
                 @forelse ($notifications as $notification)
                     <div
                         wire:click="markAsRead('{{ $notification->id ?? '' }}')"
-                        @class([
+                        @class ([
                             'flex items-start gap-3 px-4 py-3 cursor-pointer hover:bg-gray-50 transition-colors border-b border-gray-50 last:border-b-0',
                             'bg-blue-50/50' => !($notification->read ?? true),
                         ])
@@ -126,10 +128,12 @@ new class extends Component
                             <span class="mt-1.5 h-2 w-2 shrink-0"></span>
                         @endif
                         <div class="flex-1 min-w-0">
-                            <p @class([
+                            <p
+                                @class ([
                                 'text-sm text-gray-800',
                                 'font-semibold' => !($notification->read ?? true),
-                            ])>{{ $notification->text ?? $notification->message ?? '' }}</p>
+                            ])
+                            >{{ $notification->text ?? $notification->message ?? '' }}</p>
                             <p class="mt-0.5 text-[11px] text-gray-400">{{ $notification->created_at ?? '' }}</p>
                         </div>
                     </div>

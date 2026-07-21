@@ -35,7 +35,12 @@ new class extends Component
     }
 }; ?>
 
-<div x-data="{ open: @js($show) }" x-on:open-modal.window="$wire.open($event.detail.title ?? $event.detail, $event.detail.size ?? 'md')" x-effect="open = $wire.show" x-cloak>
+<div
+    x-data="{ open: @js($show) }"
+    x-on:open-modal.window="$wire.open($event.detail.title ?? $event.detail, $event.detail.size ?? 'md')"
+    x-effect="open = $wire.show"
+    x-cloak
+>
     @if ($show)
         <div
             class="modal-overlay fixed inset-0 z-[70] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
@@ -61,13 +66,14 @@ new class extends Component
             >
                 <div class="modal-header flex items-center justify-between border-b border-gray-100 px-6 py-4">
                     <h3 class="text-base font-bold text-gray-900">{{ $title }}</h3>
-                    <button wire:click="close" class="flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                    <button
+                        wire:click="close"
+                        class="flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors"
+                    >
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
                     </button>
                 </div>
-                <div class="modal-body overflow-y-auto px-6 py-5">
-                    {{ $slot }}
-                </div>
+                <div class="modal-body overflow-y-auto px-6 py-5">{{ $slot }}</div>
             </div>
         </div>
     @endif

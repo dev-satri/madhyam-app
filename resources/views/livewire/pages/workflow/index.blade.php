@@ -334,40 +334,55 @@ new #[Layout('components.layouts.app')] class extends Component
             <button wire:click="openStageManager" class="btn btn-secondary">
                 <i class="fas fa-cog text-xs"></i> Manage Stages
             </button>
-            <button wire:click="create" class="btn btn-primary">
-                <i class="fas fa-plus text-xs"></i> Add Item
-            </button>
+            <button wire:click="create" class="btn btn-primary"><i class="fas fa-plus text-xs"></i> Add Item</button>
         </div>
     </div>
 
     {{-- ========== FILTERS BAR ========== --}}
     <div class="mb-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 items-end">
-        <div><label class="form-label">Search</label><div class="relative">
-            <input type="text" wire:model.live.debounce.250ms="search" placeholder="Search workflows..." class="form-input pl-10" />
-            <i class="fas fa-search absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
-        </div></div>
-        <div><label class="form-label">Client</label><select wire:model.live="clientFilter" class="form-select">
-            <option value="">All Clients</option>
-            @foreach($this->getClientList() as $client)
-                <option value="{{ $client->id }}">{{ $client->name }}</option>
-            @endforeach
-        </select></div>
-        <div><label class="form-label">Type</label><select wire:model.live="typeFilter" class="form-select">
-            <option value="">All Types</option>
-            <option value="reel">Reel</option>
-            <option value="post">Post</option>
-            <option value="story">Story</option>
-            <option value="video">Video</option>
-            <option value="carousel">Carousel</option>
-            <option value="blog">Blog</option>
-        </select></div>
-        <div><label class="form-label">Priority</label><select wire:model.live="priorityFilter" class="form-select">
-            <option value="">All Priorities</option>
-            <option value="low">Low</option>
-            <option value="medium">Medium</option>
-            <option value="high">High</option>
-            <option value="urgent">Urgent</option>
-        </select></div>
+        <div>
+            <label class="form-label">Search</label>
+            <div class="relative">
+                <input
+                    type="text"
+                    wire:model.live.debounce.250ms="search"
+                    placeholder="Search workflows..."
+                    class="form-input pl-10"
+                />
+                <i class="fas fa-search absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
+            </div>
+        </div>
+        <div>
+            <label class="form-label">Client</label
+            ><select wire:model.live="clientFilter" class="form-select">
+                <option value="">All Clients</option>
+                @foreach ($this->getClientList() as $client)
+                    <option value="{{ $client->id }}">{{ $client->name }}</option>
+                @endforeach
+            </select>
+        </div>
+        <div>
+            <label class="form-label">Type</label
+            ><select wire:model.live="typeFilter" class="form-select">
+                <option value="">All Types</option>
+                <option value="reel">Reel</option>
+                <option value="post">Post</option>
+                <option value="story">Story</option>
+                <option value="video">Video</option>
+                <option value="carousel">Carousel</option>
+                <option value="blog">Blog</option>
+            </select>
+        </div>
+        <div>
+            <label class="form-label">Priority</label
+            ><select wire:model.live="priorityFilter" class="form-select">
+                <option value="">All Priorities</option>
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
+                <option value="urgent">Urgent</option>
+            </select>
+        </div>
     </div>
 
     {{-- ========== KANBAN BOARD ========== --}}
@@ -390,7 +405,9 @@ new #[Layout('components.layouts.app')] class extends Component
             dragEnd(e) {
                 e.target.closest('.kanban-card')?.classList.remove('opacity-50');
                 this.draggedId = null;
-                setTimeout(() => { this.justDragged = false; }, 100);
+                setTimeout(() => {
+                    this.justDragged = false;
+                }, 100);
             },
             dragOver(e) {
                 e.preventDefault();
@@ -417,19 +434,21 @@ new #[Layout('components.layouts.app')] class extends Component
             }
         }"
     >
-        @forelse($this->getStages() as $stage)
+        @forelse ($this->getStages() as $stage)
             @php
                 $stageItems = $allItems->filter(fn($item) => $item->stage === $stage['key']);
             @endphp
-            <div
-                class="kanban-col flex-shrink-0"
-                style="min-width: 280px; width: 280px;"
-            >
+            <div class="kanban-col flex-shrink-0" style="min-width: 280px; width: 280px">
                 {{-- Column Header --}}
                 <div class="flex items-center gap-2 mb-3 px-1">
-                    <div class="h-2.5 w-2.5 rounded-full flex-shrink-0" style="background-color: {{ $stage['color'] }}"></div>
+                    <div
+                        class="h-2.5 w-2.5 rounded-full flex-shrink-0"
+                        style="background-color: {{ $stage['color'] }}"
+                    ></div>
                     <h3 class="text-sm font-bold text-gray-800 truncate">{{ $stage['name'] }}</h3>
-                    <span class="ml-auto inline-flex items-center justify-center rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-semibold text-gray-500">
+                    <span
+                        class="ml-auto inline-flex items-center justify-center rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-semibold text-gray-500"
+                    >
                         {{ $stageItems->count() }}
                     </span>
                 </div>
@@ -441,16 +460,16 @@ new #[Layout('components.layouts.app')] class extends Component
                     x-on:dragleave="dragLeave($event)"
                     x-on:drop="drop($event, '{{ $stage['key'] }}')"
                 >
-                    @forelse($stageItems as $item)
+                    @forelse ($stageItems as $item)
                         @php
                             $isOverdue = $item->deadline && $item->deadline->isPast() && $item->stage !== 'published';
                         @endphp
                         <div
                             class="kanban-card {{ $isOverdue ? 'overdue' : '' }} bg-white rounded-xl border border-gray-100 p-3 {{ $this->canMoveWorkflow ? 'cursor-grab active:cursor-grabbing' : '' }} hover:shadow-md hover:border-gray-200 transition-all duration-150"
                             data-id="{{ $item->id }}"
-                            @if($this->canMoveWorkflow) draggable="true" @endif
-                            @if($this->canMoveWorkflow) x-on:dragstart="dragStart($event, {{ $item->id }})" @endif
-                            @if($this->canMoveWorkflow) x-on:dragend="dragEnd($event)" @endif
+                            @if ($this->canMoveWorkflow) draggable="true" @endif
+                            @if ($this->canMoveWorkflow) x-on:dragstart="dragStart($event, {{ $item->id }})" @endif
+                            @if ($this->canMoveWorkflow) x-on:dragend="dragEnd($event)" @endif
                             x-on:click="openCard({{ $item->id }})"
                         >
                             {{-- Type + Priority Badges --}}
@@ -471,16 +490,22 @@ new #[Layout('components.layouts.app')] class extends Component
                                         'urgent' => 'bg-red-100 text-red-600',
                                     ];
                                 @endphp
-                                <span class="inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-semibold {{ $typeColors[$item->type] ?? 'bg-gray-100 text-gray-600' }}">
+                                <span
+                                    class="inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-semibold {{ $typeColors[$item->type] ?? 'bg-gray-100 text-gray-600' }}"
+                                >
                                     {{ ucfirst($item->type) }}
                                 </span>
-                                <span class="inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-semibold {{ $priorityColors[$item->priority] ?? 'bg-gray-100 text-gray-600' }}">
+                                <span
+                                    class="inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-semibold {{ $priorityColors[$item->priority] ?? 'bg-gray-100 text-gray-600' }}"
+                                >
                                     {{ ucfirst($item->priority) }}
                                 </span>
                             </div>
 
                             {{-- Title --}}
-                            <h4 class="text-sm font-semibold text-gray-900 mb-1.5 leading-snug line-clamp-2">{{ $item->title }}</h4>
+                            <h4 class="text-sm font-semibold text-gray-900 mb-1.5 leading-snug line-clamp-2">
+                                {{ $item->title }}
+                            </h4>
 
                             {{-- Client --}}
                             <p class="text-xs text-gray-500 mb-2 truncate">
@@ -490,20 +515,29 @@ new #[Layout('components.layouts.app')] class extends Component
 
                             {{-- Bottom: Assignee + Deadline --}}
                             <div class="flex items-center justify-between mt-2">
-                                @if($item->assigneeUser)
+                                @if ($item->assigneeUser)
                                     <div class="flex items-center gap-1.5">
-                                        <div class="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-[rgba(var(--brand-rgb),0.1)] text-[9px] font-bold text-[var(--brand)]">
+                                        <div
+                                            class="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-[rgba(var(--brand-rgb),0.1)] text-[9px] font-bold text-[var(--brand)]"
+                                        >
                                             {{ $item->assigneeUser->initials }}
                                         </div>
-                                        <span class="text-[11px] text-gray-500 truncate max-w-[80px]">{{ $item->assigneeUser->name }}</span>
+                                        <span
+                                            class="text-[11px] text-gray-500 truncate max-w-[80px]"
+                                            >{{ $item->assigneeUser->name }}</span
+                                        >
                                     </div>
                                 @else
                                     <span class="text-[11px] text-gray-400">Unassigned</span>
                                 @endif
 
-                                @if($item->deadline)
-                                    <span class="inline-flex items-center gap-1 text-[11px] {{ $isOverdue ? 'text-red-600 font-semibold' : 'text-gray-500' }}">
-                                        <i class="fas fa-calendar-alt text-[10px] {{ $isOverdue ? 'text-red-500' : 'text-gray-400' }}"></i>
+                                @if ($item->deadline)
+                                    <span
+                                        class="inline-flex items-center gap-1 text-[11px] {{ $isOverdue ? 'text-red-600 font-semibold' : 'text-gray-500' }}"
+                                    >
+                                        <i
+                                            class="fas fa-calendar-alt text-[10px] {{ $isOverdue ? 'text-red-500' : 'text-gray-400' }}"
+                                        ></i>
                                         {{ $item->deadline->format('M d') }}
                                     </span>
                                 @endif
@@ -527,16 +561,9 @@ new #[Layout('components.layouts.app')] class extends Component
     </div>
 
     {{-- ========== WORKFLOW FORM MODAL ========== --}}
-    @if($showForm)
-        <div
-            class="modal-overlay"
-            x-data
-            x-on:keydown.escape.window="$wire.set('showForm', false)"
-        >
-            <div
-                class="modal-box max-w-2xl max-h-[90vh]"
-                x-on:click.stop
-            >
+    @if ($showForm)
+        <div class="modal-overlay" x-data x-on:keydown.escape.window="$wire.set('showForm', false)">
+            <div class="modal-box max-w-2xl max-h-[90vh]" x-on:click.stop>
                 <div class="modal-header">
                     <h3 class="text-base font-bold text-gray-900">
                         <i class="fas fa-{{ $formMode === 'edit' ? 'pen' : 'plus' }} text-[var(--brand)] mr-2"></i>
@@ -555,24 +582,38 @@ new #[Layout('components.layouts.app')] class extends Component
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div class="md:col-span-2">
                                 <label class="form-label">Title <span class="text-red-500">*</span></label>
-                                <input type="text" wire:model="formTitle" class="form-input" placeholder="Enter item title" />
-                                @error('formTitle') <span class="text-xs text-red-500 mt-1 block">{{ $message }}</span> @enderror
+                                <input
+                                    type="text"
+                                    wire:model="formTitle"
+                                    class="form-input"
+                                    placeholder="Enter item title"
+                                />
+                                @error ('formTitle')
+                                    <span class="text-xs text-red-500 mt-1 block">{{ $message }}</span>
+                                @enderror
                             </div>
 
                             <div class="md:col-span-2">
                                 <label class="form-label">Description</label>
-                                <textarea wire:model="formDescription" class="form-textarea" rows="3" placeholder="Brief description or notes..."></textarea>
+                                <textarea
+                                    wire:model="formDescription"
+                                    class="form-textarea"
+                                    rows="3"
+                                    placeholder="Brief description or notes..."
+                                ></textarea>
                             </div>
 
                             <div>
                                 <label class="form-label">Client <span class="text-red-500">*</span></label>
                                 <select wire:model="formClientId" class="form-select">
                                     <option value="">Select Client</option>
-                                    @foreach($this->getClientList() as $client)
+                                    @foreach ($this->getClientList() as $client)
                                         <option value="{{ $client->id }}">{{ $client->name }}</option>
                                     @endforeach
                                 </select>
-                                @error('formClientId') <span class="text-xs text-red-500 mt-1 block">{{ $message }}</span> @enderror
+                                @error ('formClientId')
+                                    <span class="text-xs text-red-500 mt-1 block">{{ $message }}</span>
+                                @enderror
                             </div>
 
                             <div>
@@ -601,7 +642,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                 <label class="form-label">Assignee</label>
                                 <select wire:model="formAssignee" class="form-select">
                                     <option value="">Unassigned</option>
-                                    @foreach($this->getUserList() as $user)
+                                    @foreach ($this->getUserList() as $user)
                                         <option value="{{ $user->id }}">{{ $user->name }}</option>
                                     @endforeach
                                 </select>
@@ -610,11 +651,13 @@ new #[Layout('components.layouts.app')] class extends Component
                             <div>
                                 <label class="form-label">Stage <span class="text-red-500">*</span></label>
                                 <select wire:model="formStage" class="form-select">
-                                    @foreach($this->getStages() as $stage)
+                                    @foreach ($this->getStages() as $stage)
                                         <option value="{{ $stage['key'] }}">{{ $stage['name'] }}</option>
                                     @endforeach
                                 </select>
-                                @error('formStage') <span class="text-xs text-red-500 mt-1 block">{{ $message }}</span> @enderror
+                                @error ('formStage')
+                                    <span class="text-xs text-red-500 mt-1 block">{{ $message }}</span>
+                                @enderror
                             </div>
 
                             <div>
@@ -635,14 +678,10 @@ new #[Layout('components.layouts.app')] class extends Component
                         </div>
 
                         <div class="mt-6 flex items-center justify-end gap-3 border-t border-gray-100 pt-5">
-                            <button
-                                type="button"
-                                wire:click="$set('showForm', false)"
-                                class="btn btn-secondary"
-                            >
+                            <button type="button" wire:click="$set('showForm', false)" class="btn btn-secondary">
                                 Cancel
                             </button>
-                            @if($formMode === 'edit')
+                            @if ($formMode === 'edit')
                                 <button
                                     type="button"
                                     wire:click="delete({{ $editingId }})"
@@ -664,7 +703,7 @@ new #[Layout('components.layouts.app')] class extends Component
     @endif
 
     {{-- ========== STAGE MANAGER MODAL ========== --}}
-    @if($showStageManager)
+    @if ($showStageManager)
         <div
             class="modal-overlay"
             x-data="{
@@ -678,8 +717,8 @@ new #[Layout('components.layouts.app')] class extends Component
                                 handle: '.drag-handle',
                                 ghostClass: 'opacity-40',
                                 onEnd: (evt) => {
-                                    const ids = Array.from(el.children).map(child => child.dataset.stageId);
-                                    $wire.reorderStages(ids.map(id => parseInt(id)));
+                                    const ids = Array.from(el.children).map((child) => child.dataset.stageId);
+                                    $wire.reorderStages(ids.map((id) => parseInt(id)));
                                 }
                             });
                         }
@@ -688,10 +727,7 @@ new #[Layout('components.layouts.app')] class extends Component
             }"
             x-on:keydown.escape.window="$wire.set('showStageManager', false)"
         >
-            <div
-                class="modal-box max-w-lg max-h-[85vh]"
-                x-on:click.stop
-            >
+            <div class="modal-box max-w-lg max-h-[85vh]" x-on:click.stop>
                 <div class="modal-header">
                     <h3 class="text-base font-bold text-gray-900">
                         <i class="fas fa-cog text-[var(--brand)] mr-2"></i>
@@ -708,12 +744,14 @@ new #[Layout('components.layouts.app')] class extends Component
                 <div class="modal-body overflow-y-auto max-h-[calc(85vh-80px)]">
                     {{-- Existing Stages --}}
                     <div x-ref="stageList" class="space-y-2 mb-5">
-                        @forelse($this->getStages() as $stage)
+                        @forelse ($this->getStages() as $stage)
                             <div
                                 class="flex items-center gap-3 rounded-xl border border-gray-100 bg-white p-3 group"
                                 data-stage-id="{{ $stage['id'] }}"
                             >
-                                <div class="drag-handle cursor-grab active:cursor-grabbing text-gray-300 hover:text-gray-500">
+                                <div
+                                    class="drag-handle cursor-grab active:cursor-grabbing text-gray-300 hover:text-gray-500"
+                                >
                                     <i class="fas fa-grip-vertical text-sm"></i>
                                 </div>
 
@@ -729,7 +767,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                         x-transition
                                         class="absolute top-9 left-0 z-20 bg-white rounded-xl border border-gray-100 shadow-lg p-3 grid grid-cols-5 gap-2 w-[180px]"
                                     >
-                                        @foreach($this->presetColors as $color)
+                                        @foreach ($this->presetColors as $color)
                                             <button
                                                 type="button"
                                                 class="h-7 w-7 rounded-lg border-2 transition-all hover:scale-110 {{ $stage['color'] === $color ? 'border-gray-900 ring-2 ring-gray-200' : 'border-white' }}"
@@ -778,7 +816,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                     x-transition
                                     class="absolute bottom-12 left-0 z-20 bg-white rounded-xl border border-gray-100 shadow-lg p-3 grid grid-cols-5 gap-2 w-[180px]"
                                 >
-                                    @foreach($this->presetColors as $color)
+                                    @foreach ($this->presetColors as $color)
                                         <button
                                             type="button"
                                             class="h-7 w-7 rounded-lg border-2 transition-all hover:scale-110 {{ $newStageColor === $color ? 'border-gray-900 ring-2 ring-gray-200' : 'border-white' }}"
@@ -797,14 +835,13 @@ new #[Layout('components.layouts.app')] class extends Component
                                 x-on:keydown.enter.prevent="$wire.addStage()"
                             />
 
-                            <button
-                                wire:click="addStage"
-                                class="btn btn-primary"
-                            >
+                            <button wire:click="addStage" class="btn btn-primary">
                                 <i class="fas fa-plus text-xs"></i> Add
                             </button>
                         </div>
-                        @error('newStageName') <span class="text-xs text-red-500 mt-1 block">{{ $message }}</span> @enderror
+                        @error ('newStageName')
+                            <span class="text-xs text-red-500 mt-1 block">{{ $message }}</span>
+                        @enderror
                     </div>
                 </div>
             </div>
