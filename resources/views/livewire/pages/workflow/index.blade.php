@@ -43,9 +43,14 @@ new #[Layout('components.layouts.app')] class extends Component
     public string $editingStageColor = '#4f46e5';
     public ?int $editingStageId = null;
 
+    public bool $showDetail = false;
+    public int $detailId = 0;
+
     public array $presetColors = [
-        '#4f46e5', '#7c3aed', '#db2777', '#dc2626', '#ea580c',
-        '#ca8a04', '#16a34a', '#0891b2', '#2563eb', '#6b7280',
+        '#4f46e5', '#7c3aed', '#a855f7', '#db2777', '#ec4899',
+        '#f43f5e', '#dc2626', '#ea580c', '#f97316', '#eab308',
+        '#ca8a04', '#84cc16', '#16a34a', '#10b981', '#14b8a6',
+        '#06b6d4', '#0891b2', '#2563eb', '#3b82f6', '#6b7280',
     ];
 
     public function mount(): void
@@ -249,16 +254,26 @@ new #[Layout('components.layouts.app')] class extends Component
             'newStageName' => 'required|string|max:255',
         ]);
 
-        $key = strtolower(trim(preg_replace('/[^A-Za-z0-9-]/', '-', $this->newStageName), '-'));
+        $name = trim($this->newStageName);
+        if (WorkflowStage::where('name', $name)->exists()) {
+            $this->dispatch('toast', message: 'A stage with that name already exists', type: 'error');
+            return;
+        }
+
+        $key = strtolower(trim(preg_replace('/[^A-Za-z0-9-]/', '-', $name), '-'));
+        if ($key === '') $key = 'stage-' . (WorkflowStage::max('id') + 1);
+        if (WorkflowStage::where('key', $key)->exists()) {
+            $key .= '-' . (WorkflowStage::max('id') + 1);
+        }
 
         WorkflowStage::create([
             'key'   => $key,
-            'name'  => $this->newStageName,
+            'name'  => $name,
             'color' => $this->newStageColor,
             'order' => WorkflowStage::max('order') + 1,
         ]);
 
-        app(ActivityLogger::class)->record(Auth::user(), "Added workflow stage '{$this->newStageName}'");
+        app(ActivityLogger::class)->record(Auth::user(), "Added workflow stage '{$name}'");
 
         $this->newStageName = '';
         $this->newStageColor = '#4f46e5';
@@ -283,8 +298,61 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function updateStageColor(int $id, string $color): void
     {
+        // Accept hex colors only (either #RGB or #RRGGBB) to avoid style-injection.
+        if (!preg_match('/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/', $color)) return;
         WorkflowStage::where('id', $id)->update(['color' => $color]);
         $this->loadStages();
+    }
+
+    public function renameStage(int $id, string $name): void
+    {
+        $name = trim($name);
+        if ($name === '') {
+            $this->dispatch('toast', message: 'Stage name cannot be empty', type: 'error');
+            $this->loadStages();
+            return;
+        }
+        if (mb_strlen($name) > 255) {
+            $this->dispatch('toast', message: 'Stage name is too long', type: 'error');
+            $this->loadStages();
+            return;
+        }
+        $duplicate = WorkflowStage::where('name', $name)->where('id', '!=', $id)->exists();
+        if ($duplicate) {
+            $this->dispatch('toast', message: 'A stage with that name already exists', type: 'error');
+            $this->loadStages();
+            return;
+        }
+        $stage = WorkflowStage::find($id);
+        if (!$stage) return;
+        $old = $stage->name;
+        if ($old === $name) return;
+        $stage->update(['name' => $name]);
+        app(ActivityLogger::class)->record(Auth::user(), "Renamed workflow stage '{$old}' → '{$name}'");
+        $this->loadStages();
+        $this->dispatch('toast', message: 'Stage renamed', type: 'success');
+    }
+
+    public function viewItem(int $id): void
+    {
+        if (!Workflow::whereKey($id)->exists()) return;
+        $this->detailId = $id;
+        $this->showDetail = true;
+    }
+
+    public function editFromDetail(): void
+    {
+        if (!$this->detailId) return;
+        if (!$this->canEditWorkflow) return;
+        $id = $this->detailId;
+        $this->showDetail = false;
+        $this->edit($id);
+    }
+
+    public function getDetailItem()
+    {
+        if (!$this->detailId) return null;
+        return Workflow::with(['client', 'stageInfo', 'assigneeUser'])->find($this->detailId);
     }
 
     public function reorderStages(array $stageIds): void
@@ -437,8 +505,8 @@ new #[Layout('components.layouts.app')] class extends Component
                 }
             },
             openCard(id) {
-                if (!this.justDragged && $wire.canEditWorkflow) {
-                    $wire.edit(id);
+                if (!this.justDragged) {
+                    $wire.viewItem(id);
                 }
             }
         }"
@@ -474,12 +542,17 @@ new #[Layout('components.layouts.app')] class extends Component
                             $isOverdue = $item->deadline && $item->deadline->isPast() && $item->stage !== 'published';
                         @endphp
                         <div
-                            class="kanban-card {{ $isOverdue ? 'overdue' : '' }} bg-white rounded-xl border border-gray-100 p-3 {{ $this->canMoveWorkflow ? 'cursor-grab active:cursor-grabbing' : '' }} hover:shadow-md hover:border-gray-200 transition-all duration-150"
+                            class="kanban-card {{ $isOverdue ? 'overdue' : '' }} bg-white rounded-xl border border-gray-100 p-3 {{ $this->canMoveWorkflow ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer' }} hover:shadow-md hover:border-gray-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand)]/40 focus-visible:border-[var(--brand)] transition-all duration-150"
                             data-id="{{ $item->id }}"
+                            role="button"
+                            tabindex="0"
+                            aria-label="View workflow item: {{ $item->title }}"
                             @if ($this->canMoveWorkflow) draggable="true" @endif
                             @if ($this->canMoveWorkflow) x-on:dragstart="dragStart($event, {{ $item->id }})" @endif
                             @if ($this->canMoveWorkflow) x-on:dragend="dragEnd($event)" @endif
                             x-on:click="openCard({{ $item->id }})"
+                            x-on:keydown.enter.prevent="openCard({{ $item->id }})"
+                            x-on:keydown.space.prevent="openCard({{ $item->id }})"
                         >
                             {{-- Type + Priority Badges --}}
                             <div class="flex items-center gap-1.5 mb-2">
@@ -568,6 +641,144 @@ new #[Layout('components.layouts.app')] class extends Component
             </div>
         @endforelse
     </div>
+
+    {{-- ========== WORKFLOW DETAIL MODAL (read-only) ========== --}}
+    @if ($showDetail)
+        @php $detail = $this->getDetailItem(); @endphp
+        @if ($detail)
+            @php
+                $priorityBadge = match($detail->priority) {
+                    'urgent' => 'bg-red-100 text-red-700',
+                    'high'   => 'bg-orange-100 text-orange-700',
+                    'medium' => 'bg-blue-100 text-blue-700',
+                    default  => 'bg-gray-100 text-gray-600',
+                };
+                $typeBadge = [
+                    'reel'     => 'bg-pink-100 text-pink-700',
+                    'post'     => 'bg-blue-100 text-blue-700',
+                    'story'    => 'bg-purple-100 text-purple-700',
+                    'video'    => 'bg-red-100 text-red-700',
+                    'carousel' => 'bg-amber-100 text-amber-700',
+                    'blog'     => 'bg-green-100 text-green-700',
+                ][$detail->type] ?? 'bg-gray-100 text-gray-600';
+                $isOverdueDetail = $detail->deadline && $detail->deadline->isPast() && $detail->stage !== 'published';
+            @endphp
+            <div class="modal-overlay" x-data x-on:keydown.escape.window="$wire.set('showDetail', false)">
+                <div class="modal-box max-w-2xl max-h-[90vh]" x-on:click.stop role="dialog" aria-modal="true" aria-labelledby="workflow-detail-title">
+                    <div class="modal-header">
+                        <h3 id="workflow-detail-title" class="text-base font-bold text-gray-900">
+                            <i class="fas fa-eye text-[var(--brand)] mr-2"></i>
+                            Workflow Item
+                        </h3>
+                        <button
+                            wire:click="$set('showDetail', false)"
+                            aria-label="Close details"
+                            class="flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand)]/40 transition-colors"
+                        >
+                            <i class="fas fa-times text-sm"></i>
+                        </button>
+                    </div>
+
+                    <div class="modal-body overflow-y-auto max-h-[calc(90vh-160px)]">
+                        {{-- Title + badges --}}
+                        <div class="mb-5">
+                            <div class="flex flex-wrap items-center gap-1.5 mb-2">
+                                <span class="inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-semibold {{ $typeBadge }}">
+                                    {{ ucfirst($detail->type) }}
+                                </span>
+                                <span class="inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-semibold {{ $priorityBadge }}">
+                                    {{ ucfirst($detail->priority) }} priority
+                                </span>
+                                <span class="ml-auto inline-flex items-center gap-1.5 rounded-full bg-gray-50 border border-gray-100 px-2.5 py-1 text-[11px] font-semibold text-gray-700">
+                                    <span class="h-2 w-2 rounded-full" style="background-color: {{ $detail->stageInfo->color ?? '#6b7280' }}"></span>
+                                    {{ $detail->stageInfo->name ?? ucfirst($detail->stage) }}
+                                </span>
+                            </div>
+                            <h2 class="text-xl font-bold text-gray-900 leading-snug">{{ $detail->title }}</h2>
+                        </div>
+
+                        {{-- Description --}}
+                        @if ($detail->notes)
+                            <div class="mb-5">
+                                <p class="text-[11px] uppercase tracking-wide font-semibold text-gray-500 mb-1.5">Description</p>
+                                <p class="text-sm text-gray-700 whitespace-pre-line leading-relaxed">{{ $detail->notes }}</p>
+                            </div>
+                        @endif
+
+                        {{-- Metadata grid --}}
+                        <div class="grid grid-cols-2 gap-x-6 gap-y-4 text-sm border-t border-gray-100 pt-4">
+                            <div>
+                                <p class="text-[11px] uppercase tracking-wide font-semibold text-gray-500 mb-1">Client</p>
+                                <p class="text-gray-800"><i class="fas fa-building text-gray-400 mr-1.5"></i>{{ $detail->client->name ?? '—' }}</p>
+                            </div>
+                            <div>
+                                <p class="text-[11px] uppercase tracking-wide font-semibold text-gray-500 mb-1">Assignee</p>
+                                @if ($detail->assigneeUser)
+                                    <div class="flex items-center gap-2">
+                                        <div class="flex h-6 w-6 items-center justify-center rounded-full bg-[rgba(var(--brand-rgb),0.1)] text-[10px] font-bold text-[var(--brand)]">
+                                            {{ $detail->assigneeUser->initials }}
+                                        </div>
+                                        <span class="text-gray-800">{{ $detail->assigneeUser->name }}</span>
+                                    </div>
+                                @else
+                                    <p class="text-gray-400 italic">Unassigned</p>
+                                @endif
+                            </div>
+                            <div>
+                                <p class="text-[11px] uppercase tracking-wide font-semibold text-gray-500 mb-1">Deadline</p>
+                                @if ($detail->deadline)
+                                    <p class="{{ $isOverdueDetail ? 'text-red-600 font-semibold' : 'text-gray-800' }}">
+                                        <i class="fas fa-calendar-alt {{ $isOverdueDetail ? 'text-red-500' : 'text-gray-400' }} mr-1.5"></i>
+                                        {{ $detail->deadline->format('M d, Y') }}
+                                        @if ($isOverdueDetail)
+                                            <span class="ml-1 inline-flex items-center rounded-md bg-red-100 text-red-700 px-1.5 py-0.5 text-[10px] font-semibold">Overdue</span>
+                                        @endif
+                                    </p>
+                                @else
+                                    <p class="text-gray-400 italic">No deadline</p>
+                                @endif
+                            </div>
+                            <div>
+                                <p class="text-[11px] uppercase tracking-wide font-semibold text-gray-500 mb-1">Created</p>
+                                <p class="text-gray-800">
+                                    <i class="fas fa-clock text-gray-400 mr-1.5"></i>
+                                    {{ $detail->created_at?->format('M d, Y') ?? '—' }}
+                                </p>
+                            </div>
+                        </div>
+
+                        {{-- Tags --}}
+                        @if ($detail->tags)
+                            <div class="mt-4 border-t border-gray-100 pt-4">
+                                <p class="text-[11px] uppercase tracking-wide font-semibold text-gray-500 mb-2">Tags</p>
+                                <div class="flex flex-wrap gap-1.5">
+                                    @foreach (explode(',', $detail->tags) as $tag)
+                                        @php $tag = trim($tag); @endphp
+                                        @if ($tag !== '')
+                                            <span class="inline-flex items-center rounded-md bg-gray-100 text-gray-700 px-2 py-0.5 text-xs">
+                                                <i class="fas fa-hashtag text-gray-400 text-[9px] mr-1"></i>{{ $tag }}
+                                            </span>
+                                        @endif
+                                    @endforeach
+                                </div>
+                            </div>
+                        @endif
+                    </div>
+
+                    <div class="border-t border-gray-100 px-6 py-4 flex items-center justify-end gap-3">
+                        <button type="button" wire:click="$set('showDetail', false)" class="btn btn-secondary">
+                            Close
+                        </button>
+                        @if ($this->canEditWorkflow)
+                            <button type="button" wire:click="editFromDetail" class="btn btn-primary">
+                                <i class="fas fa-pen text-xs"></i> Edit
+                            </button>
+                        @endif
+                    </div>
+                </div>
+            </div>
+        @endif
+    @endif
 
     {{-- ========== WORKFLOW FORM MODAL ========== --}}
     @if ($showForm)
@@ -767,28 +978,67 @@ new #[Layout('components.layouts.app')] class extends Component
 
                                 <div class="relative" x-data="{ open: false }">
                                     <button
+                                        type="button"
                                         @click="open = !open"
-                                        class="h-7 w-7 rounded-lg border-2 border-white shadow-sm flex-shrink-0 transition-colors hover:opacity-80"
+                                        aria-label="Change color"
+                                        class="h-7 w-7 rounded-lg border-2 border-white shadow-sm flex-shrink-0 transition-transform hover:opacity-90 hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-300"
                                         style="background-color: {{ $stage['color'] }}"
                                     ></button>
                                     <div
                                         x-show="open"
+                                        x-cloak
                                         @click.away="open = false"
                                         x-transition
-                                        class="absolute top-9 left-0 z-20 bg-white rounded-xl border border-gray-100 shadow-lg p-3 grid grid-cols-5 gap-2 w-[180px]"
+                                        class="absolute top-9 left-0 z-30 bg-white rounded-xl border border-gray-100 shadow-lg p-3 w-[240px]"
                                     >
-                                        @foreach ($this->presetColors as $color)
-                                            <button
-                                                type="button"
-                                                class="h-7 w-7 rounded-lg border-2 transition-all hover:scale-110 {{ $stage['color'] === $color ? 'border-gray-900 ring-2 ring-gray-200' : 'border-white' }}"
-                                                style="background-color: {{ $color }}"
-                                                wire:click="updateStageColor({{ $stage['id'] }}, '{{ $color }}')"
-                                            ></button>
-                                        @endforeach
+                                        <p class="text-[10px] uppercase tracking-wide font-semibold text-gray-400 mb-2">Preset</p>
+                                        <div class="grid grid-cols-5 gap-2">
+                                            @foreach ($this->presetColors as $color)
+                                                <button
+                                                    type="button"
+                                                    class="h-7 w-7 rounded-lg border-2 transition-all hover:scale-110 {{ strtolower($stage['color']) === strtolower($color) ? 'border-gray-900 ring-2 ring-gray-200' : 'border-white' }}"
+                                                    style="background-color: {{ $color }}"
+                                                    aria-label="Set color {{ $color }}"
+                                                    wire:click="updateStageColor({{ $stage['id'] }}, '{{ $color }}')"
+                                                ></button>
+                                            @endforeach
+                                        </div>
+                                        <div class="mt-3 pt-3 border-t border-gray-100">
+                                            <label class="flex items-center gap-2 text-xs text-gray-600 cursor-pointer">
+                                                <span class="text-[10px] uppercase tracking-wide font-semibold text-gray-400">Custom</span>
+                                                <input
+                                                    type="color"
+                                                    value="{{ $stage['color'] }}"
+                                                    x-on:change="$wire.updateStageColor({{ $stage['id'] }}, $event.target.value)"
+                                                    class="h-7 w-10 rounded cursor-pointer border border-gray-200"
+                                                    aria-label="Pick custom color"
+                                                />
+                                                <span class="text-gray-500 font-mono text-[11px]">{{ strtoupper($stage['color']) }}</span>
+                                            </label>
+                                        </div>
                                     </div>
                                 </div>
 
-                                <span class="flex-1 text-sm font-semibold text-gray-800">{{ $stage['name'] }}</span>
+                                <input
+                                    type="text"
+                                    value="{{ $stage['name'] }}"
+                                    x-data="{ original: @js($stage['name']), saving: false }"
+                                    x-on:blur="
+                                        const v = $event.target.value.trim();
+                                        if (v !== '' && v !== original && !saving) {
+                                            saving = true;
+                                            $wire.renameStage({{ $stage['id'] }}, v).then(() => { saving = false; });
+                                            original = v;
+                                        } else if (v === '') {
+                                            $event.target.value = original;
+                                        }
+                                    "
+                                    x-on:keydown.enter.prevent="$event.target.blur()"
+                                    x-on:keydown.escape.prevent="$event.target.value = original; $event.target.blur()"
+                                    maxlength="255"
+                                    aria-label="Stage name (click to edit)"
+                                    class="flex-1 min-w-0 text-sm font-semibold text-gray-800 bg-transparent border border-transparent rounded-md px-2 py-1 hover:border-gray-200 hover:bg-gray-50 focus:border-[var(--brand)] focus:bg-white focus:outline-none focus:ring-1 focus:ring-[var(--brand)]/20 transition-all"
+                                />
 
                                 <span class="text-[11px] text-gray-400 mr-1">
                                     {{ Workflow::where('stage', $stage['key'])->count() }} items
@@ -817,24 +1067,43 @@ new #[Layout('components.layouts.app')] class extends Component
                         <div class="flex items-center gap-3">
                             <div class="relative" x-data="{ open: false }">
                                 <button
+                                    type="button"
                                     @click="open = !open"
-                                    class="h-9 w-9 rounded-lg border-2 border-white shadow-sm flex-shrink-0 transition-colors hover:opacity-80"
+                                    aria-label="Pick stage color"
+                                    class="h-9 w-9 rounded-lg border-2 border-white shadow-sm flex-shrink-0 transition-transform hover:opacity-90 hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-300"
                                     style="background-color: {{ $newStageColor }}"
                                 ></button>
                                 <div
                                     x-show="open"
+                                    x-cloak
                                     @click.away="open = false"
                                     x-transition
-                                    class="absolute bottom-12 left-0 z-20 bg-white rounded-xl border border-gray-100 shadow-lg p-3 grid grid-cols-5 gap-2 w-[180px]"
+                                    class="absolute bottom-12 left-0 z-30 bg-white rounded-xl border border-gray-100 shadow-lg p-3 w-[240px]"
                                 >
-                                    @foreach ($this->presetColors as $color)
-                                        <button
-                                            type="button"
-                                            class="h-7 w-7 rounded-lg border-2 transition-all hover:scale-110 {{ $newStageColor === $color ? 'border-gray-900 ring-2 ring-gray-200' : 'border-white' }}"
-                                            style="background-color: {{ $color }}"
-                                            wire:click="$set('newStageColor', '{{ $color }}')"
-                                        ></button>
-                                    @endforeach
+                                    <p class="text-[10px] uppercase tracking-wide font-semibold text-gray-400 mb-2">Preset</p>
+                                    <div class="grid grid-cols-5 gap-2">
+                                        @foreach ($this->presetColors as $color)
+                                            <button
+                                                type="button"
+                                                class="h-7 w-7 rounded-lg border-2 transition-all hover:scale-110 {{ strtolower($newStageColor) === strtolower($color) ? 'border-gray-900 ring-2 ring-gray-200' : 'border-white' }}"
+                                                style="background-color: {{ $color }}"
+                                                aria-label="Set color {{ $color }}"
+                                                wire:click="$set('newStageColor', '{{ $color }}')"
+                                            ></button>
+                                        @endforeach
+                                    </div>
+                                    <div class="mt-3 pt-3 border-t border-gray-100">
+                                        <label class="flex items-center gap-2 text-xs text-gray-600 cursor-pointer">
+                                            <span class="text-[10px] uppercase tracking-wide font-semibold text-gray-400">Custom</span>
+                                            <input
+                                                type="color"
+                                                wire:model.live="newStageColor"
+                                                class="h-7 w-10 rounded cursor-pointer border border-gray-200"
+                                                aria-label="Pick custom color"
+                                            />
+                                            <span class="text-gray-500 font-mono text-[11px]">{{ strtoupper($newStageColor) }}</span>
+                                        </label>
+                                    </div>
                                 </div>
                             </div>
 
