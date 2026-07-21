@@ -37,29 +37,5 @@ class ComplaintSeeder extends Seeder
                 'updated_at' => now(),
             ]));
         }
-
-        // Add complaint replies
-        $complaints = DB::table('complaints')->get();
-        foreach ($complaints as $c) {
-            if ($c->title === 'Late delivery of reel') {
-                DB::table('complaint_replies')->insert([
-                    'complaint_id' => $c->id,
-                    'user_id' => $users['super@madhyam.com'] ?? null,
-                    'user_name' => 'Super Admin',
-                    'text' => 'We apologize. The team is working on preventing this.',
-                    'created_at' => now()->subDay(),
-                    'updated_at' => now()->subDay(),
-                ]);
-            } elseif ($c->title === 'Caption tone mismatch') {
-                DB::table('complaint_replies')->insert([
-                    'complaint_id' => $c->id,
-                    'user_id' => $users['karma@madhyam.com'] ?? null,
-                    'user_name' => 'Karma Lama',
-                    'text' => 'Updated the caption style guide. Will follow casual tone going forward.',
-                    'created_at' => now()->subDays(2),
-                    'updated_at' => now()->subDays(2),
-                ]);
-            }
-        }
     }
 }

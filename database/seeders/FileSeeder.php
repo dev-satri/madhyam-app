@@ -33,18 +33,11 @@ class FileSeeder extends Seeder
         ];
 
         foreach ($rows as $r) {
-            $id = DB::table('files')->insertGetId(array_merge($r, [
+            DB::table('files')->insert(array_merge($r, [
                 'folder_id' => null,
                 'created_at' => now(),
                 'updated_at' => now(),
             ]));
-            DB::table('file_expiries')->insert([
-                'file_id' => $id,
-                'expiry_date' => now()->addDays(5)->toDateString(),
-                'extended' => false,
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]);
         }
     }
 }

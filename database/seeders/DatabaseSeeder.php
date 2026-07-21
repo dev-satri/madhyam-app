@@ -47,6 +47,7 @@ class DatabaseSeeder extends Seeder
         $this->call([
             FolderSeeder::class,
             FileSeeder::class,
+            FileExpirySeeder::class,
         ]);
 
         // Phase 6: Finance (depends on clients + users)
@@ -65,6 +66,7 @@ class DatabaseSeeder extends Seeder
             DataAccessSeeder::class,
             CustomRoleSeeder::class,
             ComplaintSeeder::class,
+            ComplaintReplySeeder::class,
             NotificationSeeder::class,
             PackageUsageSeeder::class,
             ActivityLogSeeder::class,

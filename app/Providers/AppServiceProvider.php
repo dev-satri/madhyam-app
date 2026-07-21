@@ -30,6 +30,15 @@ class AppServiceProvider extends ServiceProvider
             return app(RbacService::class)->hasFeature($user->role, $feature);
         });
 
+        Blade::if('hasDataAccess', function (string $permission) {
+            $user = auth()->user();
+            if (! $user) {
+                return false;
+            }
+
+            return app(RbacService::class)->hasDataAccess($user->role, $permission);
+        });
+
         Blade::if('isSuperAdmin', function () {
             $user = auth()->user();
 
