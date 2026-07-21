@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\Client;
 use App\Models\Notification;
 use App\Models\Task;
 use Illuminate\Support\Facades\Log;
@@ -54,6 +55,60 @@ class NotificationService
             link: route('tasks', absolute: false),
             forRole: $task->assigneeUser->role,
         );
+    }
+
+    // ── Contract Expiry Notifications ──────────────────────────
+
+    public function sendContractExpiryNotification(Client $client, int $daysUntil, string $type = 'warning'): Notification
+    {
+        $package = $client->linkedPackage?->name ?? ucfirst($client->package);
+
+        $note = $this->sendNotification(
+            text: "Contract for {$client->name} ({$package}) expires in {$daysUntil} day(s) on {$client->contract_end->format('M d, Y')}. Monthly: NPR " . number_format($client->amount, 2),
+            type: $type,
+            link: route('clients', absolute: false),
+            forRole: 'manager',
+        );
+
+        // Also email the client contact if available
+        if ($client->email) {
+            $contactName = $client->contact ?? $client->name;
+            $expiryDate = $client->contract_end->format('M d, Y');
+            $monthlyAmount = number_format($client->amount, 2);
+            $this->emailNotify(
+                to: $client->email,
+                subject: "Contract Expiry Reminder — {$package} Package",
+                body: "Dear {$contactName},\n\nYour {$package} package contract with Madhyam expires on {$expiryDate}.\n\nMonthly amount: NPR {$monthlyAmount}\n\nPlease contact us to renew your contract.\n\nBest regards,\nMadhyam Team",
+            );
+        }
+
+        return $note;
+    }
+
+    public function sendContractExpiredNotification(Client $client, int $daysPast): Notification
+    {
+        $package = $client->linkedPackage?->name ?? ucfirst($client->package);
+
+        $note = $this->sendNotification(
+            text: "EXPIRED: {$client->name}'s contract ({$package}) expired {$daysPast} day(s) ago. Immediate follow-up required.",
+            type: 'error',
+            link: route('clients', absolute: false),
+            forRole: 'manager',
+        );
+
+        // Email escalation to manager
+        $managerEmail = \App\Models\User::where('role', 'manager')->value('email');
+        if ($managerEmail) {
+            $expiryDate = $client->contract_end->format('M d, Y');
+            $monthlyAmount = number_format($client->amount, 2);
+            $this->emailNotify(
+                to: $managerEmail,
+                subject: "URGENT: Contract Expired — {$client->name}",
+                body: "The contract for {$client->name} ({$package}) expired {$daysPast} day(s) ago.\n\nClient: {$client->name}\nPackage: {$package}\nMonthly: NPR {$monthlyAmount}\nContract ended: {$expiryDate}\n\nImmediate action required.",
+            );
+        }
+
+        return $note;
     }
 
     protected function trim(): void

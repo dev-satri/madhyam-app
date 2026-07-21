@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Carbon\Carbon;
 
 class Client extends Model
 {
@@ -14,6 +15,7 @@ class Client extends Model
         'email',
         'phone',
         'package',
+        'package_id',
         'amount',
         'contract_start',
         'contract_end',
@@ -41,6 +43,76 @@ class Client extends Model
     public function packageInfo(): BelongsTo
     {
         return $this->belongsTo(Package::class, 'package', 'slug');
+    }
+
+    public function linkedPackage(): BelongsTo
+    {
+        return $this->belongsTo(Package::class, 'package_id');
+    }
+
+    // ── Subscription helpers ──────────────────────────────────
+
+    public function isContractExpired(): bool
+    {
+        return $this->contract_end && $this->contract_end->isPast();
+    }
+
+    public function isContractExpiring(int $days = 30): bool
+    {
+        return $this->contract_end
+            && $this->contract_end->isFuture()
+            && $this->contract_end->diffInDays(Carbon::now()) <= $days;
+    }
+
+    public function daysUntilExpiry(): ?int
+    {
+        if (! $this->contract_end) {
+            return null;
+        }
+
+        return max(0, (int) Carbon::now()->diffInDays($this->contract_end, false));
+    }
+
+    public function getExpiryStatusAttribute(): string
+    {
+        if (! $this->contract_end) {
+            return 'no-contract';
+        }
+        if ($this->contract_end->isPast()) {
+            return 'expired';
+        }
+        if ($this->contract_end->diffInDays(Carbon::now()) <= 7) {
+            return 'critical';
+        }
+        if ($this->contract_end->diffInDays(Carbon::now()) <= 30) {
+            return 'warning';
+        }
+
+        return 'active';
+    }
+
+    public function getExpiryBadgeClassAttribute(): string
+    {
+        return match($this->expiry_status) {
+            'expired'     => 'bg-red-100 text-red-700',
+            'critical'    => 'bg-red-100 text-red-700',
+            'warning'     => 'bg-amber-100 text-amber-700',
+            'active'      => 'bg-green-100 text-green-700',
+            'no-contract' => 'bg-gray-100 text-gray-500',
+            default       => 'bg-gray-100 text-gray-500',
+        };
+    }
+
+    public function getExpiryLabelAttribute(): string
+    {
+        return match($this->expiry_status) {
+            'expired'     => 'Expired',
+            'critical'     => $this->daysUntilExpiry() . 'd left',
+            'warning'      => $this->daysUntilExpiry() . 'd left',
+            'active'       => 'Active',
+            'no-contract'  => 'No Contract',
+            default        => 'Unknown',
+        };
     }
 
     public function contents(): HasMany

@@ -29,6 +29,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $schedule->command('notifications:shoot-reminders')->dailyAt('08:00');
         $schedule->command('notifications:deadline-reminders')->dailyAt('08:30');
         $schedule->command('notifications:contract-expiry')->dailyAt('09:00');
+        $schedule->command('client:expiry-followup')->dailyAt('09:30');
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         //

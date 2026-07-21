@@ -5,6 +5,7 @@ use Livewire\Attributes\Layout;
 use Livewire\Attributes\Computed;
 use Livewire\WithPagination;
 use App\Models\Client;
+use App\Models\Package;
 
 new #[Layout('components.layouts.app')] class extends Component
 {
@@ -23,6 +24,7 @@ new #[Layout('components.layouts.app')] class extends Component
     public string $email = '';
     public string $phone = '';
     public string $package = 'basic';
+    public ?int $package_id = null;
     public ?string $contract_start = null;
     public ?string $contract_end = null;
     public float $amount = 0;
@@ -39,9 +41,21 @@ new #[Layout('components.layouts.app')] class extends Component
     public bool $showDeleteConfirm = false;
     public int $deleteId = 0;
 
+    // Status toggle
+    public bool $showStatusConfirm = false;
+    public int $statusClientId = 0;
+    public string $newStatus = '';
+    public string $currentStatus = '';
+
     protected $listeners = ['statusUpdated' => 'render'];
 
     public function mount(): void {}
+
+    #[Computed]
+    public function packages()
+    {
+        return Package::where('status', 'active')->orderBy('name')->get();
+    }
 
     public function updatedSearch(): void
     {
@@ -58,10 +72,21 @@ new #[Layout('components.layouts.app')] class extends Component
         $this->resetPage();
     }
 
+    public function updatedPackageId(?int $value): void
+    {
+        if ($value) {
+            $pkg = Package::find($value);
+            if ($pkg) {
+                $this->package = $pkg->slug;
+                $this->amount = (float) $pkg->monthly_amount;
+            }
+        }
+    }
+
     #[Computed]
     public function clients()
     {
-        $query = Client::query();
+        $query = Client::with('linkedPackage');
 
         if ($this->search) {
             $query->where(function ($q) {
@@ -102,6 +127,7 @@ new #[Layout('components.layouts.app')] class extends Component
         $this->email = $client->email ?? '';
         $this->phone = $client->phone ?? '';
         $this->package = $client->package;
+        $this->package_id = $client->package_id;
         $this->contract_start = $client->contract_start?->format('Y-m-d');
         $this->contract_end = $client->contract_end?->format('Y-m-d');
         $this->amount = (float) $client->amount;
@@ -119,6 +145,7 @@ new #[Layout('components.layouts.app')] class extends Component
             'name'          => 'required|string|max:255',
             'email'         => 'nullable|email|max:255',
             'package'       => 'required|string',
+            'package_id'    => 'nullable|exists:packages,id',
             'status'        => 'required|string|in:active,inactive,pending',
             'amount'        => 'nullable|numeric|min:0',
             'contract_start'=> 'nullable|date',
@@ -131,6 +158,7 @@ new #[Layout('components.layouts.app')] class extends Component
             'email'          => $this->email,
             'phone'          => $this->phone,
             'package'        => $this->package,
+            'package_id'     => $this->package_id,
             'contract_start' => $this->contract_start,
             'contract_end'   => $this->contract_end,
             'amount'         => $this->amount,
@@ -156,12 +184,47 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function view(int $id): void
     {
-        $client = Client::find($id);
+        $client = Client::with('linkedPackage')->find($id);
         if (! $client) return;
 
         $this->selectedClient = $client;
         $this->detailTab = 'overview';
         $this->showDetail = true;
+    }
+
+    // ── Status Toggle with Confirmation ──────────────────────
+
+    public function confirmStatus(int $clientId, string $newStatus): void
+    {
+        $client = Client::find($clientId);
+        if (! $client) return;
+
+        $this->statusClientId = $clientId;
+        $this->currentStatus = $client->status;
+        $this->newStatus = $newStatus;
+        $this->showStatusConfirm = true;
+    }
+
+    public function performStatusChange(): void
+    {
+        $client = Client::find($this->statusClientId);
+        if ($client) {
+            $client->update(['status' => $this->newStatus]);
+            $this->dispatch('toast', message: "Client status changed to {$this->newStatus}", type: 'success');
+        }
+        $this->showStatusConfirm = false;
+        $this->statusClientId = 0;
+        $this->newStatus = '';
+        $this->currentStatus = '';
+        $this->dispatch('refreshClients');
+    }
+
+    public function cancelStatusChange(): void
+    {
+        $this->showStatusConfirm = false;
+        $this->statusClientId = 0;
+        $this->newStatus = '';
+        $this->currentStatus = '';
     }
 
     public function delete(int $id): void
@@ -195,6 +258,7 @@ new #[Layout('components.layouts.app')] class extends Component
         $this->email = '';
         $this->phone = '';
         $this->package = 'basic';
+        $this->package_id = null;
         $this->contract_start = null;
         $this->contract_end = null;
         $this->amount = 0;
@@ -271,10 +335,9 @@ new #[Layout('components.layouts.app')] class extends Component
             <label class="form-label">Package</label
             ><select wire:model.live="packageFilter" class="form-select">
                 <option value="">All Packages</option>
-                <option value="basic">Basic</option>
-                <option value="pro">Pro</option>
-                <option value="enterprise">Enterprise</option>
-                <option value="custom">Custom</option>
+                @foreach(\App\Models\Package::where('status', 'active')->orderBy('name')->get() as $pkg)
+                    <option value="{{ $pkg->slug }}">{{ $pkg->name }}</option>
+                @endforeach
             </select>
         </div>
     </div>
@@ -316,6 +379,7 @@ new #[Layout('components.layouts.app')] class extends Component
                             <th>Phone</th>
                             <th>Package</th>
                             <th>Status</th>
+                            <th>Expiry</th>
                             <th>Contract End</th>
                             <th class="text-right">Actions</th>
                         </tr>
@@ -339,17 +403,65 @@ new #[Layout('components.layouts.app')] class extends Component
                                 <td>
                                     <span
                                         class="badge badge-{{ $client->package }}"
-                                        >{{ ucfirst($client->package) }}</span
+                                        >{{ ucfirst($client->linkedPackage?->name ?? $client->package) }}</span
                                     >
                                 </td>
                                 <td>
-                                    <livewire:clickable-status
-                                        :status="$client->status"
-                                        :cycle="['active', 'inactive', 'pending']"
-                                        entityType="clients"
-                                        :entityId="$client->id"
-                                        wire:key="status-{{ $client->id }}"
-                                    />
+                                    <div class="relative" x-data="{ open: false }" @click.outside="open = false">
+                                        <button
+                                            @click="open = !open"
+                                            class="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold cursor-pointer transition-all hover:shadow-sm select-none
+                                                {{ match($client->status) {
+                                                    'active' => 'bg-green-100 text-green-700',
+                                                    'inactive' => 'bg-gray-100 text-gray-600',
+                                                    'pending' => 'bg-blue-100 text-blue-700',
+                                                    default => 'bg-gray-100 text-gray-600',
+                                                } }}"
+                                        >
+                                            <span>{{ ucfirst($client->status) }}</span>
+                                            <svg class="w-3 h-3 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                                            </svg>
+                                        </button>
+                                        <div
+                                            x-show="open"
+                                            x-transition
+                                            class="absolute z-10 mt-1 w-36 rounded-xl border border-gray-100 bg-white py-1 shadow-lg"
+                                        >
+                                            @foreach(['active', 'inactive', 'pending'] as $statusOption)
+                                                @if($statusOption !== $client->status)
+                                                    <button
+                                                        wire:click="confirmStatus({{ $client->id }}, '{{ $statusOption }}')"
+                                                        @click="open = false"
+                                                        class="w-full px-3 py-2 text-left text-xs font-medium hover:bg-gray-50
+                                                            {{ match($statusOption) {
+                                                                'active' => 'text-green-600',
+                                                                'inactive' => 'text-gray-600',
+                                                                'pending' => 'text-blue-600',
+                                                                default => 'text-gray-600',
+                                                            } }}"
+                                                    >
+                                                        {{ ucfirst($statusOption) }}
+                                                    </button>
+                                                @endif
+                                            @endforeach
+                                        </div>
+                                    </div>
+                                </td>
+                                <td>
+                                    @php
+                                        $expiryClass = match($client->expiry_status) {
+                                            'expired'     => 'bg-red-100 text-red-700',
+                                            'critical'    => 'bg-red-100 text-red-700',
+                                            'warning'     => 'bg-amber-100 text-amber-700',
+                                            'active'      => 'bg-green-100 text-green-700',
+                                            'no-contract' => 'bg-gray-100 text-gray-500',
+                                            default       => 'bg-gray-100 text-gray-500',
+                                        };
+                                    @endphp
+                                    <span class="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold {{ $expiryClass }}">
+                                        {{ $client->expiry_label }}
+                                    </span>
                                 </td>
                                 <td class="text-gray-600">
                                     {{ $client->contract_end ? $client->contract_end->format('M d, Y') : '-' }}
@@ -382,7 +494,7 @@ new #[Layout('components.layouts.app')] class extends Component
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="8">
+                                <td colspan="9">
                                     <div class="py-16 text-center">
                                         <div
                                             class="flex h-14 w-14 mx-auto items-center justify-center rounded-2xl bg-gray-100 mb-4"
@@ -466,13 +578,13 @@ new #[Layout('components.layouts.app')] class extends Component
                             </div>
                             <div>
                                 <label class="form-label">Package <span class="text-red-500">*</span></label>
-                                <select wire:model="package" class="form-select">
-                                    <option value="basic">Basic</option>
-                                    <option value="pro">Pro</option>
-                                    <option value="enterprise">Enterprise</option>
-                                    <option value="custom">Custom</option>
+                                <select wire:model="package_id" class="form-select">
+                                    <option value="">Select package...</option>
+                                    @foreach($this->packages as $pkg)
+                                        <option value="{{ $pkg->id }}">{{ $pkg->name }} — NPR {{ number_format($pkg->monthly_amount, 0) }}/mo</option>
+                                    @endforeach
                                 </select>
-                                <span wire:error="package" class="text-red-500 text-xs mt-1 block"></span>
+                                <span wire:error="package_id" class="text-red-500 text-xs mt-1 block"></span>
                             </div>
                             <div>
                                 <label class="form-label">Monthly Amount (NPR)</label>
@@ -664,10 +776,9 @@ new #[Layout('components.layouts.app')] class extends Component
                             <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
                                 <div>
                                     <p class="text-[11px] font-semibold uppercase tracking-wider text-gray-400 mb-1">Package</p>
-                                    <span
-                                        class="badge badge-{{ $selectedClient->package }}"
-                                        >{{ ucfirst($selectedClient->package) }}</span
-                                    >
+                                    <span class="badge badge-{{ $selectedClient->package }}">
+                                        {{ ucfirst($selectedClient->linkedPackage?->name ?? $selectedClient->package) }}
+                                    </span>
                                 </div>
                                 <div>
                                     <p class="text-[11px] font-semibold uppercase tracking-wider text-gray-400 mb-1">Monthly Amount</p>
@@ -682,6 +793,68 @@ new #[Layout('components.layouts.app')] class extends Component
                                     <p class="text-sm text-gray-700">{{ $selectedClient->contract_end ? $selectedClient->contract_end->format('M d, Y') : '-' }}</p>
                                 </div>
                             </div>
+
+                            {{-- Expiry Status Bar --}}
+                            @if($selectedClient->contract_end)
+                                @php
+                                    $expiryBarClass = match($selectedClient->expiry_status) {
+                                        'expired' => 'border-red-200 bg-red-50',
+                                        'critical' => 'border-red-200 bg-red-50',
+                                        'warning' => 'border-amber-200 bg-amber-50',
+                                        'active' => 'border-green-200 bg-green-50',
+                                        default => 'border-gray-200 bg-gray-50',
+                                    };
+                                    $expiryTextClass = match($selectedClient->expiry_status) {
+                                        'expired' => 'text-red-700',
+                                        'critical' => 'text-red-700',
+                                        'warning' => 'text-amber-700',
+                                        'active' => 'text-green-700',
+                                        default => 'text-gray-600',
+                                    };
+                                @endphp
+                                <div class="rounded-xl border {{ $expiryBarClass }} p-3 flex items-center justify-between">
+                                    <div class="flex items-center gap-2">
+                                        <i class="fas fa-{{ $selectedClient->expiry_status === 'expired' ? 'times-circle' : ($selectedClient->expiry_status === 'active' ? 'check-circle' : 'exclamation-triangle') }} {{ $expiryTextClass }}"></i>
+                                        <span class="text-sm font-semibold {{ $expiryTextClass }}">
+                                            @if($selectedClient->expiry_status === 'expired')
+                                                Contract expired {{ $selectedClient->daysUntilExpiry() }} day(s) ago
+                                            @elseif($selectedClient->expiry_status === 'no-contract')
+                                                No contract end date set
+                                            @else
+                                                {{ $selectedClient->daysUntilExpiry() }} day(s) until contract expires
+                                            @endif
+                                        </span>
+                                    </div>
+                                    <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold {{ $selectedClient->expiry_badge_class }}">
+                                        {{ $selectedClient->expiry_label }}
+                                    </span>
+                                </div>
+                            @endif
+
+                            {{-- Package Limits (if linked) --}}
+                            @if($selectedClient->linkedPackage)
+                                <div class="rounded-xl border border-gray-100 bg-gray-50 p-4">
+                                    <p class="text-[11px] font-semibold uppercase tracking-wider text-gray-400 mb-3">Package Limits</p>
+                                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+                                        <div>
+                                            <p class="text-lg font-bold text-gray-900">{{ $selectedClient->linkedPackage->content_limit }}</p>
+                                            <p class="text-[11px] text-gray-500">Content/mo</p>
+                                        </div>
+                                        <div>
+                                            <p class="text-lg font-bold text-gray-900">{{ $selectedClient->linkedPackage->workflow_limit }}</p>
+                                            <p class="text-[11px] text-gray-500">Workflows</p>
+                                        </div>
+                                        <div>
+                                            <p class="text-lg font-bold text-gray-900">{{ number_format($selectedClient->linkedPackage->storage_limit_mb) }}MB</p>
+                                            <p class="text-[11px] text-gray-500">Storage</p>
+                                        </div>
+                                        <div>
+                                            <p class="text-lg font-bold text-gray-900">{{ $selectedClient->linkedPackage->revision_limit }}</p>
+                                            <p class="text-[11px] text-gray-500">Revisions</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            @endif
 
                             <hr class="border-gray-100" />
 
@@ -875,6 +1048,37 @@ new #[Layout('components.layouts.app')] class extends Component
                             </div>
                         @endif
                     @endif
+                </div>
+            </div>
+        </div>
+    @endif
+
+    {{-- ========== STATUS CHANGE CONFIRMATION DIALOG ========== --}}
+    @if ($showStatusConfirm)
+        <div class="confirm-overlay" x-data x-on:keydown.escape.window="$wire.cancelStatusChange()">
+            <div class="confirm-box">
+                <div class="confirm-icon {{ $newStatus === 'active' ? 'bg-green-100 text-green-600' : ($newStatus === 'inactive' ? 'bg-gray-100 text-gray-600' : 'bg-blue-100 text-blue-600') }}">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+                    </svg>
+                </div>
+                <h3 class="mb-2 text-lg font-bold text-gray-900">Change Client Status</h3>
+                <p class="mb-6 text-sm text-gray-500">
+                    Change status from <strong class="text-gray-700">{{ ucfirst($currentStatus) }}</strong> to <strong class="text-gray-700">{{ ucfirst($newStatus) }}</strong>?
+                </p>
+                <div class="flex gap-3">
+                    <button
+                        wire:click="cancelStatusChange"
+                        class="flex-1 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors"
+                    >
+                        Cancel
+                    </button>
+                    <button
+                        wire:click="performStatusChange"
+                        class="flex-1 rounded-xl {{ $newStatus === 'active' ? 'bg-green-600 hover:bg-green-700' : ($newStatus === 'inactive' ? 'bg-gray-600 hover:bg-gray-700' : 'bg-blue-600 hover:bg-blue-700') }} px-4 py-2.5 text-sm font-semibold text-white transition-colors"
+                    >
+                        <i class="fas fa-check text-xs mr-1"></i> Confirm
+                    </button>
                 </div>
             </div>
         </div>

@@ -11,7 +11,7 @@ class ContractExpiryCommand extends Command
 {
     protected $signature = 'notifications:contract-expiry';
 
-    protected $description = 'Send reminders for expiring client contracts';
+    protected $description = 'Send reminders for expiring client contracts and packages';
 
     public function handle(): int
     {
@@ -24,26 +24,57 @@ class ContractExpiryCommand extends Command
 
         $days = $rule->days;
         $targetDate = now()->addDays($days);
+        $count = 0;
 
-        $clients = Client::where('status', 'active')
+        // Clients with contracts expiring within N days
+        $expiringClients = Client::where('status', 'active')
             ->whereNotNull('contract_end')
             ->whereDate('contract_end', '<=', $targetDate)
             ->whereDate('contract_end', '>=', now())
             ->get();
 
-        $count = 0;
-        foreach ($clients as $client) {
-            $daysUntil = now()->diffInDays($client->contract_end, false);
-            app(NotificationService::class)->sendNotification(
-                text: "Contract for '{$client->name}' expires in {$daysUntil} day(s) ({$client->contract_end->format('M d, Y')})",
-                type: 'warning',
-                link: route('clients', absolute: false),
-                forRole: 'admin',
+        foreach ($expiringClients as $client) {
+            $daysUntil = max(0, (int) now()->diffInDays($client->contract_end, false));
+
+            $urgency = match(true) {
+                $daysUntil <= 3  => 'critical',
+                $daysUntil <= 7  => 'high',
+                $daysUntil <= 14 => 'medium',
+                default          => 'low',
+            };
+
+            $type = match($urgency) {
+                'critical' => 'error',
+                'high'     => 'warning',
+                default    => 'info',
+            };
+
+            $notificationService = app(NotificationService::class);
+            $notificationService->sendContractExpiryNotification(
+                client: $client,
+                daysUntil: $daysUntil,
+                type: $type,
             );
             $count++;
         }
 
-        $this->info("Sent {$count} contract expiry reminder(s).");
+        // Already expired clients (contract_end is in the past, still active)
+        $expiredClients = Client::where('status', 'active')
+            ->whereNotNull('contract_end')
+            ->whereDate('contract_end', '<', now())
+            ->get();
+
+        foreach ($expiredClients as $client) {
+            $daysPast = (int) now()->diffInDays($client->contract_end);
+            $notificationService = app(NotificationService::class);
+            $notificationService->sendContractExpiredNotification(
+                client: $client,
+                daysPast: $daysPast,
+            );
+            $count++;
+        }
+
+        $this->info("Sent {$count} contract expiry notification(s).");
 
         return self::SUCCESS;
     }
