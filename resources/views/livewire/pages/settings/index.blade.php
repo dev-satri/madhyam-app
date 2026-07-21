@@ -240,21 +240,30 @@ new #[Layout('components.layouts.app')] class extends Component
         $this->dispatch('toast', message: 'Backup reminder reset', type: 'success');
     }
 
-    public function importData(): void
-    {
-        abort_unless(in_array(Auth::user()->role, ['super-admin', 'admin']), 403);
-        // Import handled via file upload in the view
-    }
-
     public function handleImport(): void
     {
         abort_unless(in_array(Auth::user()->role, ['super-admin', 'admin']), 403);
-        $uploadedFile = $this->validate([
-            'importFile' => 'required|file|mimes:json|max:10240',
+        $this->validate([
+            'importFile' => 'required|file|mimes:json,txt|max:51200',
         ]);
 
-        // This would be handled by a proper file upload - for now we use the export route
-        $this->dispatch('toast', message: 'Import feature requires file upload handler', type: 'info');
+        try {
+            $payload = json_decode(
+                file_get_contents($this->importFile->getRealPath()),
+                true,
+                512,
+                JSON_THROW_ON_ERROR
+            );
+            if (! is_array($payload)) {
+                throw new \RuntimeException('Backup file is not a valid JSON object');
+            }
+            app(\App\Services\DataBackupService::class)->import($payload);
+            app(\App\Services\ActivityLogger::class)->record(Auth::user(), 'Imported data backup');
+            $this->reset('importFile');
+            $this->dispatch('toast', message: 'Backup imported successfully. Please reload.', type: 'success');
+        } catch (\Throwable $e) {
+            $this->dispatch('toast', message: 'Import failed: '.$e->getMessage(), type: 'error');
+        }
     }
 
     public function openClearConfirm(): void

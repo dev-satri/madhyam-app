@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class DataBackupService
 {
@@ -32,22 +33,31 @@ class DataBackupService
 
     public function import(array $payload): void
     {
-        DB::transaction(function () use ($payload) {
-            foreach ($this->tables as $table) {
-                if (! isset($payload[$table])) {
-                    continue;
-                }
-                if (! DB::getSchemaBuilder()->hasTable($table)) {
-                    continue;
-                }
+        // FK checks must be disabled so we can wipe parent tables (users, clients, ...)
+        // before their referencing children. Uses delete() rather than truncate() so the
+        // whole restore is transactional — TRUNCATE causes an implicit commit in MySQL
+        // and would defeat the rollback wrapper.
+        Schema::disableForeignKeyConstraints();
+        try {
+            DB::transaction(function () use ($payload) {
+                foreach ($this->tables as $table) {
+                    if (! isset($payload[$table])) {
+                        continue;
+                    }
+                    if (! DB::getSchemaBuilder()->hasTable($table)) {
+                        continue;
+                    }
 
-                DB::table($table)->truncate();
-                $rows = $payload[$table];
-                if (! empty($rows)) {
-                    DB::table($table)->insert($rows);
+                    DB::table($table)->delete();
+                    $rows = $payload[$table];
+                    if (! empty($rows)) {
+                        DB::table($table)->insert($rows);
+                    }
                 }
-            }
-        });
+            });
+        } finally {
+            Schema::enableForeignKeyConstraints();
+        }
     }
 
     public function getTableCounts(): array

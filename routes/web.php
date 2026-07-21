@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\DataBackupController;
 use App\Livewire\Actions\Logout;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -138,22 +139,7 @@ Route::middleware('auth:web')->group(function () {
 
     Route::middleware('feature:settings')->group(function () {
         Volt::route('settings', 'pages.settings.index')->name('settings');
-        Route::get('settings/export', function () {
-            abort_unless(in_array(Auth::user()->role, ['super-admin', 'admin']), 403);
-            $tables = ['users', 'clients', 'departments', 'tasks', 'workflows', 'workflow_stages', 'contents',
-                'files', 'folders', 'file_expiries', 'invoices', 'leaves', 'salaries', 'overtime_logs',
-                'expenses', 'complaints', 'complaint_replies', 'settings', 'working_hours',
-                'feature_access', 'data_access', 'custom_roles', 'notifications', 'notification_rules', 'activity_logs'];
-            $data = [];
-            foreach ($tables as $t) {
-                $data[$t] = DB::table($t)->get()->map(fn ($r) => (array) $r)->toArray();
-            }
-
-            return response(json_encode($data, JSON_PRETTY_PRINT), 200, [
-                'Content-Type' => 'application/json',
-                'Content-Disposition' => 'attachment; filename="madhyam-backup-'.now()->format('Y-m-d').'.json"',
-            ]);
-        })->name('settings.export');
+        Route::get('settings/export', [DataBackupController::class, 'export'])->name('settings.export');
     });
 
     Route::middleware('feature:userGuide')->group(function () {
