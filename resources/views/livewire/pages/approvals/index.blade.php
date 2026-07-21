@@ -2,6 +2,7 @@
 
 use Livewire\Volt\Component;
 use Livewire\Attributes\Layout;
+use Livewire\Attributes\On;
 use Livewire\Attributes\Computed;
 use Livewire\WithPagination;
 use Illuminate\Support\Facades\DB;
@@ -274,7 +275,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                 @endif
                                 @endif
                                 <button wire:click="openDetail({{ $a->id }})" class="btn btn-ghost btn-sm"><i class="fas fa-comments text-xs"></i> Comments</button>
-                                @if($this->isManager)<button wire:click="deleteApproval({{ $a->id }})" class="btn btn-ghost btn-sm text-red-500" onclick="return confirm('Delete?')"><i class="fas fa-trash text-xs"></i></button>@endif
+                                @if($this->isManager)<button type="button" wire:click="$dispatch('open-confirm', { title: 'Delete Approval?', message: 'This approval and its comments will be removed.', type: 'danger', action: 'deleteApproval', params: [{{ $a->id }}] })" class="btn btn-ghost btn-sm text-red-500" aria-label="Delete approval"><i class="fas fa-trash text-xs"></i></button>@endif
                             </div>
                         </div>
                     </div>
@@ -321,5 +322,13 @@ new #[Layout('components.layouts.app')] class extends Component
             @endif
         </div>
         blade;
+    }
+
+    #[On('confirm-resolved')]
+    public function onConfirmResolved(string $action, array $params = []): void
+    {
+        if ($action !== '' && method_exists($this, $action)) {
+            $this->{$action}(...$params);
+        }
     }
 };

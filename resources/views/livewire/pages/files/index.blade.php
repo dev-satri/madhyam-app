@@ -2,6 +2,7 @@
 
 use Livewire\Volt\Component;
 use Livewire\Attributes\Layout;
+use Livewire\Attributes\On;
 use Livewire\Attributes\Computed;
 use Livewire\WithFileUploads;
 use Illuminate\Support\Facades\DB;
@@ -642,8 +643,9 @@ new #[Layout('components.layouts.app')] class extends Component
                                             @if($folder->total_size > 0) &middot; {{ $folder->total_size_label }}@endif
                                         </div>
                                     </div>
-                                    <button wire:click.stop="deleteFolder({{ $folder->id }})"
-                                        wire:confirm="Delete folder '{{ $folder->name }}'? Files inside will not be deleted."
+                                    <button type="button"
+                                        wire:click.stop="$dispatch('open-confirm', { title: 'Delete Folder?', message: 'Delete folder &quot;{{ addslashes($folder->name) }}&quot;? Files inside will not be deleted.', type: 'danger', action: 'deleteFolder', params: [{{ $folder->id }}] })"
+                                        aria-label="Delete folder"
                                         class="opacity-0 group-hover:opacity-100 flex-shrink-0 w-7 h-7 rounded flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50 transition-all">
                                         <i class="fas fa-trash text-xs"></i>
                                     </button>
@@ -679,8 +681,9 @@ new #[Layout('components.layouts.app')] class extends Component
                                     <div class="col-span-2 hidden sm:block text-xs text-gray-500">{{ $folder->subfolder_count }} subfolder{{ $folder->subfolder_count !== 1 ? 's' : '' }}</div>
                                     <div class="col-span-2 text-xs text-gray-500 font-mono">{{ $folder->total_size_label }}</div>
                                     <div class="col-span-1 flex justify-end opacity-0 group-hover:opacity-100 transition-opacity">
-                                        <button wire:click.stop="deleteFolder({{ $folder->id }})"
-                                            wire:confirm="Delete folder '{{ $folder->name }}'?"
+                                        <button type="button"
+                                            wire:click.stop="$dispatch('open-confirm', { title: 'Delete Folder?', message: 'Delete folder &quot;{{ addslashes($folder->name) }}&quot;? Files inside will not be deleted.', type: 'danger', action: 'deleteFolder', params: [{{ $folder->id }}] })"
+                                            aria-label="Delete folder"
                                             class="w-7 h-7 rounded flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50 transition-all">
                                             <i class="fas fa-trash text-xs"></i>
                                         </button>
@@ -793,7 +796,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                         @else
                                             <a href="{{ route('files.download', $file->id) }}" class="w-7 h-7 rounded flex items-center justify-center text-gray-400 hover:text-green-500 hover:bg-green-50" title="Download"><i class="fas fa-download text-xs"></i></a>
                                         @endif
-                                        <button wire:click.stop="deleteFile({{ $file->id }})" wire:confirm="Delete '{{ $file->name }}'?" class="w-7 h-7 rounded flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50" title="Delete"><i class="fas fa-trash text-xs"></i></button>
+                                        <button type="button" wire:click.stop="$dispatch('open-confirm', { title: 'Delete File?', message: 'Delete &quot;{{ addslashes($file->name) }}&quot;? This cannot be undone.', type: 'danger', action: 'deleteFile', params: [{{ $file->id }}] })" aria-label="Delete file" class="w-7 h-7 rounded flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50" title="Delete"><i class="fas fa-trash text-xs"></i></button>
                                     </div>
                                 </div>
 
@@ -1118,7 +1121,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                     </button>
                                 @endif
                             </div>
-                            <button wire:click="deleteFile({{ $pf->id }}); $set('showPreview', false)" wire:confirm="Delete '{{ $pf->name }}'?" class="px-3 py-1.5 rounded-lg border border-red-200 text-xs text-red-600 hover:bg-red-50">
+                            <button type="button" wire:click="$dispatch('open-confirm', { title: 'Delete File?', message: 'Delete &quot;{{ addslashes($pf->name) }}&quot;? This cannot be undone.', type: 'danger', action: 'deletePreviewFile', params: [{{ $pf->id }}] })" aria-label="Delete file" class="px-3 py-1.5 rounded-lg border border-red-200 text-xs text-red-600 hover:bg-red-50">
                                 <i class="fas fa-trash mr-1"></i>Delete
                             </button>
                         </div>
@@ -1240,5 +1243,20 @@ new #[Layout('components.layouts.app')] class extends Component
             @endif
         </div>
         blade;
+    }
+
+    public function deletePreviewFile(int $id): void
+    {
+        $this->deleteFile($id);
+        $this->showPreview = false;
+        $this->previewFileId = 0;
+    }
+
+    #[On('confirm-resolved')]
+    public function onConfirmResolved(string $action, array $params = []): void
+    {
+        if ($action !== '' && method_exists($this, $action)) {
+            $this->{$action}(...$params);
+        }
     }
 };

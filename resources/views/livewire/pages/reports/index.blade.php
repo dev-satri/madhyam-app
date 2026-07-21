@@ -2,6 +2,7 @@
 
 use Livewire\Volt\Component;
 use Livewire\Attributes\Layout;
+use Livewire\Attributes\On;
 use Livewire\Attributes\Computed;
 use Livewire\WithFileUploads;
 use Illuminate\Support\Facades\DB;
@@ -606,7 +607,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                             @endunless
                                             <button wire:click="openDetail({{ $inv->id }})" class="btn btn-icon btn-ghost" title="View Details"><i class="fas fa-eye text-gray-400 hover:text-[var(--brand)] text-xs"></i></button>
                                             @unless($this->isClient)
-                                                <button wire:click="deleteInvoice({{ $inv->id }})" wire:confirm="Are you sure you want to delete this invoice?" class="btn btn-icon btn-ghost" title="Delete"><i class="fas fa-trash text-gray-400 hover:text-red-500 text-xs"></i></button>
+                                                <button type="button" wire:click="$dispatch('open-confirm', { title: 'Delete Invoice?', message: 'This invoice will be permanently removed.', type: 'danger', action: 'deleteInvoice', params: [{{ $inv->id }}] })" class="btn btn-icon btn-ghost" aria-label="Delete invoice" title="Delete"><i class="fas fa-trash text-gray-400 hover:text-red-500 text-xs"></i></button>
                                             @endunless
                                         </div>
                                     </td>
@@ -884,5 +885,13 @@ new #[Layout('components.layouts.app')] class extends Component
             @endif
         </div>
         blade;
+    }
+
+    #[On('confirm-resolved')]
+    public function onConfirmResolved(string $action, array $params = []): void
+    {
+        if ($action !== '' && method_exists($this, $action)) {
+            $this->{$action}(...$params);
+        }
     }
 };

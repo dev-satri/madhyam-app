@@ -16,5 +16,7 @@
 </head>
 <body class="font-sans antialiased">
     {{ $slot }}
+    @livewire('confirm-dialog')
+    @livewireScripts
 </body>
 </html>

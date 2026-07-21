@@ -2,6 +2,7 @@
 
 use Livewire\Volt\Component;
 use Livewire\Attributes\Layout;
+use Livewire\Attributes\On;
 use Livewire\Attributes\Computed;
 use Livewire\WithPagination;
 use Illuminate\Support\Facades\DB;
@@ -318,7 +319,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                 <td class="text-gray-500">{{ $t->assignee_name ?? '—' }}</td>
                                 <td class="{{ $t->due_date && \Carbon\Carbon::parse($t->due_date)->isPast() && $t->status!=='completed' ? 'text-red-600 font-semibold' : '' }}">{{ $t->due_date ? \Carbon\Carbon::parse($t->due_date)->format('M d, Y') : '—' }}</td>
                                 <td><button wire:click="cycleStatus({{ $t->id }})" class="badge badge-{{ str_replace('-','-',$t->status) }} cursor-pointer hover:shadow-sm">{{ ucwords(str_replace('-',' ',$t->status)) }}</button></td>
-                                <td class="flex gap-1"><button wire:click="openDetail({{ $t->id }})" class="btn btn-ghost btn-sm btn-icon"><i class="fas fa-eye text-xs"></i></button><button wire:click="openForm({{ $t->id }})" class="btn btn-ghost btn-sm btn-icon"><i class="fas fa-pen text-xs"></i></button><button wire:click="deleteTask({{ $t->id }})" class="btn btn-ghost btn-sm btn-icon text-red-500" onclick="return confirm('Delete this task?')"><i class="fas fa-trash text-xs"></i></button></td>
+                                <td class="flex gap-1"><button wire:click="openDetail({{ $t->id }})" class="btn btn-ghost btn-sm btn-icon"><i class="fas fa-eye text-xs"></i></button><button wire:click="openForm({{ $t->id }})" class="btn btn-ghost btn-sm btn-icon"><i class="fas fa-pen text-xs"></i></button><button type="button" wire:click="$dispatch('open-confirm', { title: 'Delete Task?', message: 'This task and its checklist will be permanently removed.', type: 'danger', action: 'deleteTask', params: [{{ $t->id }}] })" class="btn btn-ghost btn-sm btn-icon text-red-500" aria-label="Delete task"><i class="fas fa-trash text-xs"></i></button></td>
                             </tr>
                             @empty
                             <tr><td colspan="8">
@@ -396,5 +397,13 @@ new #[Layout('components.layouts.app')] class extends Component
             @endif
         </div>
         blade;
+    }
+
+    #[On('confirm-resolved')]
+    public function onConfirmResolved(string $action, array $params = []): void
+    {
+        if ($action !== '' && method_exists($this, $action)) {
+            $this->{$action}(...$params);
+        }
     }
 };

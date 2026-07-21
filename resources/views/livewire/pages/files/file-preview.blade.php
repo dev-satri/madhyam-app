@@ -1,6 +1,7 @@
 <?php
 
 use Livewire\Volt\Component;
+use Livewire\Attributes\On;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 
@@ -115,9 +116,17 @@ new class extends Component
                 @if($downloadUrl)
                     <a href="{{ $downloadUrl }}" download class="btn btn-primary"><i class="fas fa-download"></i> Download</a>
                 @endif
-                <button wire:click="deleteFile" wire:confirm="Are you sure you want to delete this file?" class="btn btn-danger"><i class="fas fa-trash"></i> Delete</button>
+                <button type="button" wire:click="$dispatch('open-confirm', { title: 'Delete File?', message: 'This file will be permanently removed.', type: 'danger', action: 'deleteFile' })" aria-label="Delete file" class="btn btn-danger"><i class="fas fa-trash"></i> Delete</button>
             </div>
         </div>
         blade;
+    }
+
+    #[On('confirm-resolved')]
+    public function onConfirmResolved(string $action, array $params = []): void
+    {
+        if ($action !== '' && method_exists($this, $action)) {
+            $this->{$action}(...$params);
+        }
     }
 }

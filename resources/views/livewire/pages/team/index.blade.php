@@ -2,6 +2,7 @@
 
 use Livewire\Volt\Component;
 use Livewire\Attributes\Layout;
+use Livewire\Attributes\On;
 use Livewire\Attributes\Computed;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
@@ -372,7 +373,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                             <div class="flex items-center gap-1">
                                                 <button wire:click="openMemberForm({{ $m->id }})" class="btn btn-icon btn-ghost" title="Edit"><i class="fas fa-pen text-gray-400 hover:text-[var(--brand)] text-xs"></i></button>
                                                 @if($m->role !== 'super-admin' && $m->id !== Auth::id())
-                                                    <button wire:click="deleteMember({{ $m->id }})" wire:confirm="Are you sure you want to delete this team member?" class="btn btn-icon btn-ghost" title="Delete"><i class="fas fa-trash text-gray-400 hover:text-red-500 text-xs"></i></button>
+                                                    <button type="button" wire:click="$dispatch('open-confirm', { title: 'Delete Team Member?', message: 'This team member will lose access and be removed.', type: 'danger', action: 'deleteMember', params: [{{ $m->id }}] })" class="btn btn-icon btn-ghost" aria-label="Delete team member" title="Delete"><i class="fas fa-trash text-gray-400 hover:text-red-500 text-xs"></i></button>
                                                 @endif
                                             </div>
                                         @endif
@@ -413,7 +414,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                         @if($this->canEditMember)
                                             <div class="flex items-center gap-1">
                                                 <button wire:click="openDeptForm({{ $d->id }})" class="btn btn-icon btn-ghost" title="Edit"><i class="fas fa-pen text-gray-400 hover:text-[var(--brand)] text-xs"></i></button>
-                                                <button wire:click="deleteDept({{ $d->id }})" wire:confirm="Are you sure you want to delete this department?" class="btn btn-icon btn-ghost" title="Delete"><i class="fas fa-trash text-gray-400 hover:text-red-500 text-xs"></i></button>
+                                                <button type="button" wire:click="$dispatch('open-confirm', { title: 'Delete Department?', message: 'Members currently in this department will need to be reassigned.', type: 'danger', action: 'deleteDept', params: [{{ $d->id }}] })" class="btn btn-icon btn-ghost" aria-label="Delete department" title="Delete"><i class="fas fa-trash text-gray-400 hover:text-red-500 text-xs"></i></button>
                                             </div>
                                         @endif
                                     </td>
@@ -515,5 +516,13 @@ new #[Layout('components.layouts.app')] class extends Component
             @endif
         </div>
         blade;
+    }
+
+    #[On('confirm-resolved')]
+    public function onConfirmResolved(string $action, array $params = []): void
+    {
+        if ($action !== '' && method_exists($this, $action)) {
+            $this->{$action}(...$params);
+        }
     }
 };

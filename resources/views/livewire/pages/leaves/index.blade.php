@@ -2,6 +2,7 @@
 
 use Livewire\Volt\Component;
 use Livewire\Attributes\Layout;
+use Livewire\Attributes\On;
 use Livewire\Attributes\Computed;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
@@ -261,7 +262,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                             <button wire:click="rejectLeave({{ $l->id }})" class="btn btn-icon btn-ghost" title="Reject"><i class="fas fa-times text-gray-400 hover:text-red-500 text-xs"></i></button>
                                         </div>
                                     @else
-                                        <button wire:click="deleteLeave({{ $l->id }})" wire:confirm="Are you sure you want to delete this leave request?" class="btn btn-icon btn-ghost" title="Delete"><i class="fas fa-trash text-gray-400 hover:text-red-500 text-xs"></i></button>
+                                        <button type="button" wire:click="$dispatch('open-confirm', { title: 'Delete Leave Request?', message: 'This leave request will be permanently removed.', type: 'danger', action: 'deleteLeave', params: [{{ $l->id }}] })" class="btn btn-icon btn-ghost" aria-label="Delete leave request" title="Delete"><i class="fas fa-trash text-gray-400 hover:text-red-500 text-xs"></i></button>
                                     @endif
                                 </td>
                             </tr>
@@ -315,5 +316,13 @@ new #[Layout('components.layouts.app')] class extends Component
             @endif
         </div>
         blade;
+    }
+
+    #[On('confirm-resolved')]
+    public function onConfirmResolved(string $action, array $params = []): void
+    {
+        if ($action !== '' && method_exists($this, $action)) {
+            $this->{$action}(...$params);
+        }
     }
 };

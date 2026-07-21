@@ -2,6 +2,7 @@
 
 use Livewire\Volt\Component;
 use Livewire\Attributes\Layout;
+use Livewire\Attributes\On;
 use Livewire\Attributes\Computed;
 use Livewire\WithPagination;
 use Illuminate\Support\Facades\DB;
@@ -419,7 +420,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                     <div class="flex items-center gap-1">
                                         <button wire:click="openBreakdown({{ $s->id }})" class="btn btn-icon btn-ghost" title="View Breakdown"><i class="fas fa-eye text-gray-400 hover:text-[var(--brand)] text-xs"></i></button>
                                         @if($this->isMgr)
-                                            <button wire:click="deleteSalary({{ $s->id }})" wire:confirm="Are you sure you want to delete this salary record?" class="btn btn-icon btn-ghost" title="Delete"><i class="fas fa-trash text-gray-400 hover:text-red-500 text-xs"></i></button>
+                                            <button type="button" wire:click="$dispatch('open-confirm', { title: 'Delete Salary Record?', message: 'This salary record will be permanently removed.', type: 'danger', action: 'deleteSalary', params: [{{ $s->id }}] })" class="btn btn-icon btn-ghost" aria-label="Delete salary record" title="Delete"><i class="fas fa-trash text-gray-400 hover:text-red-500 text-xs"></i></button>
                                         @endif
                                     </div>
                                 </td>
@@ -607,5 +608,13 @@ new #[Layout('components.layouts.app')] class extends Component
             @endif
         </div>
         blade;
+    }
+
+    #[On('confirm-resolved')]
+    public function onConfirmResolved(string $action, array $params = []): void
+    {
+        if ($action !== '' && method_exists($this, $action)) {
+            $this->{$action}(...$params);
+        }
     }
 };

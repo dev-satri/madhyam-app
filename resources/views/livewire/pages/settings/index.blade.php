@@ -2,6 +2,7 @@
 
 use Livewire\Volt\Component;
 use Livewire\Attributes\Layout;
+use Livewire\Attributes\On;
 use Livewire\Attributes\Computed;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
@@ -636,7 +637,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                             </div>
                                             <div class="flex items-center gap-1">
                                                 <button wire:click="openRoleForm({{ $role->id }})" class="btn btn-icon btn-ghost" title="Edit"><i class="fas fa-pen text-gray-400 hover:text-[var(--brand)] text-xs"></i></button>
-                                                <button wire:click="deleteRole({{ $role->id }})" wire:confirm="Are you sure you want to delete this role?" class="btn btn-icon btn-ghost" title="Delete"><i class="fas fa-trash text-gray-400 hover:text-red-500 text-xs"></i></button>
+                                                <button type="button" wire:click="$dispatch('open-confirm', { title: 'Delete Role?', message: 'Users currently assigned to this role will need to be reassigned.', type: 'danger', action: 'deleteRole', params: [{{ $role->id }}] })" class="btn btn-icon btn-ghost" aria-label="Delete role" title="Delete"><i class="fas fa-trash text-gray-400 hover:text-red-500 text-xs"></i></button>
                                             </div>
                                         </div>
                                     @endforeach
@@ -699,5 +700,13 @@ new #[Layout('components.layouts.app')] class extends Component
             @endif
         </div>
         blade;
+    }
+
+    #[On('confirm-resolved')]
+    public function onConfirmResolved(string $action, array $params = []): void
+    {
+        if ($action !== '' && method_exists($this, $action)) {
+            $this->{$action}(...$params);
+        }
     }
 };

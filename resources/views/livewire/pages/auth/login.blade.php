@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Session;
 use Illuminate\Support\Str;
 use Livewire\Attributes\Layout;
+use Livewire\Attributes\On;
 use Livewire\Volt\Component;
 
 new #[Layout('components.layouts.guest')] class extends Component
@@ -127,6 +128,14 @@ new #[Layout('components.layouts.guest')] class extends Component
     {
         Artisan::call('migrate:fresh', ['--seed' => true, '--force' => true]);
         $this->errorMessage = '';
+    }
+
+    #[On('confirm-resolved')]
+    public function onConfirmResolved(string $action, array $params = []): void
+    {
+        if ($action !== '' && method_exists($this, $action)) {
+            $this->{$action}(...$params);
+        }
     }
 }; ?>
 
@@ -647,14 +656,10 @@ new #[Layout('components.layouts.guest')] class extends Component
             ">&copy; 2026 Madhyam Agency. All rights reserved.</p>
         <p style="text-align: center; color: rgba(255, 255, 255, 0.3); font-size: 10px; margin-top: 8px">
             <span
+                role="button"
+                tabindex="0"
                 style="cursor: pointer"
-                wire:click="resetDemoData"
-                x-data
-                @click="
-                    if (!confirm('Reset all demo data? This will re-seed the database.')) {
-                        $event.preventDefault();
-                    }
-                "
+                wire:click="$dispatch('open-confirm', { title: 'Reset Demo Data?', message: 'This will re-seed the database and wipe all current data. Continue?', type: 'warning', action: 'resetDemoData', confirmLabel: 'Reset' })"
             >
                 Reset Demo Data
             </span>

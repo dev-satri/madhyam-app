@@ -2,6 +2,7 @@
 
 use Livewire\Volt\Component;
 use Livewire\Attributes\Layout;
+use Livewire\Attributes\On;
 use Livewire\Attributes\Computed;
 use App\Models\Workflow;
 use App\Models\WorkflowStage;
@@ -320,6 +321,14 @@ new #[Layout('components.layouts.app')] class extends Component
     public function getUserList()
     {
         return User::orderBy('name')->get();
+    }
+
+    #[On('confirm-resolved')]
+    public function onConfirmResolved(string $action, array $params = []): void
+    {
+        if ($action !== '' && method_exists($this, $action)) {
+            $this->{$action}(...$params);
+        }
     }
 }; ?>
 
@@ -685,9 +694,9 @@ new #[Layout('components.layouts.app')] class extends Component
                             @if ($formMode === 'edit')
                                 <button
                                     type="button"
-                                    wire:click="delete({{ $editingId }})"
-                                    wire:confirm="Are you sure you want to delete this item?"
+                                    wire:click="$dispatch('open-confirm', { title: 'Delete Workflow Item?', message: 'This item and its activity will be permanently removed.', type: 'danger', action: 'delete', params: [{{ $editingId }}] })"
                                     class="btn bg-red-50 text-red-600 border border-red-200 hover:bg-red-100"
+                                    aria-label="Delete workflow item"
                                 >
                                     <i class="fas fa-trash text-xs"></i> Delete
                                 </button>
@@ -786,8 +795,9 @@ new #[Layout('components.layouts.app')] class extends Component
                                 </span>
 
                                 <button
-                                    wire:click="deleteStage({{ $stage['id'] }})"
-                                    wire:confirm="Delete this stage? Items in this stage will not be lost."
+                                    type="button"
+                                    wire:click="$dispatch('open-confirm', { title: 'Delete Stage?', message: 'Items currently in this stage will not be lost, but the stage will be removed.', type: 'warning', action: 'deleteStage', params: [{{ $stage['id'] }}] })"
+                                    aria-label="Delete stage"
                                     class="flex h-7 w-7 items-center justify-center rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors opacity-0 group-hover:opacity-100"
                                 >
                                     <i class="fas fa-trash text-xs"></i>

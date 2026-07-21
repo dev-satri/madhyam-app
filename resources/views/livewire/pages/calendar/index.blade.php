@@ -2,6 +2,7 @@
 
 use Livewire\Volt\Component;
 use Livewire\Attributes\Layout;
+use Livewire\Attributes\On;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 use App\Services\PackageService;
@@ -313,6 +314,14 @@ new #[Layout('components.layouts.app')] class extends Component
         $this->hashtags = '';
         $this->referenceFile = '';
     }
+
+    #[On('confirm-resolved')]
+    public function onConfirmResolved(string $action, array $params = []): void
+    {
+        if ($action !== '' && method_exists($this, $action)) {
+            $this->{$action}(...$params);
+        }
+    }
 }; ?>
 
 <div x-data="{ formOpen: @js($showForm) }" x-effect="$wire.showForm ? (formOpen = true) : (formOpen = false)">
@@ -548,9 +557,10 @@ new #[Layout('components.layouts.app')] class extends Component
                                             <i class="fas fa-pen text-gray-400 hover:text-[var(--brand)]"></i>
                                         </button>
                                         <button
-                                            wire:click="deleteContent({{ $item->id }})"
-                                            wire:confirm="Are you sure you want to delete this content?"
+                                            type="button"
+                                            wire:click="$dispatch('open-confirm', { title: 'Delete Content?', message: 'Are you sure you want to delete this content? This cannot be undone.', type: 'danger', action: 'deleteContent', params: [{{ $item->id }}] })"
                                             class="btn btn-icon btn-ghost"
+                                            aria-label="Delete content"
                                             title="Delete"
                                         >
                                             <i class="fas fa-trash text-gray-400 hover:text-red-500"></i>

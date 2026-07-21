@@ -2,6 +2,7 @@
 
 use Livewire\Volt\Component;
 use Livewire\Attributes\Layout;
+use Livewire\Attributes\On;
 use Livewire\Attributes\Computed;
 use Livewire\WithPagination;
 use Illuminate\Support\Facades\DB;
@@ -282,7 +283,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                     @endif
                                     @if(!$this->isClientUser)
                                         <button wire:click="openForm({{ $c->id }})" class="btn btn-icon btn-ghost" title="Edit"><i class="fas fa-pen text-gray-400 hover:text-[var(--brand)] text-xs"></i></button>
-                                        <button wire:click="deleteComplaint({{ $c->id }})" wire:confirm="Are you sure you want to delete this complaint?" class="btn btn-icon btn-ghost" title="Delete"><i class="fas fa-trash text-gray-400 hover:text-red-500 text-xs"></i></button>
+                                        <button type="button" wire:click="$dispatch('open-confirm', { title: 'Delete Complaint?', message: 'This complaint and its replies will be removed.', type: 'danger', action: 'deleteComplaint', params: [{{ $c->id }}] })" class="btn btn-icon btn-ghost" aria-label="Delete complaint" title="Delete"><i class="fas fa-trash text-gray-400 hover:text-red-500 text-xs"></i></button>
                                     @endif
                                 </div>
                             </div>
@@ -387,5 +388,13 @@ new #[Layout('components.layouts.app')] class extends Component
             @endif
         </div>
         blade;
+    }
+
+    #[On('confirm-resolved')]
+    public function onConfirmResolved(string $action, array $params = []): void
+    {
+        if ($action !== '' && method_exists($this, $action)) {
+            $this->{$action}(...$params);
+        }
     }
 };

@@ -2,6 +2,7 @@
 
 use Livewire\Volt\Component;
 use Livewire\Attributes\Layout;
+use Livewire\Attributes\On;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
 use App\Services\PackageService;
@@ -157,6 +158,14 @@ new #[Layout('components.layouts.app')] class extends Component
         DB::table('packages')->where('id', $id)->delete();
         $this->dispatch('toast', message: 'Package deleted', type: 'success');
         $this->loadData();
+    }
+
+    #[On('confirm-resolved')]
+    public function onConfirmResolved(string $action, array $params = []): void
+    {
+        if ($action !== '' && method_exists($this, $action)) {
+            $this->{$action}(...$params);
+        }
     }
 
     // ── Package Detail Modal ──
@@ -403,7 +412,12 @@ new #[Layout('components.layouts.app')] class extends Component
         @endphp
             <div
                 wire:click="openDetail({{ $pkg['id'] }})"
-                class="group relative rounded-2xl border border-gray-100 bg-white p-5 hover:shadow-lg hover:border-[var(--brand)]/30 transition-all cursor-pointer"
+                role="button"
+                tabindex="0"
+                aria-label="Open {{ $pkg['name'] }} package details"
+                x-on:keydown.enter.prevent="$wire.openDetail({{ $pkg['id'] }})"
+                x-on:keydown.space.prevent="$wire.openDetail({{ $pkg['id'] }})"
+                class="group relative flex flex-col rounded-2xl border border-gray-100 bg-white p-5 hover:shadow-lg hover:border-[var(--brand)]/30 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand)]/40 transition-all cursor-pointer"
             >
                 <div class="flex items-start justify-between mb-3">
                     <span class="badge badge-{{ $pkg['slug'] }}">{{ $pkg['name'] }}</span>
@@ -484,25 +498,28 @@ new #[Layout('components.layouts.app')] class extends Component
                     </div>
                 @endif
                 <div
-                    class="flex gap-2 mt-3 pt-3 border-t border-gray-50 opacity-0 group-hover:opacity-100 transition-opacity"
+                    class="flex items-center gap-2 mt-auto pt-3 border-t border-gray-100"
                 >
                     <button
+                        type="button"
                         wire:click.stop="openPkgForm({{ $pkg['id'] }})"
-                        class="text-xs text-[var(--brand)] hover:underline"
+                        aria-label="Edit {{ $pkg['name'] }} package"
+                        class="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2.5 py-1 text-xs font-semibold text-gray-700 hover:border-[var(--brand)]/40 hover:text-[var(--brand)] transition-colors"
                     >
-                        <i class="fas fa-pen mr-1"></i>Edit
+                        <i class="fas fa-pen text-[10px]"></i> Edit
                     </button>
                     <button
-                        wire:click.stop="deletePkg({{ $pkg['id'] }})"
-                        wire:confirm="Delete this package?"
-                        class="text-xs text-red-500 hover:underline"
+                        type="button"
+                        wire:click.stop="$dispatch('open-confirm', { title: 'Delete Package?', message: 'Delete {{ addslashes($pkg['name']) }}? This cannot be undone.', type: 'danger', action: 'deletePkg', params: [{{ $pkg['id'] }}] })"
+                        aria-label="Delete {{ $pkg['name'] }} package"
+                        class="inline-flex items-center gap-1 rounded-lg border border-red-100 bg-white px-2.5 py-1 text-xs font-semibold text-red-600 hover:bg-red-50 transition-colors"
                     >
-                        <i class="fas fa-trash mr-1"></i>Delete
+                        <i class="fas fa-trash text-[10px]"></i> Delete
                     </button>
                 </div>
             </div>
         @empty
-            <div class="col-span-4 text-center py-12">
+            <div class="col-span-1 sm:col-span-2 lg:col-span-4 text-center py-12">
                 <div class="w-16 h-16 mx-auto rounded-2xl bg-gray-100 flex items-center justify-center mb-4">
                     <i class="fas fa-box text-2xl text-gray-400"></i>
                 </div>
@@ -667,6 +684,7 @@ new #[Layout('components.layouts.app')] class extends Component
             </div>
 
             {{-- Clients Table --}}
+            @if ($viewMode === 'table')
             <div class="overflow-x-auto">
                 <table class="data-table w-full text-xs">
                     <thead>
@@ -745,7 +763,7 @@ new #[Layout('components.layouts.app')] class extends Component
                     <tbody>
                         @forelse ($this->filteredClients as $client)
                             <tr
-                                class="{{ $client['is_over_limit'] ? 'bg-red-50/50' : ($client['needs_attention'] ? 'bg-amber-50/50' : 'hover:bg-gray-50') }} transition-colors cursor-pointer"
+                                class="{{ $client['is_over_limit'] ? 'bg-red-50/50' : ($client['needs_attention'] ? 'bg-amber-50/50' : 'hover:bg-gray-50') }} transition-colors cursor-pointer focus-within:bg-gray-50"
                                 wire:click="openClientDetail({{ $client['client_id'] }})"
                             >
                                 <td>
@@ -819,11 +837,12 @@ new #[Layout('components.layouts.app')] class extends Component
                                 </td>
                                 <td class="text-center">
                                     <button
+                                        type="button"
                                         wire:click.stop="openClientDetail({{ $client['client_id'] }})"
-                                        class="text-[var(--brand)] hover:text-[var(--brand)]/80 text-xs"
-                                        title="View Details"
+                                        aria-label="View {{ $client['client_name'] }} details"
+                                        class="inline-flex h-7 w-7 items-center justify-center rounded-lg text-gray-400 hover:text-[var(--brand)] hover:bg-[var(--brand)]/5 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand)]/40 transition-colors"
                                     >
-                                        <i class="fas fa-arrow-right"></i>
+                                        <i class="fas fa-arrow-right text-xs"></i>
                                     </button>
                                 </td>
                             </tr>
@@ -844,6 +863,7 @@ new #[Layout('components.layouts.app')] class extends Component
                     </tbody>
                 </table>
             </div>
+            @endif
 
             {{-- Grid View --}}
             @if ($viewMode === 'grid')
@@ -992,18 +1012,26 @@ new #[Layout('components.layouts.app')] class extends Component
     {{-- Package Form Modal --}}
     @if ($showPkgForm)
         <div class="fixed inset-0 z-50 flex items-center justify-center p-4" x-data x-transition x-on:keydown.escape.window="$wire.set('showPkgForm', false)">
-            <div class="fixed inset-0 bg-black/50" wire:click="$set('showPkgForm', false)"></div>
+            <div class="fixed inset-0 bg-black/50 backdrop-blur-sm" wire:click="$set('showPkgForm', false)"></div>
             <div
                 class="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="pkg-form-title"
                 x-transition
             >
                 <div
                     class="sticky top-0 bg-white border-b border-gray-100 px-6 py-4 flex items-center justify-between z-10"
                 >
-                    <h3 class="text-base font-bold text-gray-900">
+                    <h3 id="pkg-form-title" class="text-base font-bold text-gray-900">
                         {{ $editingPkgId ? 'Edit Package' : 'New Package' }}
                     </h3>
-                    <button wire:click="$set('showPkgForm', false)" class="text-gray-400 hover:text-gray-600">
+                    <button
+                        type="button"
+                        wire:click="$set('showPkgForm', false)"
+                        aria-label="Close"
+                        class="inline-flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand)]/40 transition-colors"
+                    >
                         <i class="fas fa-times"></i>
                     </button>
                 </div>
@@ -1018,9 +1046,8 @@ new #[Layout('components.layouts.app')] class extends Component
                                 placeholder="e.g. Premium"
                             />
                             @error ('pkgName')
-                                <span class="text-red-500 text-xs">{{ $message }}</span>
+                                <span class="text-red-500 text-xs mt-1 block">{{ $message }}</span>
                             @enderror
-                            <span wire:error="pkgName" class="text-red-500 text-xs mt-1 block"></span>
                         </div>
                         <div>
                             <label class="block text-xs font-semibold text-gray-600 mb-1">Slug *</label>
@@ -1031,16 +1058,17 @@ new #[Layout('components.layouts.app')] class extends Component
                                 placeholder="e.g. premium"
                             />
                             @error ('pkgSlug')
-                                <span class="text-red-500 text-xs">{{ $message }}</span>
+                                <span class="text-red-500 text-xs mt-1 block">{{ $message }}</span>
                             @enderror
-                            <span wire:error="pkgSlug" class="text-red-500 text-xs mt-1 block"></span>
                         </div>
                     </div>
                     <div class="grid grid-cols-2 gap-4">
                         <div>
                             <label class="block text-xs font-semibold text-gray-600 mb-1">Monthly Price (NPR) *</label>
                             <input type="number" wire:model="pkgAmount" class="form-input w-full text-sm" min="0" />
-                            <span wire:error="pkgAmount" class="text-red-500 text-xs mt-1 block"></span>
+                            @error ('pkgAmount')
+                                <span class="text-red-500 text-xs mt-1 block">{{ $message }}</span>
+                            @enderror
                         </div>
                         <div>
                             <label class="block text-xs font-semibold text-gray-600 mb-1">Status</label>
@@ -1145,13 +1173,17 @@ new #[Layout('components.layouts.app')] class extends Component
     @if ($showDetailModal)
         @php $summary = $this->detailSummary; @endphp
         <div class="fixed inset-0 z-50 flex items-center justify-center p-4" x-data x-transition x-on:keydown.escape.window="$wire.set('showDetailModal', false)">
-            <div class="fixed inset-0 bg-black/50" wire:click="$set('showDetailModal', false)"></div>
+            <div class="fixed inset-0 bg-black/50 backdrop-blur-sm" wire:click="$set('showDetailModal', false)"></div>
             <div
                 class="relative bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="pkg-detail-title"
                 x-transition
             >
                 <div
                     class="sticky top-0 bg-white border-b border-gray-100 px-6 py-4 flex items-center justify-between z-10"
+                    id="pkg-detail-title"
                 >
                     <div class="flex items-center gap-3">
                         <span
@@ -1162,7 +1194,12 @@ new #[Layout('components.layouts.app')] class extends Component
                             >NPR {{ number_format($detailPackage['monthly_amount'] ?? 0) }}/mo</span
                         >
                     </div>
-                    <button wire:click="$set('showDetailModal', false)" class="text-gray-400 hover:text-gray-600">
+                    <button
+                        type="button"
+                        wire:click="$set('showDetailModal', false)"
+                        aria-label="Close"
+                        class="inline-flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand)]/40 transition-colors"
+                    >
                         <i class="fas fa-times text-lg"></i>
                     </button>
                 </div>
@@ -1364,19 +1401,27 @@ new #[Layout('components.layouts.app')] class extends Component
     {{-- Client Detail Modal --}}
     @if ($showClientModal && !empty($clientDetail))
         <div class="fixed inset-0 z-50 flex items-center justify-center p-4" x-data x-transition x-on:keydown.escape.window="$wire.set('showClientModal', false)">
-            <div class="fixed inset-0 bg-black/50" wire:click="$set('showClientModal', false)"></div>
+            <div class="fixed inset-0 bg-black/50 backdrop-blur-sm" wire:click="$set('showClientModal', false)"></div>
             <div
                 class="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="client-detail-title"
                 x-transition
             >
                 <div
                     class="sticky top-0 bg-white border-b border-gray-100 px-6 py-4 flex items-center justify-between z-10"
                 >
                     <div>
-                        <h3 class="text-base font-bold text-gray-900">{{ $clientDetail['name'] }}</h3>
+                        <h3 id="client-detail-title" class="text-base font-bold text-gray-900">{{ $clientDetail['name'] }}</h3>
                         <p class="text-xs text-gray-500">{{ $clientDetail['email'] }} {{ $clientDetail['phone'] ? '· ' . $clientDetail['phone'] : '' }}</p>
                     </div>
-                    <button wire:click="$set('showClientModal', false)" class="text-gray-400 hover:text-gray-600">
+                    <button
+                        type="button"
+                        wire:click="$set('showClientModal', false)"
+                        aria-label="Close"
+                        class="inline-flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand)]/40 transition-colors"
+                    >
                         <i class="fas fa-times text-lg"></i>
                     </button>
                 </div>
