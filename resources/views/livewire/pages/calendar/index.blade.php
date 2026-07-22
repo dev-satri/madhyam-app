@@ -361,7 +361,7 @@ new #[Layout('components.layouts.app')] class extends Component
                     type="text"
                     wire:model.live.debounce.250ms="search"
                     placeholder="Search content..."
-                    class="form-input pl-10"
+                    class="form-input pl-10 focus:ring-0"
                 />
                 <i class="fas fa-search absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
             </div>

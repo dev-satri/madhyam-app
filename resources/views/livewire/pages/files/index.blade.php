@@ -594,7 +594,7 @@ new #[Layout('components.layouts.app')] class extends Component
                 <div class="flex gap-2 items-center w-full sm:w-auto">
                     <div class="relative flex-1 sm:flex-none">
                         <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs"></i>
-                        <input type="text" wire:model.live.debounce.250ms="search" placeholder="Search" class="form-input pl-10 py-1.5 text-sm w-full sm:w-52">
+                        <input type="text" wire:model.live.debounce.250ms="search" placeholder="Search" class="form-input pl-10 py-1.5 text-sm w-full sm:w-52 focus:ring-0">
                     </div>
                     <select wire:model.live="sortBy" class="form-select py-1.5 text-sm w-auto">
                         <option value="name">Name</option>

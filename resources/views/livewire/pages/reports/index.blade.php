@@ -562,7 +562,7 @@ new #[Layout('components.layouts.app')] class extends Component
             @if($activeTab === 'invoices' || $this->isClient)
                 {{-- Filters --}}
                 <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end no-print">
-                    <div><label class="form-label">Search</label><div class="relative"><i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs"></i><input type="text" wire:model.live.debounce.250ms="search" placeholder="Search invoices..." class="form-input pl-10"></div></div>
+                    <div><label class="form-label">Search</label><div class="relative"><i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs"></i><input type="text" wire:model.live.debounce.250ms="search" placeholder="Search invoices..." class="form-input pl-10 focus:ring-0"></div></div>
                     <div><label class="form-label">Status</label><select wire:model="statusFilter" class="form-select">
                         <option value="">All Status</option>
                         <option value="paid">Paid</option>

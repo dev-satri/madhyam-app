@@ -333,7 +333,7 @@ new #[Layout('components.layouts.app')] class extends Component
                         <option value="{{ $y }}">{{ $y }}</option>
                     @endforeach
                 </select></div>
-                <div><label class="form-label">Search</label><div class="relative"><i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs"></i><input type="search" wire:model.live.debounce.250ms="search" placeholder="Search staff..." class="form-input pl-10"></div></div>
+                <div><label class="form-label">Search</label><div class="relative"><i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs"></i><input type="search" wire:model.live.debounce.250ms="search" placeholder="Search staff..." class="form-input pl-10 focus:ring-0"></div></div>
                 <div><label class="form-label">Role</label><select wire:model.live="roleFilter" class="form-select">
                     <option value="">All Roles</option>
                     <option value="super-admin">Super Admin</option>

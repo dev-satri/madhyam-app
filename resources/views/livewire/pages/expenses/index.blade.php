@@ -322,7 +322,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
             {{-- Filters --}}
             <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 items-end">
-                <div><label class="form-label">Search</label><div class="relative"><i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs"></i><input type="search" wire:model.live.debounce.250ms="search" placeholder="Search description, vendor, item..." class="form-input pl-10"></div></div>
+                <div><label class="form-label">Search</label><div class="relative"><i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs"></i><input type="search" wire:model.live.debounce.250ms="search" placeholder="Search description, vendor, item..." class="form-input pl-10 focus:ring-0"></div></div>
                 <div><label class="form-label">Category</label><select wire:model.live="categoryFilter" class="form-select">
                     <option value="">All Categories</option>
                     <option value="office">Office</option>

@@ -484,7 +484,7 @@ new #[Layout('components.layouts.app')] class extends Component
                             <option value="{{ $s->id }}">{{ $s->name }}</option>
                             @endforeach
                         </select>
-                        <div class="relative"><i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-[10px]"></i><input type="text" wire:model.live.debounce.300ms="activitySearch" placeholder="Search activity..." class="form-input text-xs py-1.5 pl-9 pr-3 w-48"></div>
+                        <div class="relative"><i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-[10px]"></i><input type="text" wire:model.live.debounce.300ms="activitySearch" placeholder="Search activity..." class="form-input text-xs py-1.5 pl-9 pr-3 w-48 focus:ring-0"></div>
                     </div>
                 </div>
                 @if($activities->count())
