@@ -25,10 +25,14 @@ new #[Layout('components.layouts.app')] class extends Component
     public bool $showOtDetail = false;
     public bool $showLeaveDetail = false;
     public bool $showBreakdown = false;
+    public bool $showPayConfirm = false;
+    public bool $showBulkPayConfirm = false;
     public int $selectedSalaryId = 0;
     public float $editBaseSalary = 0;
     public float $editBonus = 0;
     public float $editDeduction = 0;
+    public array $selectedIds = [];
+    public bool $selectAll = false;
 
     protected SalaryCalculator $calculator;
 
@@ -207,6 +211,90 @@ new #[Layout('components.layouts.app')] class extends Component
         }
     }
 
+    public function openPayConfirm(int $id): void
+    {
+        $this->selectedSalaryId = $id;
+        $this->showPayConfirm = true;
+    }
+
+    public function confirmPay(): void
+    {
+        if (!$this->isManager()) return;
+        DB::table('salaries')->where('id', $this->selectedSalaryId)->update(['status' => 'paid', 'updated_at' => now()]);
+        $this->showPayConfirm = false;
+        $this->dispatch('toast', message: 'Salary marked as paid', type: 'success');
+    }
+
+    public function toggleSelectAll(): void
+    {
+        if ($this->selectAll) {
+            $this->selectedIds = [];
+            $this->selectAll = false;
+        } else {
+            $salaries = $this->getSalaries()->items();
+            $this->selectedIds = array_column($salaries, 'id');
+            $this->selectAll = true;
+        }
+    }
+
+    public function toggleSelect(int $id): void
+    {
+        if (in_array($id, $this->selectedIds)) {
+            $this->selectedIds = array_values(array_diff($this->selectedIds, [$id]));
+        } else {
+            $this->selectedIds[] = $id;
+        }
+    }
+
+    public function openBulkPayConfirm(): void
+    {
+        if (empty($this->selectedIds)) {
+            $this->dispatch('toast', message: 'No salaries selected', type: 'error');
+            return;
+        }
+        $this->showBulkPayConfirm = true;
+    }
+
+    public function confirmBulkPay(): void
+    {
+        if (!$this->isManager() || empty($this->selectedIds)) return;
+        DB::table('salaries')->whereIn('id', $this->selectedIds)->where('status', 'pending')->update(['status' => 'paid', 'updated_at' => now()]);
+        $count = count($this->selectedIds);
+        $this->selectedIds = [];
+        $this->selectAll = false;
+        $this->showBulkPayConfirm = false;
+        $this->dispatch('toast', message: "$count salary record(s) marked as paid", type: 'success');
+    }
+
+    #[Computed]
+    public function paySalaryDetail()
+    {
+        if (!$this->selectedSalaryId) return null;
+        return DB::table('salaries')
+            ->join('users', 'salaries.member_id', '=', 'users.id')
+            ->where('salaries.id', $this->selectedSalaryId)
+            ->select('salaries.*', 'users.name as member_name', 'users.email as member_email')
+            ->first();
+    }
+
+    #[Computed]
+    public function bulkPayDetails(): array
+    {
+        if (empty($this->selectedIds)) return ['items' => [], 'total' => 0, 'count' => 0];
+        $items = DB::table('salaries')
+            ->join('users', 'salaries.member_id', '=', 'users.id')
+            ->whereIn('salaries.id', $this->selectedIds)
+            ->where('salaries.status', 'pending')
+            ->select('salaries.*', 'users.name as member_name')
+            ->orderBy('users.name')
+            ->get();
+        return [
+            'items' => $items,
+            'total' => $items->sum('net_salary'),
+            'count' => $items->count(),
+        ];
+    }
+
     public function deleteSalary(int $id): void
     {
         if (!$this->isManager()) return;
@@ -359,13 +447,30 @@ new #[Layout('components.layouts.app')] class extends Component
                 </select></div>
             </div>
 
+            {{-- Bulk Actions --}}
+            @if($this->isMgr && count($this->selectedIds) > 0)
+                <div class="flex items-center gap-3 bg-blue-50 border border-blue-200 rounded-xl px-4 py-2.5">
+                    <span class="text-sm font-medium text-blue-700"><i class="fas fa-check-double mr-1"></i> {{ count($this->selectedIds) }} selected</span>
+                    <button wire:click="openBulkPayConfirm" class="btn btn-success btn-sm"><i class="fas fa-money-bill-wave text-xs"></i> Pay Selected</button>
+                    <button wire:click="$set('selectedIds', []); $set('selectAll', false)" class="btn btn-ghost btn-sm text-gray-500"><i class="fas fa-times text-xs"></i> Clear</button>
+                </div>
+            @endif
+
             {{-- Table --}}
             <div class="overflow-x-auto">
                 <table class="data-table w-full">
-                    <thead><tr><th>Staff</th><th>Role</th><th>Base</th><th>OT Pay</th><th>Bonus</th><th>Deduction</th><th>Leaves</th><th>Work Days</th><th>Net Salary</th><th>Status</th><th>Actions</th></tr></thead>
+                    <thead><tr>
+                        @if($this->isMgr)
+                            <th class="w-10"><input type="checkbox" wire:click="toggleSelectAll" @if($selectAll) checked @endif class="rounded border-gray-300 text-blue-600 focus:ring-blue-500 w-3.5 h-3.5 cursor-pointer"></th>
+                        @endif
+                        <th>Staff</th><th>Role</th><th>Base</th><th>OT Pay</th><th>Bonus</th><th>Deduction</th><th>Leaves</th><th>Work Days</th><th>Net Salary</th><th>Status</th><th>Actions</th>
+                    </tr></thead>
                     <tbody>
                         @forelse($this->salaries as $s)
                             <tr>
+                                @if($this->isMgr)
+                                    <td class="w-10"><input type="checkbox" wire:click="toggleSelect({{ $s->id }})" @if(in_array($s->id, $this->selectedIds)) checked @endif class="rounded border-gray-300 text-blue-600 focus:ring-blue-500 w-3.5 h-3.5 cursor-pointer"></td>
+                                @endif
                                 <td>
                                     <div class="flex items-center gap-2">
                                         <div class="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-xs font-bold">{{ strtoupper(substr($s->member_name, 0, 2)) }}</div>
@@ -409,9 +514,11 @@ new #[Layout('components.layouts.app')] class extends Component
                                 <td class="font-bold text-green-600">{{ fmtCurrency($s->net_salary) }}</td>
                                 <td>
                                     @if($this->isMgr)
-                                        <button wire:click="cycleStatus({{ $s->id }})" class="badge badge-{{ $s->status }} cursor-pointer hover:opacity-80">
-                                            {{ ucfirst($s->status) }}
-                                        </button>
+                                        @if($s->status === 'pending')
+                                            <button wire:click="openPayConfirm({{ $s->id }})" class="btn btn-success btn-xs"><i class="fas fa-money-bill-wave text-[10px]"></i> Pay</button>
+                                        @else
+                                            <span class="badge badge-{{ $s->status }}">{{ ucfirst($s->status) }}</span>
+                                        @endif
                                     @else
                                         <span class="badge badge-{{ $s->status }}">{{ ucfirst($s->status) }}</span>
                                     @endif
@@ -602,6 +709,88 @@ new #[Layout('components.layouts.app')] class extends Component
                                 <div class="text-xs opacity-60 mt-1">{{ fmtCurrency($this->selectedSalary->base_salary) }} + {{ fmtCurrency($this->selectedSalary->overtime_pay) }} + {{ fmtCurrency($this->selectedSalary->bonus) }} - {{ fmtCurrency($this->selectedSalary->leave_deduction) }}</div>
                             </div>
                             <button wire:click="printSlip({{ $this->selectedSalary->id }})" class="btn btn-secondary w-full"><i class="fas fa-print text-sm"></i> Print Salary Slip</button>
+                        </div>
+                    </div>
+                </div>
+            @endif
+
+            {{-- Single Pay Confirmation Modal --}}
+            @if($showPayConfirm && $this->paySalaryDetail)
+                @php $ps = $this->paySalaryDetail; @endphp
+                <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" wire:click.self="$set('showPayConfirm', false)" x-on:keydown.escape.window="$wire.set('showPayConfirm', false)">
+                    <div class="modal-box w-full max-w-sm mx-4">
+                        <div class="sticky top-0 bg-white flex items-center justify-between p-4 border-b">
+                            <h3 class="font-bold text-lg text-green-600"><i class="fas fa-money-bill-wave mr-2"></i>Confirm Payment</h3>
+                            <button wire:click="$set('showPayConfirm', false)" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
+                        </div>
+                        <div class="p-4 space-y-4">
+                            <div class="text-center">
+                                <div class="w-14 h-14 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-2">
+                                    <div class="font-bold text-lg text-green-700">{{ strtoupper(substr($ps->member_name, 0, 2)) }}</div>
+                                </div>
+                                <div class="font-bold text-gray-900">{{ $ps->member_name }}</div>
+                                <div class="text-xs text-gray-500">{{ date('F Y', mktime(0,0,0,$ps->month,1,$ps->year)) }}</div>
+                            </div>
+                            <div class="bg-gray-50 rounded-xl p-3 space-y-2">
+                                <div class="flex justify-between text-sm"><span class="text-gray-500">Base Salary</span><span>{{ fmtCurrency($ps->base_salary) }}</span></div>
+                                <div class="flex justify-between text-sm"><span class="text-gray-500">Overtime Pay</span><span class="text-green-600">+{{ fmtCurrency($ps->overtime_pay) }}</span></div>
+                                <div class="flex justify-between text-sm"><span class="text-gray-500">Bonus</span><span class="text-green-600">+{{ fmtCurrency($ps->bonus) }}</span></div>
+                                @if($ps->leave_deduction > 0)
+                                <div class="flex justify-between text-sm"><span class="text-gray-500">Leave Deduction</span><span class="text-red-600">-{{ fmtCurrency($ps->leave_deduction) }}</span></div>
+                                @endif
+                                <div class="border-t border-gray-200 pt-2 flex justify-between font-bold"><span>Net Salary</span><span class="text-green-600 text-lg">{{ fmtCurrency($ps->net_salary) }}</span></div>
+                            </div>
+                            <div class="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs text-amber-700">
+                                <i class="fas fa-info-circle mr-1"></i> This will mark the salary as <strong>paid</strong>. This action cannot be undone.
+                            </div>
+                        </div>
+                        <div class="flex justify-end gap-2 p-4 border-t">
+                            <button wire:click="$set('showPayConfirm', false)" class="btn btn-secondary">Cancel</button>
+                            <button wire:click="confirmPay" class="btn btn-success" wire:loading.attr="disabled" wire:target="confirmPay"><i class="fas fa-check text-xs"></i> Confirm Payment</button>
+                        </div>
+                    </div>
+                </div>
+            @endif
+
+            {{-- Bulk Pay Confirmation Modal --}}
+            @if($showBulkPayConfirm)
+                @php $bulk = $this->bulkPayDetails; @endphp
+                <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" wire:click.self="$set('showBulkPayConfirm', false)" x-on:keydown.escape.window="$wire.set('showBulkPayConfirm', false)">
+                    <div class="modal-box w-full max-w-md mx-4 max-h-[80vh] overflow-y-auto">
+                        <div class="sticky top-0 bg-white flex items-center justify-between p-4 border-b z-10">
+                            <h3 class="font-bold text-lg text-green-600"><i class="fas fa-money-bill-wave mr-2"></i>Confirm Bulk Payment</h3>
+                            <button wire:click="$set('showBulkPayConfirm', false)" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
+                        </div>
+                        <div class="p-4 space-y-4">
+                            <div class="bg-green-50 border border-green-200 rounded-xl p-4 text-center">
+                                <div class="text-sm text-green-700">Paying <span class="font-bold">{{ $bulk['count'] }}</span> staff member(s)</div>
+                                <div class="text-2xl font-extrabold text-green-600 mt-1">{{ fmtCurrency($bulk['total']) }}</div>
+                                <div class="text-xs text-green-500 mt-1">Total amount to be paid</div>
+                            </div>
+
+                            @if($bulk['count'] > 0)
+                            <div class="space-y-1.5">
+                                @foreach($bulk['items'] as $item)
+                                    <div class="flex items-center justify-between bg-white border border-gray-100 rounded-lg px-3 py-2">
+                                        <div class="flex items-center gap-2">
+                                            <div class="w-7 h-7 rounded-full bg-gray-200 flex items-center justify-center text-[10px] font-bold">{{ strtoupper(substr($item->member_name, 0, 2)) }}</div>
+                                            <span class="text-sm font-medium">{{ $item->member_name }}</span>
+                                        </div>
+                                        <span class="text-sm font-bold text-green-600">{{ fmtCurrency($item->net_salary) }}</span>
+                                    </div>
+                                @endforeach
+                            </div>
+                            @else
+                                <p class="text-sm text-gray-400 text-center py-4">No pending salaries found in selection</p>
+                            @endif
+
+                            <div class="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs text-amber-700">
+                                <i class="fas fa-info-circle mr-1"></i> This will mark all pending salaries in your selection as <strong>paid</strong>.
+                            </div>
+                        </div>
+                        <div class="flex justify-end gap-2 p-4 border-t">
+                            <button wire:click="$set('showBulkPayConfirm', false)" class="btn btn-secondary">Cancel</button>
+                            <button wire:click="confirmBulkPay" class="btn btn-success" wire:loading.attr="disabled" wire:target="confirmBulkPay"><i class="fas fa-check-double text-xs"></i> Pay All ({{ $bulk['count'] }})</button>
                         </div>
                     </div>
                 </div>
