@@ -21,6 +21,9 @@ new #[Layout('components.layouts.app')] class extends Component
     public int $fileRetentionDays = 5;
     public float $baseSalaryDefault = 25000;
     public float $overtimeRateDefault = 500;
+    public int $paidLeavesPerYear = 12;
+    public int $workingDaysPerMonth = 22;
+    public float $dailyWageDivisor = 30;
 
     // Working hours
     public array $workingHours = [];
@@ -39,6 +42,8 @@ new #[Layout('components.layouts.app')] class extends Component
     public int $editingRoleId = 0;
     public string $formRoleName = '';
     public string $formRoleDesc = '';
+    public array $formRoleFeatures = [];
+    public array $formRolePerms = [];
 
     // Backup tab
     public int $backupIntervalDays = 7;
@@ -57,6 +62,9 @@ new #[Layout('components.layouts.app')] class extends Component
             $this->fileRetentionDays = $settings->file_retention_days;
             $this->baseSalaryDefault = (float) $settings->base_salary_default;
             $this->overtimeRateDefault = (float) $settings->overtime_rate_default;
+            $this->paidLeavesPerYear = (int) ($settings->paid_leaves_per_year ?? 12);
+            $this->workingDaysPerMonth = (int) ($settings->working_days_per_month ?? 22);
+            $this->dailyWageDivisor = (float) ($settings->daily_wage_divisor ?? 30);
             $this->backupIntervalDays = $settings->backup_reminder_days ?? 7;
         }
 
@@ -102,6 +110,9 @@ new #[Layout('components.layouts.app')] class extends Component
             'file_retention_days' => $this->fileRetentionDays,
             'base_salary_default' => $this->baseSalaryDefault,
             'overtime_rate_default' => $this->overtimeRateDefault,
+            'paid_leaves_per_year' => $this->paidLeavesPerYear,
+            'working_days_per_month' => $this->workingDaysPerMonth,
+            'daily_wage_divisor' => $this->dailyWageDivisor,
             'updated_at' => now(),
         ]);
         $this->dispatch('toast', message: 'General settings saved', type: 'success');
@@ -147,12 +158,31 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function openRoleForm(?int $id = null): void
     {
+        $this->formRoleFeatures = array_fill_keys(RbacService::FEATURES, false);
+        $this->formRolePerms = array_fill_keys(RbacService::PERMISSIONS, false);
+
         if ($id) {
             $r = DB::table('custom_roles')->where('id', $id)->first();
             if ($r) {
                 $this->editingRoleId = $id;
                 $this->formRoleName = $r->name;
                 $this->formRoleDesc = $r->description ?? '';
+                // Load existing feature access
+                $fa = DB::table('feature_access')->where('role', $r->role_key)->first();
+                if ($fa) {
+                    $features = json_decode($fa->features, true) ?? [];
+                    foreach (RbacService::FEATURES as $f) {
+                        $this->formRoleFeatures[$f] = $features[$f] ?? false;
+                    }
+                }
+                // Load existing data access
+                $da = DB::table('data_access')->where('role', $r->role_key)->first();
+                if ($da) {
+                    $perms = json_decode($da->permissions, true) ?? [];
+                    foreach (RbacService::PERMISSIONS as $p) {
+                        $this->formRolePerms[$p] = $perms[$p] ?? false;
+                    }
+                }
             }
         } else {
             $this->editingRoleId = 0;
@@ -173,6 +203,9 @@ new #[Layout('components.layouts.app')] class extends Component
                 'description' => $this->formRoleDesc ?: null,
                 'updated_at' => now(),
             ]);
+            // Get the role_key for this custom role
+            $role = DB::table('custom_roles')->where('id', $this->editingRoleId)->first();
+            $roleKey = $role->role_key;
         } else {
             $exists = DB::table('custom_roles')->where('role_key', $key)->exists();
             if ($exists) {
@@ -186,14 +219,26 @@ new #[Layout('components.layouts.app')] class extends Component
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
-            // Init feature/data access for new role
-            DB::table('feature_access')->insert(['role' => $key, 'features' => json_encode([]), 'created_at' => now(), 'updated_at' => now()]);
-            DB::table('data_access')->insert(['role' => $key, 'permissions' => json_encode([]), 'created_at' => now(), 'updated_at' => now()]);
+            $roleKey = $key;
         }
+
+        // Save feature access
+        DB::table('feature_access')->updateOrInsert(
+            ['role' => $roleKey],
+            ['features' => json_encode($this->formRoleFeatures), 'updated_at' => now(), 'created_at' => now()]
+        );
+        \Illuminate\Support\Facades\Cache::store('array')->forget("features:{$roleKey}");
+
+        // Save data access
+        DB::table('data_access')->updateOrInsert(
+            ['role' => $roleKey],
+            ['permissions' => json_encode($this->formRolePerms), 'updated_at' => now(), 'created_at' => now()]
+        );
+        \Illuminate\Support\Facades\Cache::store('array')->forget("perms:{$roleKey}");
 
         $this->showRoleForm = false;
         $this->allRoles = DB::table('feature_access')->pluck('role')->toArray();
-        $this->dispatch('toast', message: 'Role saved', type: 'success');
+        $this->dispatch('toast', message: 'Role saved with access permissions', type: 'success');
     }
 
     public function deleteRole(int $id): void
@@ -348,6 +393,15 @@ new #[Layout('components.layouts.app')] class extends Component
                                 <div><label class="form-label">File Retention Days</label><input type="number" wire:model="fileRetentionDays" class="form-input" min="1"></div>
                                 <div><label class="form-label">Base Salary Default</label><input type="number" wire:model="baseSalaryDefault" class="form-input" step="100" min="0"></div>
                                 <div><label class="form-label">Overtime Rate Default</label><input type="number" wire:model="overtimeRateDefault" class="form-input" step="10" min="0"></div>
+                                <div class="col-span-2 border-t border-gray-100 pt-4 mt-2">
+                                    <h3 class="text-sm font-bold text-gray-700 mb-3"><i class="fas fa-calendar-check mr-1 text-purple-500"></i> Leave & Salary Settings</h3>
+                                    <div class="grid grid-cols-3 gap-3">
+                                        <div><label class="form-label">Paid Leaves / Year</label><input type="number" wire:model="paidLeavesPerYear" class="form-input" min="0" max="365"></div>
+                                        <div><label class="form-label">Working Days / Month</label><input type="number" wire:model="workingDaysPerMonth" class="form-input" min="1" max="31"></div>
+                                        <div><label class="form-label">Daily Wage Divisor</label><input type="number" wire:model="dailyWageDivisor" class="form-input" step="0.01" min="1" max="31"></div>
+                                    </div>
+                                    <p class="text-xs text-gray-400 mt-2">Paid leaves after exhaustion become unpaid (salary deduction). Daily wage = Base salary ÷ Divisor.</p>
+                                </div>
                             </div>
                             <div class="flex justify-end"><button wire:click="saveGeneral" class="btn btn-primary" wire:loading.attr="disabled" wire:target="saveGeneral"><span wire:loading.remove wire:target="saveGeneral">Save Changes</span><span wire:loading wire:target="saveGeneral" class="flex items-center gap-2"><svg class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Saving...</span></button></div>
                         </div>
@@ -652,6 +706,50 @@ new #[Layout('components.layouts.app')] class extends Component
                                 <div class="space-y-3">
                                     <div><label class="form-label">Role Name</label><input type="text" wire:model="formRoleName" class="form-input" placeholder="e.g. Senior Designer"><span wire:error="formRoleName" class="text-red-500 text-xs mt-1 block"></span></div>
                                     <div><label class="form-label">Description</label><textarea wire:model="formRoleDesc" class="form-input" rows="2"></textarea></div>
+
+                                    {{-- Feature Access --}}
+                                    <div>
+                                        <label class="form-label font-semibold text-gray-700"><i class="fas fa-puzzle-piece mr-1 text-blue-500"></i> Feature Access</label>
+                                        <div class="grid grid-cols-2 gap-1 mt-1">
+                                            @php
+                                                $featureLabels = [
+                                                    'dashboard' => 'Dashboard', 'clients' => 'Clients', 'packages' => 'Packages',
+                                                    'contentPlanner' => 'Content Planner', 'workflow' => 'Workflow', 'tasks' => 'Tasks & Shoots',
+                                                    'approvals' => 'Approvals', 'files' => 'Files & Media', 'reports' => 'Reports & Finance',
+                                                    'leaves' => 'Leaves', 'expenses' => 'Expenses', 'salary' => 'Salary',
+                                                    'overtime' => 'Overtime', 'team' => 'Team', 'settings' => 'Settings',
+                                                    'userGuide' => 'User Guide', 'complaints' => 'Complaints', 'clientPortal' => 'Client Portal',
+                                                ];
+                                            @endphp
+                                            @foreach($featureLabels as $feat => $label)
+                                                <label class="flex items-center gap-2 text-xs p-1.5 rounded-lg hover:bg-gray-50 cursor-pointer {{ $formRoleFeatures[$feat] ?? false ? 'bg-blue-50' : '' }}">
+                                                    <input type="checkbox" wire:model.live="formRoleFeatures.{{ $feat }}" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500 w-3.5 h-3.5">
+                                                    <span>{{ $label }}</span>
+                                                </label>
+                                            @endforeach
+                                        </div>
+                                    </div>
+
+                                    {{-- Data Permissions --}}
+                                    <div>
+                                        <label class="form-label font-semibold text-gray-700"><i class="fas fa-database mr-1 text-purple-500"></i> Data Permissions</label>
+                                        <div class="grid grid-cols-2 gap-1 mt-1">
+                                            @php
+                                                $permLabels = [
+                                                    'seeAllTasks' => 'See All Tasks', 'seeAllWorkflow' => 'See All Workflow',
+                                                    'seeAllPerformance' => 'See All Performance', 'seeAllActivity' => 'See All Activity',
+                                                    'canAddTasks' => 'Can Add Tasks', 'canMoveWorkflow' => 'Can Move Workflow',
+                                                    'canEditWorkflow' => 'Can Edit Workflow',
+                                                ];
+                                            @endphp
+                                            @foreach($permLabels as $perm => $label)
+                                                <label class="flex items-center gap-2 text-xs p-1.5 rounded-lg hover:bg-gray-50 cursor-pointer {{ $formRolePerms[$perm] ?? false ? 'bg-purple-50' : '' }}">
+                                                    <input type="checkbox" wire:model.live="formRolePerms.{{ $perm }}" class="rounded border-gray-300 text-purple-600 focus:ring-purple-500 w-3.5 h-3.5">
+                                                    <span>{{ $label }}</span>
+                                                </label>
+                                            @endforeach
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>

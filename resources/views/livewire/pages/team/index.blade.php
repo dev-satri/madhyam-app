@@ -32,10 +32,19 @@ new #[Layout('components.layouts.app')] class extends Component
     public string $formPassword = '';
     public string $formStatus = 'active';
     public string $formJoinDate = '';
+    public float $formBaseSalary = 0;
 
     // Department form
     public string $formDeptName = '';
     public string $formDeptDesc = '';
+
+    // Role form
+    public bool $showRoleForm = false;
+    public int $editingRoleId = 0;
+    public string $formRoleName = '';
+    public string $formRoleDesc = '';
+    public array $formRoleFeatures = [];
+    public array $formRolePerms = [];
 
     public function mount(): void
     {
@@ -112,6 +121,13 @@ new #[Layout('components.layouts.app')] class extends Component
                 $this->formStatus = $m->status ?? 'active';
                 $this->formJoinDate = $m->join_date ? date('Y-m-d', strtotime($m->join_date)) : '';
                 $this->formPassword = '';
+                // Load current month base salary
+                $salary = DB::table('salaries')
+                    ->where('member_id', $id)
+                    ->where('month', now()->month)
+                    ->where('year', now()->year)
+                    ->first();
+                $this->formBaseSalary = $salary ? (float) $salary->base_salary : (float) DB::table('settings')->where('id', 1)->value('base_salary_default');
             }
         } else {
             $this->editingMemberId = 0;
@@ -123,6 +139,7 @@ new #[Layout('components.layouts.app')] class extends Component
             $this->formPassword = '';
             $this->formStatus = 'active';
             $this->formJoinDate = now()->format('Y-m-d');
+            $this->formBaseSalary = (float) DB::table('settings')->where('id', 1)->value('base_salary_default');
         }
         $this->showMemberForm = true;
     }
@@ -134,6 +151,7 @@ new #[Layout('components.layouts.app')] class extends Component
             'formEmail' => 'required|email|max:255',
             'formRole' => 'required|string',
             'formStatus' => 'required|in:active,inactive',
+            'formBaseSalary' => 'required|numeric|min:0',
         ];
         if (!$this->editingMemberId) {
             $rules['formPassword'] = 'required|string|min:8';
@@ -165,10 +183,44 @@ new #[Layout('components.layouts.app')] class extends Component
 
         if ($this->editingMemberId) {
             DB::table('users')->where('id', $this->editingMemberId)->update($data);
+            $memberId = $this->editingMemberId;
         } else {
             $data['created_at'] = now();
             $data['updated_at'] = now();
-            DB::table('users')->insert($data);
+            $memberId = DB::table('users')->insertGetId($data);
+        }
+
+        // Create or update salary record for current month
+        $month = (int) now()->month;
+        $year = (int) now()->year;
+        $salaryExists = DB::table('salaries')
+            ->where('member_id', $memberId)
+            ->where('month', $month)
+            ->where('year', $year)
+            ->exists();
+
+        if ($salaryExists) {
+            DB::table('salaries')
+                ->where('member_id', $memberId)
+                ->where('month', $month)
+                ->where('year', $year)
+                ->update(['base_salary' => $this->formBaseSalary, 'updated_at' => now()]);
+        } else {
+            DB::table('salaries')->insert([
+                'member_id' => $memberId,
+                'month' => $month,
+                'year' => $year,
+                'base_salary' => $this->formBaseSalary,
+                'status' => 'pending',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
+
+        // Recalculate salary if calculator exists
+        $salaryModel = \App\Models\Salary::where('member_id', $memberId)->where('month', $month)->where('year', $year)->first();
+        if ($salaryModel) {
+            app(\App\Services\SalaryCalculator::class)->recalc($salaryModel);
         }
 
         $this->showMemberForm = false;
@@ -251,6 +303,106 @@ new #[Layout('components.layouts.app')] class extends Component
         $this->dispatch('toast', message: 'Department deleted', type: 'success');
     }
 
+    public function openRoleForm(?int $id = null): void
+    {
+        $this->formRoleFeatures = array_fill_keys(RbacService::FEATURES, false);
+        $this->formRolePerms = array_fill_keys(RbacService::PERMISSIONS, false);
+
+        if ($id) {
+            $r = DB::table('custom_roles')->where('id', $id)->first();
+            if ($r) {
+                $this->editingRoleId = $id;
+                $this->formRoleName = $r->name;
+                $this->formRoleDesc = $r->description ?? '';
+                $fa = DB::table('feature_access')->where('role', $r->role_key)->first();
+                if ($fa) {
+                    $features = json_decode($fa->features, true) ?? [];
+                    foreach (RbacService::FEATURES as $f) {
+                        $this->formRoleFeatures[$f] = $features[$f] ?? false;
+                    }
+                }
+                $da = DB::table('data_access')->where('role', $r->role_key)->first();
+                if ($da) {
+                    $perms = json_decode($da->permissions, true) ?? [];
+                    foreach (RbacService::PERMISSIONS as $p) {
+                        $this->formRolePerms[$p] = $perms[$p] ?? false;
+                    }
+                }
+            }
+        } else {
+            $this->editingRoleId = 0;
+            $this->formRoleName = '';
+            $this->formRoleDesc = '';
+        }
+        $this->showRoleForm = true;
+    }
+
+    public function saveRole(): void
+    {
+        $this->validate(['formRoleName' => 'required|string|max:255']);
+        $key = \Illuminate\Support\Str::slug($this->formRoleName);
+
+        if ($this->editingRoleId) {
+            DB::table('custom_roles')->where('id', $this->editingRoleId)->update([
+                'name' => $this->formRoleName,
+                'description' => $this->formRoleDesc ?: null,
+                'updated_at' => now(),
+            ]);
+            $role = DB::table('custom_roles')->where('id', $this->editingRoleId)->first();
+            $roleKey = $role->role_key;
+        } else {
+            $exists = DB::table('custom_roles')->where('role_key', $key)->exists();
+            if ($exists) {
+                $this->dispatch('toast', message: 'Role already exists', type: 'error');
+                return;
+            }
+            DB::table('custom_roles')->insert([
+                'role_key' => $key,
+                'name' => $this->formRoleName,
+                'description' => $this->formRoleDesc ?: null,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+            $roleKey = $key;
+        }
+
+        DB::table('feature_access')->updateOrInsert(
+            ['role' => $roleKey],
+            ['features' => json_encode($this->formRoleFeatures), 'updated_at' => now(), 'created_at' => now()]
+        );
+        \Illuminate\Support\Facades\Cache::store('array')->forget("features:{$roleKey}");
+
+        DB::table('data_access')->updateOrInsert(
+            ['role' => $roleKey],
+            ['permissions' => json_encode($this->formRolePerms), 'updated_at' => now(), 'created_at' => now()]
+        );
+        \Illuminate\Support\Facades\Cache::store('array')->forget("perms:{$roleKey}");
+
+        $this->showRoleForm = false;
+        $this->dispatch('toast', message: 'Role saved with access permissions', type: 'success');
+    }
+
+    public function deleteRole(int $id): void
+    {
+        $role = DB::table('custom_roles')->where('id', $id)->first();
+        if ($role) {
+            $memberCount = DB::table('users')->where('role', $role->role_key)->count();
+            if ($memberCount > 0) {
+                $this->dispatch('toast', message: 'Cannot delete role with members', type: 'error');
+                return;
+            }
+            DB::table('custom_roles')->where('id', $id)->delete();
+            DB::table('feature_access')->where('role', $role->role_key)->delete();
+            DB::table('data_access')->where('role', $role->role_key)->delete();
+            \Illuminate\Support\Facades\Cache::store('array')->forget("features:{$role->role_key}");
+            \Illuminate\Support\Facades\Cache::store('array')->forget("perms:{$role->role_key}");
+            $this->dispatch('toast', message: 'Role deleted', type: 'success');
+        }
+    }
+
+    #[Computed]
+    public function customRoles() { return DB::table('custom_roles')->get(); }
+
     #[Computed]
     public function roleCounts(): array { return $this->getRoleCounts(); }
 
@@ -273,6 +425,9 @@ new #[Layout('components.layouts.app')] class extends Component
 
     #[Computed]
     public function canEditMember(): bool { return $this->canEdit(); }
+
+    #[Computed]
+    public function builtInRoles(): array { return RbacService::BUILT_IN_ROLES; }
 
     public function render(): mixed
     {
@@ -316,6 +471,7 @@ new #[Layout('components.layouts.app')] class extends Component
             <div class="tab-group">
                 <button wire:click="$set('activeTab', 'members')" class="tab-btn {{ $activeTab === 'members' ? 'active' : '' }}">Members</button>
                 <button wire:click="$set('activeTab', 'departments')" class="tab-btn {{ $activeTab === 'departments' ? 'active' : '' }}">Departments</button>
+                <button wire:click="$set('activeTab', 'roles')" class="tab-btn {{ $activeTab === 'roles' ? 'active' : '' }}">Roles</button>
             </div>
 
             {{-- Members Tab --}}
@@ -433,7 +589,82 @@ new #[Layout('components.layouts.app')] class extends Component
                 </div>
             @endif
 
-            {{-- Member Form Modal --}}
+            {{-- Roles Tab --}}
+            @if($activeTab === 'roles')
+                <div class="flex justify-between items-center">
+                    <p class="text-sm text-gray-500">Built-in roles cannot be deleted. Create custom roles with specific feature and data access.</p>
+                    @if($this->canEditMember)
+                        <button wire:click="openRoleForm" class="btn btn-primary btn-sm"><i class="fas fa-plus text-sm"></i> Add Role</button>
+                    @endif
+                </div>
+
+                {{-- Built-in Roles --}}
+                <div>
+                    <h3 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Built-in Roles</h3>
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-2">
+                        @foreach($this->builtInRoles as $builtin)
+                            <div class="bg-white rounded-xl border border-gray-100 p-3 text-center">
+                                <div class="font-semibold text-sm text-gray-800">{{ roleName($builtin) }}</div>
+                                <div class="text-xs text-gray-400 mt-0.5">{{ $builtin }}</div>
+                            </div>
+                        @endforeach
+                    </div>
+                </div>
+
+                {{-- Custom Roles --}}
+                <div>
+                    <h3 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Custom Roles</h3>
+                    @if($this->customRoles->count())
+                        <div class="space-y-2">
+                            @foreach($this->customRoles as $role)
+                                @php
+                                    $fa = DB::table('feature_access')->where('role', $role->role_key)->first();
+                                    $enabledFeatures = $fa ? array_keys(array_filter(json_decode($fa->features, true) ?? [])) : [];
+                                    $memberCount = DB::table('users')->where('role', $role->role_key)->count();
+                                @endphp
+                                <div class="bg-white rounded-xl border border-gray-100 p-4 hover:shadow-sm transition-shadow">
+                                    <div class="flex items-start justify-between">
+                                        <div class="flex-1 min-w-0">
+                                            <div class="flex items-center gap-2">
+                                                <span class="font-semibold text-sm text-gray-800">{{ $role->name }}</span>
+                                                <span class="text-xs text-gray-400">{{ $role->role_key }}</span>
+                                                @if($memberCount > 0)
+                                                    <span class="badge badge-info text-[10px]">{{ $memberCount }} member{{ $memberCount > 1 ? 's' : '' }}</span>
+                                                @endif
+                                            </div>
+                                            @if($role->description)
+                                                <p class="text-xs text-gray-500 mt-0.5">{{ $role->description }}</p>
+                                            @endif
+                                            @if(count($enabledFeatures) > 0)
+                                                <div class="flex flex-wrap gap-1 mt-2">
+                                                    @foreach(array_slice($enabledFeatures, 0, 6) as $f)
+                                                        <span class="text-[10px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded-full">{{ $f }}</span>
+                                                    @endforeach
+                                                    @if(count($enabledFeatures) > 6)
+                                                        <span class="text-[10px] text-gray-400">+{{ count($enabledFeatures) - 6 }} more</span>
+                                                    @endif
+                                                </div>
+                                            @else
+                                                <p class="text-[10px] text-gray-400 mt-1">No features enabled</p>
+                                            @endif
+                                        </div>
+                                        <div class="flex items-center gap-1 shrink-0">
+                                            <button wire:click="openRoleForm({{ $role->id }})" class="btn btn-icon btn-ghost" title="Edit"><i class="fas fa-pen text-gray-400 hover:text-[var(--brand)] text-xs"></i></button>
+                                            <button type="button" wire:click="$dispatch('open-confirm', { title: 'Delete Role?', message: 'This role will be permanently removed. Members using it will need to be reassigned.', type: 'danger', action: 'deleteRole', params: [{{ $role->id }}] })" class="btn btn-icon btn-ghost" aria-label="Delete role" title="Delete"><i class="fas fa-trash text-gray-400 hover:text-red-500 text-xs"></i></button>
+                                        </div>
+                                    </div>
+                                </div>
+                            @endforeach
+                        </div>
+                    @else
+                        <div class="bg-white rounded-2xl border border-gray-100 p-12 text-center">
+                            <i class="fas fa-user-tag text-4xl text-gray-200 mb-3"></i>
+                            <p class="text-sm text-gray-400">No custom roles yet</p>
+                            <p class="text-xs text-gray-300 mt-1">Create roles with specific feature access</p>
+                        </div>
+                    @endif
+                </div>
+            @endif
             @if($showMemberForm)
                 <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" wire:click.self="$set('showMemberForm', false)" x-on:keydown.escape.window="$wire.set('showMemberForm', false)">
                     <div class="modal-box w-full max-w-lg mx-4">
@@ -486,6 +717,12 @@ new #[Layout('components.layouts.app')] class extends Component
                                     <span wire:error="formPassword" class="text-red-500 text-xs mt-1 block"></span>
                                 </div>
                             </div>
+                            <div>
+                                <label class="form-label">Base Salary (Monthly)</label>
+                                <input type="number" wire:model="formBaseSalary" class="form-input" step="100" min="0" placeholder="e.g. 25000">
+                                <p class="text-xs text-gray-400 mt-1">Sets the base salary for the current month. Used in salary calculations.</p>
+                                <span wire:error="formBaseSalary" class="text-red-500 text-xs mt-1 block"></span>
+                            </div>
                         </div>
                         <div class="sticky bottom-0 bg-white flex justify-end gap-2 p-4 border-t">
                             <button wire:click="$set('showMemberForm', false)" class="btn btn-secondary">Cancel</button>
@@ -510,6 +747,68 @@ new #[Layout('components.layouts.app')] class extends Component
                         <div class="sticky bottom-0 bg-white flex justify-end gap-2 p-4 border-t">
                             <button wire:click="$set('showDeptForm', false)" class="btn btn-secondary">Cancel</button>
                             <button wire:click="saveDept" class="btn btn-primary">Save</button>
+                        </div>
+                    </div>
+                </div>
+            @endif
+
+            {{-- Role Form Modal --}}
+            @if($showRoleForm)
+                <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" wire:click.self="$set('showRoleForm', false)" x-on:keydown.escape.window="$wire.set('showRoleForm', false)">
+                    <div class="modal-box w-full max-w-lg mx-4 max-h-[85vh] overflow-y-auto">
+                        <div class="sticky top-0 bg-white flex items-center justify-between p-4 border-b z-10">
+                            <h3 class="font-bold text-lg">{{ $editingRoleId ? 'Edit' : 'Add' }} Role</h3>
+                            <button wire:click="$set('showRoleForm', false)" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
+                        </div>
+                        <div class="p-4 space-y-4">
+                            <div><label class="form-label">Role Name</label><input type="text" wire:model="formRoleName" class="form-input" placeholder="e.g. Senior Designer"><span wire:error="formRoleName" class="text-red-500 text-xs mt-1 block"></span></div>
+                            <div><label class="form-label">Description</label><textarea wire:model="formRoleDesc" class="form-input" rows="2" placeholder="Optional description"></textarea></div>
+
+                            <div>
+                                <label class="form-label font-semibold text-gray-700"><i class="fas fa-puzzle-piece mr-1 text-blue-500"></i> Feature Access</label>
+                                <div class="grid grid-cols-2 gap-1 mt-1">
+                                    @php
+                                        $featureLabels = [
+                                            'dashboard' => 'Dashboard', 'clients' => 'Clients', 'packages' => 'Packages',
+                                            'contentPlanner' => 'Content Planner', 'workflow' => 'Workflow', 'tasks' => 'Tasks & Shoots',
+                                            'approvals' => 'Approvals', 'files' => 'Files & Media', 'reports' => 'Reports & Finance',
+                                            'leaves' => 'Leaves', 'expenses' => 'Expenses', 'salary' => 'Salary',
+                                            'overtime' => 'Overtime', 'team' => 'Team', 'settings' => 'Settings',
+                                            'userGuide' => 'User Guide', 'complaints' => 'Complaints', 'clientPortal' => 'Client Portal',
+                                        ];
+                                    @endphp
+                                    @foreach($featureLabels as $feat => $label)
+                                        <label class="flex items-center gap-2 text-xs p-1.5 rounded-lg hover:bg-gray-50 cursor-pointer {{ ($formRoleFeatures[$feat] ?? false) ? 'bg-blue-50' : '' }}">
+                                            <input type="checkbox" wire:model.live="formRoleFeatures.{{ $feat }}" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500 w-3.5 h-3.5">
+                                            <span>{{ $label }}</span>
+                                        </label>
+                                    @endforeach
+                                </div>
+                            </div>
+
+                            <div>
+                                <label class="form-label font-semibold text-gray-700"><i class="fas fa-database mr-1 text-purple-500"></i> Data Permissions</label>
+                                <div class="grid grid-cols-2 gap-1 mt-1">
+                                    @php
+                                        $permLabels = [
+                                            'seeAllTasks' => 'See All Tasks', 'seeAllWorkflow' => 'See All Workflow',
+                                            'seeAllPerformance' => 'See All Performance', 'seeAllActivity' => 'See All Activity',
+                                            'canAddTasks' => 'Can Add Tasks', 'canMoveWorkflow' => 'Can Move Workflow',
+                                            'canEditWorkflow' => 'Can Edit Workflow',
+                                        ];
+                                    @endphp
+                                    @foreach($permLabels as $perm => $label)
+                                        <label class="flex items-center gap-2 text-xs p-1.5 rounded-lg hover:bg-gray-50 cursor-pointer {{ ($formRolePerms[$perm] ?? false) ? 'bg-purple-50' : '' }}">
+                                            <input type="checkbox" wire:model.live="formRolePerms.{{ $perm }}" class="rounded border-gray-300 text-purple-600 focus:ring-purple-500 w-3.5 h-3.5">
+                                            <span>{{ $label }}</span>
+                                        </label>
+                                    @endforeach
+                                </div>
+                            </div>
+                        </div>
+                        <div class="sticky bottom-0 bg-white flex justify-end gap-2 p-4 border-t">
+                            <button wire:click="$set('showRoleForm', false)" class="btn btn-secondary">Cancel</button>
+                            <button wire:click="saveRole" class="btn btn-primary" wire:loading.attr="disabled" wire:target="saveRole"><span wire:loading.remove wire:target="saveRole">Save</span><span wire:loading wire:target="saveRole" class="flex items-center gap-2"><svg class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Saving...</span></button>
                         </div>
                     </div>
                 </div>

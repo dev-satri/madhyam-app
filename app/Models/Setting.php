@@ -11,12 +11,16 @@ class Setting extends Model
         'currency', 'brand_color', 'file_retention_days',
         'base_salary_default', 'overtime_rate_default',
         'backup_reminder_days', 'last_backup_reminder',
+        'paid_leaves_per_year', 'working_days_per_month', 'daily_wage_divisor',
     ];
 
     protected $casts = [
         'last_backup_reminder' => 'datetime',
         'base_salary_default' => 'decimal:2',
         'overtime_rate_default' => 'decimal:2',
+        'paid_leaves_per_year' => 'integer',
+        'working_days_per_month' => 'integer',
+        'daily_wage_divisor' => 'decimal:2',
     ];
 
     public static function current(): self

@@ -6,6 +6,8 @@ use Livewire\Attributes\On;
 use Livewire\Attributes\Computed;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Response;
+use App\Models\Setting;
 
 new #[Layout('components.layouts.app')] class extends Component
 {
@@ -18,10 +20,24 @@ new #[Layout('components.layouts.app')] class extends Component
     public string $formEndDate = '';
     public string $formReason = '';
 
+    public bool $showRejectModal = false;
+    public int $rejectTargetId = 0;
+    public string $rejectReason = '';
+
+    public bool $showDetail = false;
+    public int $detailId = 0;
+
     public function mount(): void
     {
         $this->formStartDate = now()->format('Y-m-d');
         $this->formEndDate = now()->format('Y-m-d');
+    }
+
+    #[On('open-leave-detail')]
+    public function openDetail($id): void
+    {
+        $this->detailId = $id;
+        $this->showDetail = true;
     }
 
     public function isManager(): bool
@@ -45,26 +61,17 @@ new #[Layout('components.layouts.app')] class extends Component
         ];
     }
 
-    public function getPendingApprovals()
-    {
-        if (!$this->isManager()) return collect();
-        return DB::table('leaves')
-            ->join('users', 'leaves.member_id', '=', 'users.id')
-            ->where('leaves.status', 'pending')
-            ->select('leaves.*', 'users.name as member_name', 'users.avatar')
-            ->orderBy('leaves.created_at', 'desc')
-            ->get();
-    }
-
     public function getLeaves()
     {
         $q = DB::table('leaves')
-            ->join('users', 'leaves.member_id', '=', 'users.id');
+            ->join('users', 'leaves.member_id', '=', 'users.id')
+            ->leftJoin('users as approver', 'leaves.approved_by', '=', 'approver.id');
 
         if (!$this->isManager()) $q->where('leaves.member_id', Auth::id());
         if ($this->statusFilter) $q->where('leaves.status', $this->statusFilter);
 
-        return $q->select('leaves.*', 'users.name as member_name')
+        return $q->select('leaves.*', 'users.name as member_name', 'approver.name as approver_name')
+            ->orderByRaw("FIELD(leaves.status, 'pending', 'rejected', 'approved')")
             ->orderBy('leaves.created_at', 'desc')
             ->get()
             ->map(function ($l) {
@@ -143,16 +150,31 @@ new #[Layout('components.layouts.app')] class extends Component
         DB::table('leaves')->where('id', $id)->update([
             'status' => 'approved',
             'approved_by' => Auth::id(),
+            'updated_at' => now(),
         ]);
         $this->dispatch('toast', message: 'Leave approved', type: 'success');
     }
 
-    public function rejectLeave(int $id): void
+    public function openRejectModal(int $id): void
     {
-        DB::table('leaves')->where('id', $id)->update([
+        $this->rejectTargetId = $id;
+        $this->rejectReason = '';
+        $this->showRejectModal = true;
+    }
+
+    public function submitRejection(): void
+    {
+        if (!trim($this->rejectReason)) {
+            $this->dispatch('toast', message: 'Please provide a reason for rejection', type: 'error');
+            return;
+        }
+        DB::table('leaves')->where('id', $this->rejectTargetId)->update([
             'status' => 'rejected',
             'approved_by' => Auth::id(),
+            'rejection_reason' => trim($this->rejectReason),
+            'updated_at' => now(),
         ]);
+        $this->showRejectModal = false;
         $this->dispatch('toast', message: 'Leave rejected', type: 'success');
     }
 
@@ -160,6 +182,33 @@ new #[Layout('components.layouts.app')] class extends Component
     {
         DB::table('leaves')->where('id', $id)->delete();
         $this->dispatch('toast', message: 'Leave deleted', type: 'success');
+    }
+
+    public function exportCsv()
+    {
+        $leaves = $this->getLeaves();
+        $headers = [
+            'Content-Type' => 'text/csv',
+            'Content-Disposition' => 'attachment; filename="leaves_export.csv"',
+        ];
+        $callback = function () use ($leaves) {
+            $file = fopen('php://output', 'w');
+            fputcsv($file, ['Member', 'Type', 'Start Date', 'End Date', 'Reason', 'Status', 'Rejection Reason', 'Requested Date']);
+            foreach ($leaves as $l) {
+                fputcsv($file, [
+                    $l->member_name,
+                    ucfirst($l->type),
+                    $l->start_date,
+                    $l->end_date,
+                    $l->reason ?? '',
+                    ucfirst($l->status),
+                    $l->rejection_reason ?? '',
+                    $l->created_at,
+                ]);
+            }
+            fclose($file);
+        };
+        return Response::stream($callback, 200, $headers);
     }
 
     #[Computed]
@@ -175,12 +224,6 @@ new #[Layout('components.layouts.app')] class extends Component
     }
 
     #[Computed]
-    public function pending()
-    {
-        return $this->getPendingApprovals();
-    }
-
-    #[Computed]
     public function team()
     {
         return DB::table('users')->where('status', 'active')->orderBy('name')->get();
@@ -192,127 +235,274 @@ new #[Layout('components.layouts.app')] class extends Component
         return $this->isManager();
     }
 
+    #[Computed]
+    public function remainingPaidLeaves(): array
+    {
+        $userId = Auth::id();
+        $settings = Setting::current();
+        $maxPaid = (int) $settings->paid_leaves_per_year;
+        $year = (int) now()->year;
+        $yearStart = \Carbon\Carbon::createFromDate($year, 1, 1);
+        $yearEnd = \Carbon\Carbon::createFromDate($year, 12, 31);
+
+        $yearLeaves = DB::table('leaves')
+            ->where('member_id', $userId)
+            ->where('status', 'approved')
+            ->whereDate('start_date', '<=', $yearEnd)
+            ->whereDate('end_date', '>=', $yearStart)
+            ->get();
+
+        $used = 0;
+        foreach ($yearLeaves as $l) {
+            $days = (int) \Carbon\Carbon::parse($l->start_date)->diffInDays(\Carbon\Carbon::parse($l->end_date)) + 1;
+            if (in_array($l->type, ['annual', 'casual'], true)) {
+                $used += $days;
+            }
+        }
+
+        return [
+            'max' => $maxPaid,
+            'used' => $used,
+            'remaining' => max(0, $maxPaid - $used),
+        ];
+    }
+
+    #[Computed]
+    public function detailLeave()
+    {
+        return DB::table('leaves')
+            ->join('users', 'leaves.member_id', '=', 'users.id')
+            ->leftJoin('users as approver', 'leaves.approved_by', '=', 'approver.id')
+            ->select('leaves.*', 'users.name as member_name', 'users.email as member_email', 'approver.name as approver_name')
+            ->where('leaves.id', $this->detailId)
+            ->first();
+    }
+
     public function render(): mixed
     {
         return <<<'blade'
         <div class="space-y-6">
+            {{-- Header --}}
             <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                <div><h1 class="text-2xl font-extrabold text-gray-900">Leaves</h1><p class="text-sm text-gray-500">Manage leave requests and approvals</p></div>
-                <button wire:click="openForm" class="btn btn-primary"><i class="fas fa-plus text-sm"></i> Apply Leave</button>
+                <div>
+                    <h1 class="text-2xl font-extrabold text-gray-900">Leaves</h1>
+                    <p class="text-sm text-gray-500">Manage leave requests and approvals</p>
+                </div>
+                <div class="flex gap-2">
+                    <a href="{{ route('leaves') }}/export" wire:click.prevent="$wire.exportCsv()" class="btn btn-secondary btn-sm"><i class="fas fa-download text-xs"></i> Export CSV</a>
+                    <button wire:click="openForm" class="btn btn-primary btn-sm"><i class="fas fa-plus text-xs"></i> Apply Leave</button>
+                </div>
             </div>
 
             {{-- Stats --}}
-            <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div class="stat-card"><div class="stat-icon bg-blue-100 text-blue-600"><i class="fas fa-calendar"></i></div><div class="stat-value">{{ $this->stats['my_leaves'] }}</div><div class="stat-label">My Leaves</div></div>
-                <div class="stat-card"><div class="stat-icon bg-amber-100 text-amber-600"><i class="fas fa-clock"></i></div><div class="stat-value">{{ $this->stats['pending'] }}</div><div class="stat-label">Pending</div></div>
-                <div class="stat-card"><div class="stat-icon bg-green-100 text-green-600"><i class="fas fa-check"></i></div><div class="stat-value">{{ $this->stats['approved'] }}</div><div class="stat-label">Approved</div></div>
-                <div class="stat-card"><div class="stat-icon bg-red-100 text-red-600"><i class="fas fa-times"></i></div><div class="stat-value">{{ $this->stats['rejected'] }}</div><div class="stat-label">Rejected</div></div>
-            </div>
-
-            {{-- Pending Approvals (Manager+) --}}
-            @if($this->isMgr && $this->pending->count())
-                <div>
-                    <h2 class="font-bold text-lg mb-3">Pending Approvals</h2>
-                    <div class="grid gap-3 md:grid-cols-2">
-                        @foreach($this->pending as $p)
-                            <div class="bg-white border rounded-xl p-4 flex items-start gap-3">
-                                <div class="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center font-bold text-sm">{{ strtoupper(substr($p->member_name, 0, 2)) }}</div>
-                                <div class="flex-1">
-                                    <div class="font-semibold">{{ $p->member_name }}</div>
-                                    <div class="text-sm text-gray-600">{{ ucfirst($p->type) }} Leave</div>
-                                    <div class="text-xs text-gray-500">{{ fmtDate($p->start_date) }} — {{ fmtDate($p->end_date) }}</div>
-                                    @if($p->reason)<div class="text-xs text-gray-500 mt-1">{{ $p->reason }}</div>@endif
-                                </div>
-                                <div class="flex gap-1">
-                                    <button wire:click="approveLeave({{ $p->id }})" class="btn btn-success btn-sm"><i class="fas fa-check"></i></button>
-                                    <button wire:click="rejectLeave({{ $p->id }})" class="btn btn-danger btn-sm"><i class="fas fa-times"></i></button>
-                                </div>
-                            </div>
-                        @endforeach
-                    </div>
+            <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
+                <button wire:click="$set('statusFilter','')" class="stat-card text-center py-3 text-left transition-all {{ $statusFilter === '' ? 'ring-2 ring-[var(--brand)]' : '' }}">
+                    <p class="stat-value text-xl font-extrabold text-blue-600">{{ $this->stats['my_leaves'] }}</p>
+                    <p class="stat-label text-[11px]">My Leaves</p>
+                </button>
+                <button wire:click="$set('statusFilter','pending')" class="stat-card text-center py-3 text-left transition-all {{ $statusFilter === 'pending' ? 'ring-2 ring-[var(--brand)]' : '' }}">
+                    <p class="stat-value text-xl font-extrabold text-amber-600">{{ $this->stats['pending'] }}</p>
+                    <p class="stat-label text-[11px]">Pending</p>
+                </button>
+                <button wire:click="$set('statusFilter','approved')" class="stat-card text-center py-3 text-left transition-all {{ $statusFilter === 'approved' ? 'ring-2 ring-[var(--brand)]' : '' }}">
+                    <p class="stat-value text-xl font-extrabold text-green-600">{{ $this->stats['approved'] }}</p>
+                    <p class="stat-label text-[11px]">Approved</p>
+                </button>
+                <button wire:click="$set('statusFilter','rejected')" class="stat-card text-center py-3 text-left transition-all {{ $statusFilter === 'rejected' ? 'ring-2 ring-[var(--brand)]' : '' }}">
+                    <p class="stat-value text-xl font-extrabold text-red-600">{{ $this->stats['rejected'] }}</p>
+                    <p class="stat-label text-[11px]">Rejected</p>
+                </button>
+                <div class="stat-card text-center py-3 text-left bg-purple-50 border-purple-200">
+                    <p class="stat-value text-xl font-extrabold text-purple-600">{{ $this->remainingPaidLeaves['remaining'] }}<span class="text-xs text-purple-400 font-normal">/{{ $this->remainingPaidLeaves['max'] }}</span></p>
+                    <p class="stat-label text-[11px]">Paid Leaves Left</p>
                 </div>
-            @endif
+            </div>
 
             {{-- Filters --}}
             <div class="flex gap-3 items-end">
-                <div class="w-48"><label class="form-label">Status</label><select wire:model="statusFilter" class="form-select">
-                    <option value="">All Status</option>
-                    <option value="pending">Pending</option>
-                    <option value="approved">Approved</option>
-                    <option value="rejected">Rejected</option>
-                </select></div>
+                <div class="w-48">
+                    <label class="form-label">Status</label>
+                    <select wire:model.live="statusFilter" class="form-select">
+                        <option value="">All Status</option>
+                        <option value="pending">Pending</option>
+                        <option value="approved">Approved</option>
+                        <option value="rejected">Rejected</option>
+                    </select>
+                </div>
             </div>
 
-            {{-- Leaves Table --}}
-            <div class="overflow-x-auto">
-                <table class="data-table w-full">
-                    <thead><tr><th>Member</th><th>Type</th><th>Dates</th><th>Reason</th><th>Status</th><th>Actions</th></tr></thead>
-                    <tbody>
-                        @forelse($this->leaves as $l)
-                            <tr>
-                                <td class="font-medium">{{ $l->member_name }}</td>
-                                <td><span class="badge {{ $l->type_class }}">{{ ucfirst($l->type) }}</span></td>
-                                <td class="text-sm">{{ fmtDate($l->start_date) }} — {{ fmtDate($l->end_date) }}</td>
-                                <td class="text-sm text-gray-600 max-w-[200px] truncate">{{ $l->reason ?? '-' }}</td>
-                                <td><span class="badge {{ $l->status_class }}">{{ ucfirst($l->status) }}</span></td>
-                                <td>
+            {{-- Leaves Cards --}}
+            <div class="space-y-3">
+                @forelse($this->leaves as $l)
+                <div class="bg-white rounded-2xl border border-gray-100 p-4 hover:shadow-md transition-shadow">
+                    <div class="flex items-start gap-4">
+                        <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-[rgba(var(--brand-rgb),0.08)] text-[var(--brand)] shrink-0">
+                            <i class="fas fa-calendar-day text-sm"></i>
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <div class="flex items-center gap-2 mb-1">
+                                <h4 class="text-sm font-bold text-gray-900">{{ $l->member_name }}</h4>
+                                <span class="badge {{ $l->type_class }}">{{ ucfirst($l->type) }}</span>
+                                <span class="badge {{ $l->status_class }}">{{ ucfirst($l->status) }}</span>
+                            </div>
+                            <p class="text-xs text-gray-500">
+                                {{ \Carbon\Carbon::parse($l->start_date)->format('M d, Y') }} — {{ \Carbon\Carbon::parse($l->end_date)->format('M d, Y') }}
+                                · {{ \Carbon\Carbon::parse($l->start_date)->diffInDays(\Carbon\Carbon::parse($l->end_date)) + 1 }} day(s)
+                            </p>
+                            @if($l->reason)
+                            <p class="text-sm text-gray-600 mt-1">{{ $l->reason }}</p>
+                            @endif
+
+                            <div class="flex items-center justify-between mt-3">
+                                <div class="flex items-center gap-2 flex-wrap">
                                     @if($l->status === 'pending' && $this->isMgr)
-                                        <div class="flex items-center gap-1">
-                                            <button wire:click="approveLeave({{ $l->id }})" class="btn btn-icon btn-ghost" title="Approve"><i class="fas fa-check text-gray-400 hover:text-green-500 text-xs"></i></button>
-                                            <button wire:click="rejectLeave({{ $l->id }})" class="btn btn-icon btn-ghost" title="Reject"><i class="fas fa-times text-gray-400 hover:text-red-500 text-xs"></i></button>
-                                        </div>
-                                    @else
-                                        <button type="button" wire:click="$dispatch('open-confirm', { title: 'Delete Leave Request?', message: 'This leave request will be permanently removed.', type: 'danger', action: 'deleteLeave', params: [{{ $l->id }}] })" class="btn btn-icon btn-ghost" aria-label="Delete leave request" title="Delete"><i class="fas fa-trash text-gray-400 hover:text-red-500 text-xs"></i></button>
+                                    <button type="button" wire:click="$dispatch('open-confirm', { title: 'Approve Leave?', message: 'This will approve the leave request for ' + '{{ addslashes($l->member_name) }}' + '.', type: 'info', action: 'approveLeave', params: [{{ $l->id }}] })" class="btn btn-success btn-sm"><i class="fas fa-check text-xs"></i> Approve</button>
+                                    <button type="button" wire:click="openRejectModal({{ $l->id }})" class="btn btn-danger btn-sm"><i class="fas fa-times text-xs"></i> Reject</button>
                                     @endif
-                                </td>
-                            </tr>
-                        @empty
-                            <tr><td colspan="6">
-                                <div class="py-16 text-center">
-                                    <div class="flex h-14 w-14 mx-auto items-center justify-center rounded-2xl bg-gray-100 mb-4"><i class="fas fa-calendar-minus text-2xl text-gray-300"></i></div>
-                                    <p class="text-gray-500 font-medium text-sm">No leaves found</p>
-                                    <p class="text-gray-400 text-xs mt-1">Submit a leave request to get started</p>
+                                    @if($l->status === 'rejected' && $l->rejection_reason)
+                                    <span class="text-xs text-red-600"><i class="fas fa-times-circle mr-1"></i>{{ $l->rejection_reason }} @if($l->approver_name)<span class="text-red-400">— {{ $l->approver_name }}</span>@endif</span>
+                                    @endif
+                                    @if($l->status === 'approved' && $l->approver_name)
+                                    <span class="text-xs text-green-600"><i class="fas fa-check-circle mr-1"></i>Approved by {{ $l->approver_name }}</span>
+                                    @endif
                                 </div>
-                            </td></tr>
-                        @endforelse
-                    </tbody>
-                </table>
+                                <div class="flex items-center gap-1">
+                                    <button type="button" wire:click="$dispatch('open-leave-detail', {{ $l->id }})" class="btn btn-ghost btn-sm" aria-label="View leave"><i class="fas fa-eye text-xs"></i></button>
+                                    @if($this->isMgr)
+                                    <button type="button" wire:click="$dispatch('open-confirm', { title: 'Delete Leave?', message: 'This leave request will be permanently removed.', type: 'danger', action: 'deleteLeave', params: [{{ $l->id }}] })" class="btn btn-ghost btn-sm text-red-500" aria-label="Delete leave"><i class="fas fa-trash text-xs"></i></button>
+                                    @endif
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                @empty
+                <div class="bg-white rounded-2xl border border-gray-100 p-12 text-center">
+                    <i class="fas fa-calendar-minus text-4xl text-gray-200 mb-3"></i>
+                    <p class="text-sm text-gray-400">No leaves found</p>
+                </div>
+                @endforelse
             </div>
 
             {{-- Leave Form Modal --}}
             @if($showForm)
-                <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" wire:click.self="$set('showForm', false)" x-on:keydown.escape.window="$wire.set('showForm', false)">
-                    <div class="modal-box w-full max-w-md mx-4">
-                        <div class="sticky top-0 bg-white flex items-center justify-between p-4 border-b">
-                            <h3 class="font-bold text-lg">{{ $editingId ? 'Edit' : 'Apply for' }} Leave</h3>
-                            <button wire:click="$set('showForm', false)" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
+            <div class="modal-overlay" wire:click.self="$set('showForm', false)" x-on:keydown.escape.window="$wire.set('showForm', false)">
+                <div class="modal-box max-w-md">
+                    <div class="modal-header">
+                        <h3 class="text-base font-bold text-gray-900">{{ $editingId ? 'Edit' : 'Apply for' }} Leave</h3>
+                        <button wire:click="$set('showForm', false)" class="btn btn-ghost btn-icon btn-sm" aria-label="Close"><i class="fas fa-times"></i></button>
+                    </div>
+                    <div class="modal-body space-y-4">
+                        <div>
+                            <label class="form-label">Leave Type</label>
+                            <select wire:model="formType" class="form-select">
+                                <option value="casual">Casual</option><option value="sick">Sick</option>
+                                <option value="annual">Annual</option><option value="personal">Personal</option>
+                            </select>
                         </div>
-                        <div class="p-4 space-y-4">
-                            <div><label class="form-label">Leave Type</label>
-                                <select wire:model="formType" class="form-select">
-                                    <option value="casual">Casual</option><option value="sick">Sick</option>
-                                    <option value="annual">Annual</option><option value="personal">Personal</option>
-                                </select>
-                            </div>
-                            @if($this->isMgr)
-                                <div><label class="form-label">Team Member</label>
-                                    <select wire:model="formMemberId" class="form-select"><option value="">Self</option>
-                                        @foreach($this->team as $t)<option value="{{ $t->id }}">{{ $t->name }}</option>@endforeach
-                                    </select>
-                                </div>
-                            @endif
-                            <div class="grid grid-cols-2 gap-3">
-                                <div><label class="form-label">Start Date</label><input type="date" wire:model="formStartDate" class="form-input"><span wire:error="formStartDate" class="text-red-500 text-xs mt-1 block"></span></div>
-                                <div><label class="form-label">End Date</label><input type="date" wire:model="formEndDate" class="form-input"><span wire:error="formEndDate" class="text-red-500 text-xs mt-1 block"></span></div>
-                            </div>
-                            <div><label class="form-label">Reason</label><textarea wire:model="formReason" class="form-input" rows="2" placeholder="Optional reason"></textarea></div>
+                        @if($this->isMgr)
+                        <div>
+                            <label class="form-label">Team Member</label>
+                            <select wire:model="formMemberId" class="form-select"><option value="">Self</option>
+                                @foreach($this->team as $t)<option value="{{ $t->id }}">{{ $t->name }}</option>@endforeach
+                            </select>
                         </div>
-                        <div class="sticky bottom-0 bg-white flex justify-end gap-2 p-4 border-t">
-                            <button wire:click="$set('showForm', false)" class="btn btn-secondary">Cancel</button>
-                            <button wire:click="save" class="btn btn-primary" wire:loading.attr="disabled" wire:target="save"><span wire:loading.remove wire:target="save">Submit</span><span wire:loading wire:target="save" class="flex items-center gap-2"><svg class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Submitting...</span></button>
+                        @endif
+                        <div class="grid grid-cols-2 gap-3">
+                            <div><label class="form-label">Start Date</label><input type="date" wire:model="formStartDate" class="form-input"></div>
+                            <div><label class="form-label">End Date</label><input type="date" wire:model="formEndDate" class="form-input"></div>
+                        </div>
+                        <div><label class="form-label">Reason</label><textarea wire:model="formReason" class="form-textarea" rows="2" placeholder="Optional reason"></textarea></div>
+                    </div>
+                    <div class="flex justify-end gap-2 p-4 border-t border-gray-100">
+                        <button wire:click="$set('showForm', false)" class="btn btn-secondary btn-sm">Cancel</button>
+                        <button wire:click="save" class="btn btn-primary btn-sm" wire:loading.attr="disabled"><i class="fas fa-save text-xs"></i> Submit</button>
+                    </div>
+                </div>
+            </div>
+            @endif
+
+            {{-- Reject Reason Modal --}}
+            @if($showRejectModal)
+            <div class="modal-overlay" wire:click.self="$set('showRejectModal',false)" x-on:keydown.escape.window="$wire.set('showRejectModal',false)">
+                <div class="modal-box max-w-md">
+                    <div class="modal-header">
+                        <h3 class="text-base font-bold text-gray-900">Reject Leave Request</h3>
+                        <button wire:click="$set('showRejectModal',false)" class="btn btn-ghost btn-icon btn-sm" aria-label="Close"><i class="fas fa-times"></i></button>
+                    </div>
+                    <div class="modal-body space-y-4">
+                        <p class="text-sm text-gray-500">Please provide a reason for rejection. This will be visible to the employee.</p>
+                        <div>
+                            <label class="form-label">Reason for Rejection</label>
+                            <textarea wire:model="rejectReason" class="form-textarea" rows="4" placeholder="e.g. Does not meet team schedule requirements..."></textarea>
+                        </div>
+                        <div class="flex justify-end gap-2">
+                            <button wire:click="$set('showRejectModal',false)" class="btn btn-secondary btn-sm">Cancel</button>
+                            <button wire:click="submitRejection" class="btn btn-danger btn-sm" wire:loading.attr="disabled"><i class="fas fa-times text-xs"></i> Reject</button>
                         </div>
                     </div>
                 </div>
+            </div>
+            @endif
+
+            {{-- Leave Detail Modal --}}
+            @if($showDetail)
+            @php $dl = $this->detailLeave; @endphp
+            <div class="modal-overlay" wire:click.self="$set('showDetail',false)" x-on:keydown.escape.window="$wire.set('showDetail',false)">
+                <div class="modal-box max-w-md">
+                    <div class="modal-header">
+                        <h3 class="text-base font-bold text-gray-900">Leave Request</h3>
+                        <button wire:click="$set('showDetail',false)" class="btn btn-ghost btn-icon btn-sm" aria-label="Close"><i class="fas fa-times"></i></button>
+                    </div>
+                    <div class="modal-body space-y-4">
+                        <div class="flex items-center gap-3">
+                            <div class="w-12 h-12 rounded-full bg-gray-200 flex items-center justify-center font-bold text-sm shrink-0">{{ strtoupper(substr($dl->member_name ?? '', 0, 2)) }}</div>
+                            <div>
+                                <p class="font-bold text-gray-900">{{ $dl->member_name ?? '' }}</p>
+                                <p class="text-xs text-gray-500">{{ $dl->member_email ?? '' }}</p>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-3 text-sm">
+                            <div><span class="text-gray-500">Type:</span> <span class="badge badge-{{ $dl->type === 'sick' ? 'danger' : ($dl->type === 'casual' ? 'info' : ($dl->type === 'annual' ? 'success' : 'warning')) }}">{{ ucfirst($dl->type ?? '') }}</span></div>
+                            <div><span class="text-gray-500">Status:</span> <span class="badge badge-{{ $dl->status === 'approved' ? 'success' : ($dl->status === 'rejected' ? 'danger' : 'warning') }}">{{ ucfirst($dl->status ?? '') }}</span></div>
+                            <div><span class="text-gray-500">Start:</span> {{ $dl->start_date ? \Carbon\Carbon::parse($dl->start_date)->format('M d, Y') : '—' }}</div>
+                            <div><span class="text-gray-500">End:</span> {{ $dl->end_date ? \Carbon\Carbon::parse($dl->end_date)->format('M d, Y') : '—' }}</div>
+                            <div class="col-span-2"><span class="text-gray-500">Duration:</span> {{ $dl->start_date && $dl->end_date ? \Carbon\Carbon::parse($dl->start_date)->diffInDays(\Carbon\Carbon::parse($dl->end_date)) + 1 : 0 }} day(s)</div>
+                        </div>
+
+                        @if($dl->reason)
+                        <div>
+                            <h4 class="text-sm font-semibold text-gray-900 mb-1">Reason</h4>
+                            <p class="text-sm text-gray-600">{{ $dl->reason }}</p>
+                        </div>
+                        @endif
+
+                        @if($dl->status === 'rejected' && $dl->rejection_reason)
+                        <div class="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-sm text-red-700">
+                            <i class="fas fa-times-circle mr-1"></i> <span class="font-semibold">Rejection reason:</span> {{ $dl->rejection_reason }}
+                            @if($dl->approver_name) <span class="text-xs text-red-500 ml-1">— by {{ $dl->approver_name }}</span> @endif
+                        </div>
+                        @endif
+
+                        @if($dl->status === 'approved' && $dl->approver_name)
+                        <div class="bg-green-50 border border-green-200 rounded-lg px-3 py-2 text-sm text-green-700">
+                            <i class="fas fa-check-circle mr-1"></i> Approved by {{ $dl->approver_name }}
+                        </div>
+                        @endif
+
+                        <div class="text-xs text-gray-400">Requested {{ $dl->created_at ? \Carbon\Carbon::parse($dl->created_at)->diffForHumans() : '' }}</div>
+
+                        <div class="flex justify-end gap-2 pt-2 border-t border-gray-100">
+                            @if($dl->status === 'pending' && $this->isMgr)
+                            <button type="button" wire:click="$dispatch('open-confirm', { title: 'Approve Leave?', message: 'This will approve the leave request.', type: 'info', action: 'approveLeave', params: [{{ $dl->id }}] })" class="btn btn-success btn-sm"><i class="fas fa-check text-xs"></i> Approve</button>
+                            <button type="button" wire:click="$set('showDetail',false); openRejectModal({{ $dl->id }})" class="btn btn-danger btn-sm"><i class="fas fa-times text-xs"></i> Reject</button>
+                            @endif
+                            <button wire:click="$set('showDetail',false)" class="btn btn-secondary btn-sm">Close</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
             @endif
         </div>
         blade;
