@@ -18,7 +18,7 @@ enum ContentType: string
 
     public function badgeClass(): string
     {
-        return 'badge-type-'.$this->value;
+        return 'badge-type-' . $this->value;
     }
 
     public static function videographerAllowed(): array

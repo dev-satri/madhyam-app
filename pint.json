@@ -1,10 +1,10 @@
 {
     "preset": "laravel",
     "rules": {
-        "concat_space": ["error", "one"],
-        "trailing_comma_in_multiline": ["error", "arrays"],
-        "trailing_comma_in_singleline": "off",
-        "phpdoc_summary": "off",
+        "concat_space": { "spacing": "one" },
+        "trailing_comma_in_multiline": { "elements": ["arrays"] },
+        "no_trailing_comma_in_singleline": false,
+        "phpdoc_summary": false,
         "single_quote": true
     }
 }

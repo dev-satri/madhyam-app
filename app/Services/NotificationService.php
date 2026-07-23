@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Client;
 use App\Models\Notification;
 use App\Models\Task;
+use App\Models\User;
 use Illuminate\Support\Facades\Log;
 
 class NotificationService
@@ -97,7 +98,7 @@ class NotificationService
         );
 
         // Email escalation to manager
-        $managerEmail = \App\Models\User::where('role', 'manager')->value('email');
+        $managerEmail = User::where('role', 'manager')->value('email');
         if ($managerEmail) {
             $expiryDate = $client->contract_end->format('M d, Y');
             $monthlyAmount = number_format($client->amount, 2);

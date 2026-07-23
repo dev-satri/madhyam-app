@@ -27,14 +27,14 @@ class DataBackupController extends Controller
 
         $this->activity->record(Auth::user(), 'Exported data backup');
 
-        $filename = 'madhyam-backup-'.now()->format('Y-m-d').'.json';
+        $filename = 'madhyam-backup-' . now()->format('Y-m-d') . '.json';
 
         return response(
             json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
             200,
             [
                 'Content-Type' => 'application/json',
-                'Content-Disposition' => 'attachment; filename="'.$filename.'"',
+                'Content-Disposition' => 'attachment; filename="' . $filename . '"',
                 'Cache-Control' => 'no-store, no-cache, must-revalidate',
                 'Pragma' => 'no-cache',
             ]

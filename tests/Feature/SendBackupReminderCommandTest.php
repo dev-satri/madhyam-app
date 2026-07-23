@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use Carbon\Carbon;
 use Database\Seeders\SettingsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -71,7 +72,7 @@ class SendBackupReminderCommandTest extends TestCase
         // Value should still be the same (unchanged)
         $this->assertEquals(
             $twoDaysAgo->format('Y-m-d H:i:s'),
-            \Carbon\Carbon::parse($row->last_backup_reminder)->format('Y-m-d H:i:s'),
+            Carbon::parse($row->last_backup_reminder)->format('Y-m-d H:i:s'),
             'last_backup_reminder should be unchanged when skipped'
         );
     }

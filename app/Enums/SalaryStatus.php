@@ -15,7 +15,7 @@ enum SalaryStatus: string
 
     public function badgeClass(): string
     {
-        return 'badge-'.$this->value;
+        return 'badge-' . $this->value;
     }
 
     public function next(): self

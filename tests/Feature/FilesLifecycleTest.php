@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\User;
+use Carbon\Carbon;
 use Database\Seeders\SettingsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -107,7 +108,7 @@ class FilesLifecycleTest extends TestCase
 
         $expiry = DB::table('file_expiries')->where('file_id', $fileRow->id)->first();
         $this->assertNotNull($expiry);
-        $this->assertEquals(now()->addDays(10)->toDateString(), \Carbon\Carbon::parse($expiry->expiry_date)->toDateString());
+        $this->assertEquals(now()->addDays(10)->toDateString(), Carbon::parse($expiry->expiry_date)->toDateString());
         $this->assertEquals(0, (int) $expiry->extended);
     }
 
@@ -129,8 +130,8 @@ class FilesLifecycleTest extends TestCase
 
         $expiry = DB::table('file_expiries')->where('file_id', $fileId)->first();
         $this->assertEquals(
-            \Carbon\Carbon::parse($originalExpiry)->addDays(5)->toDateString(),
-            \Carbon\Carbon::parse($expiry->expiry_date)->toDateString()
+            Carbon::parse($originalExpiry)->addDays(5)->toDateString(),
+            Carbon::parse($expiry->expiry_date)->toDateString()
         );
         $this->assertEquals(1, (int) $expiry->extended);
     }
@@ -155,7 +156,7 @@ class FilesLifecycleTest extends TestCase
         // Expiry date must NOT have moved on second extend
         $this->assertEquals(
             $extendedDate,
-            \Carbon\Carbon::parse($expiry->expiry_date)->toDateString(),
+            Carbon::parse($expiry->expiry_date)->toDateString(),
             'extended=true must prevent further extension'
         );
         $this->assertEquals(1, (int) $expiry->extended);

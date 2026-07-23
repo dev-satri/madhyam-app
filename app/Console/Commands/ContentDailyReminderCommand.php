@@ -44,13 +44,14 @@ class ContentDailyReminderCommand extends Command
         if ($todayContent->isNotEmpty()) {
             $grouped = $todayContent->groupBy('client_name');
             $summary = $grouped->map(function ($items, $client) {
-                $platforms = $items->pluck('platform')->map(fn($p) => ucfirst($p))->implode(', ');
-                $statuses = $items->pluck('status')->map(fn($s) => str_replace('-', ' ', ucfirst($s)))->unique()->implode(', ');
+                $platforms = $items->pluck('platform')->map(fn ($p) => ucfirst($p))->implode(', ');
+                $statuses = $items->pluck('status')->map(fn ($s) => str_replace('-', ' ', ucfirst($s)))->unique()->implode(', ');
+
                 return "{$client}: " . $items->count() . " item(s) [{$platforms}] — {$statuses}";
             })->implode("\n  ");
 
             $total = $todayContent->count();
-            $platforms = $todayContent->pluck('platform')->unique()->map(fn($p) => ucfirst($p))->implode(', ');
+            $platforms = $todayContent->pluck('platform')->unique()->map(fn ($p) => ucfirst($p))->implode(', ');
 
             $svc->sendNotification(
                 text: "📅 Today's Content: {$total} item(s) scheduled across {$platforms}. Check the content planner for details.",
@@ -64,7 +65,7 @@ class ContentDailyReminderCommand extends Command
         // Tomorrow's content preview
         if ($tomorrowContent->isNotEmpty()) {
             $total = $tomorrowContent->count();
-            $platforms = $tomorrowContent->pluck('platform')->unique()->map(fn($p) => ucfirst($p))->implode(', ');
+            $platforms = $tomorrowContent->pluck('platform')->unique()->map(fn ($p) => ucfirst($p))->implode(', ');
 
             $svc->sendNotification(
                 text: "🔔 Tomorrow: {$total} content item(s) coming up across {$platforms}. Prepare captions and approvals.",
@@ -77,7 +78,7 @@ class ContentDailyReminderCommand extends Command
 
         // Per-client reminders for today
         $todayContent->groupBy('client_name')->each(function ($items, $clientName) use ($svc, &$count) {
-            $platformList = $items->pluck('platform')->map(fn($p) => ucfirst($p))->implode(', ');
+            $platformList = $items->pluck('platform')->map(fn ($p) => ucfirst($p))->implode(', ');
             $svc->sendNotification(
                 text: "Client \"{$clientName}\" has " . $items->count() . " content item(s) due today ({$platformList}).",
                 type: 'info',

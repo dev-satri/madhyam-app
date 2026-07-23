@@ -20,7 +20,7 @@ class ContentSeeder extends Seeder
         for ($i = 0; $i < 40; $i++) {
             $date = now()->addDays(random_int(0, 40) - 10)->toDateString();
             DB::table('contents')->insert([
-                'title' => $titles[$i % 10].' '.($i + 1),
+                'title' => $titles[$i % 10] . ' ' . ($i + 1),
                 'client_id' => $clientIds[$i % $c],
                 'platform' => $platforms[$i % 6],
                 'type' => $types[$i % 6],

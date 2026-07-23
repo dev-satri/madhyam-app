@@ -27,7 +27,7 @@ enum ComplaintStatus: string
 
     public function badgeClass(): string
     {
-        return 'badge-'.$this->value;
+        return 'badge-' . $this->value;
     }
 
     public static function values(): array

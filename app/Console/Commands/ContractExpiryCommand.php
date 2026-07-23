@@ -36,17 +36,17 @@ class ContractExpiryCommand extends Command
         foreach ($expiringClients as $client) {
             $daysUntil = max(0, (int) now()->diffInDays($client->contract_end, false));
 
-            $urgency = match(true) {
-                $daysUntil <= 3  => 'critical',
-                $daysUntil <= 7  => 'high',
+            $urgency = match (true) {
+                $daysUntil <= 3 => 'critical',
+                $daysUntil <= 7 => 'high',
                 $daysUntil <= 14 => 'medium',
-                default          => 'low',
+                default => 'low',
             };
 
-            $type = match($urgency) {
+            $type = match ($urgency) {
                 'critical' => 'error',
-                'high'     => 'warning',
-                default    => 'info',
+                'high' => 'warning',
+                default => 'info',
             };
 
             $notificationService = app(NotificationService::class);

@@ -19,6 +19,7 @@ class TaskBulkOperationsTest extends TestCase
     use RefreshDatabase;
 
     protected User $manager;
+
     protected User $editor;
 
     protected function setUp(): void

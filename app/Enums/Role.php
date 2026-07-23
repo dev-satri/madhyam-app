@@ -29,7 +29,7 @@ enum Role: string
 
     public function badgeClass(): string
     {
-        return 'role-'.$this->value;
+        return 'role-' . $this->value;
     }
 
     public static function values(): array

@@ -2,10 +2,10 @@
 
 namespace Tests\Feature;
 
-use App\Models\User;
 use App\Models\Invoice;
+use App\Models\User;
+use App\Services\PaymentTracker;
 use Database\Seeders\DatabaseSeeder;
-use Database\Seeders\SettingsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Livewire\Livewire;
@@ -101,7 +101,7 @@ class InvoicePaymentFlowTest extends TestCase
         ]);
 
         if ($invoice = Invoice::find($invoiceId)) {
-            app(\App\Services\PaymentTracker::class)->recalc($invoice);
+            app(PaymentTracker::class)->recalc($invoice);
         }
 
         $this->assertEquals('overdue', Invoice::find($invoiceId)->status);

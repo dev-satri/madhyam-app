@@ -82,7 +82,7 @@ class PackageService
         if ($contentPct >= 100) {
             $alerts[] = ['type' => 'danger', 'message' => 'Content limit reached! Upgrade your plan.'];
         } elseif ($contentPct >= 80) {
-            $alerts[] = ['type' => 'warning', 'message' => 'Content usage at '.$contentPct.'%. Consider upgrading.'];
+            $alerts[] = ['type' => 'warning', 'message' => 'Content usage at ' . $contentPct . '%. Consider upgrading.'];
         }
 
         // Check workflow limit
@@ -90,7 +90,7 @@ class PackageService
         if ($workflowPct >= 100) {
             $alerts[] = ['type' => 'danger', 'message' => 'Workflow limit reached! Upgrade your plan.'];
         } elseif ($workflowPct >= 80) {
-            $alerts[] = ['type' => 'warning', 'message' => 'Workflow usage at '.$workflowPct.'%. Consider upgrading.'];
+            $alerts[] = ['type' => 'warning', 'message' => 'Workflow usage at ' . $workflowPct . '%. Consider upgrading.'];
         }
 
         // Check storage limit
@@ -99,7 +99,7 @@ class PackageService
         if ($storagePct >= 100) {
             $alerts[] = ['type' => 'danger', 'message' => 'Storage limit reached! Upgrade your plan.'];
         } elseif ($storagePct >= 80) {
-            $alerts[] = ['type' => 'warning', 'message' => 'Storage usage at '.$storagePct.'%. Consider upgrading.'];
+            $alerts[] = ['type' => 'warning', 'message' => 'Storage usage at ' . $storagePct . '%. Consider upgrading.'];
         }
 
         return [

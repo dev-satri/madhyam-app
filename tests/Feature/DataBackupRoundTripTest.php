@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Services\DataBackupService;
 use Database\Seeders\DatabaseSeeder;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
@@ -82,7 +83,7 @@ class DataBackupRoundTripTest extends TestCase
         // Inject a row with a nonexistent column to force a SQL error mid-import
         $bad['settings'] = [['id' => 1, 'nonexistent_column_xyz' => 'boom']];
 
-        $this->expectException(\Illuminate\Database\QueryException::class);
+        $this->expectException(QueryException::class);
         try {
             $this->svc->import($bad);
         } finally {

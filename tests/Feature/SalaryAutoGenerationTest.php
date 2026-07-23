@@ -2,10 +2,9 @@
 
 namespace Tests\Feature;
 
-use App\Models\User;
 use App\Models\Salary;
+use App\Models\User;
 use Database\Seeders\DatabaseSeeder;
-use Database\Seeders\SettingsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Livewire\Livewire;
@@ -19,6 +18,7 @@ class SalaryAutoGenerationTest extends TestCase
     use RefreshDatabase;
 
     protected User $admin;
+
     protected User $staff;
 
     protected function setUp(): void
@@ -62,7 +62,7 @@ class SalaryAutoGenerationTest extends TestCase
             ->where('year', now()->year)
             ->first();
 
-        if (!$salary) {
+        if (! $salary) {
             $this->markTestSkipped('No salary record found for admin');
         }
 
@@ -82,7 +82,7 @@ class SalaryAutoGenerationTest extends TestCase
             ->where('year', now()->year)
             ->first();
 
-        if (!$salary) {
+        if (! $salary) {
             $this->markTestSkipped('No salary record found for admin');
         }
 
@@ -102,7 +102,7 @@ class SalaryAutoGenerationTest extends TestCase
             ->where('year', now()->year)
             ->first();
 
-        if (!$salary) {
+        if (! $salary) {
             $this->markTestSkipped('No salary record found for admin');
         }
 

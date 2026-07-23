@@ -3,9 +3,9 @@
 namespace Tests\Feature;
 
 use App\Models\User;
+use Database\Seeders\ClientSeeder;
 use Database\Seeders\DepartmentSeeder;
 use Database\Seeders\PackageSeeder;
-use Database\Seeders\ClientSeeder;
 use Database\Seeders\SettingsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -20,6 +20,7 @@ class ContentPlannerTest extends TestCase
     use RefreshDatabase;
 
     protected User $admin;
+
     protected int $clientId;
 
     protected function setUp(): void

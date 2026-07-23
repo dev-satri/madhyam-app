@@ -117,7 +117,7 @@ class AccessControlMatrixTest extends TestCase
                 $this->assertSame(
                     $expected,
                     $actual,
-                    "hasFeature('{$role}', '{$feature}') expected ".($expected ? 'true' : 'false')
+                    "hasFeature('{$role}', '{$feature}') expected " . ($expected ? 'true' : 'false')
                 );
             }
         }
@@ -133,7 +133,7 @@ class AccessControlMatrixTest extends TestCase
                 $this->assertSame(
                     $expected,
                     $actual,
-                    "hasDataAccess('{$role}', '{$perm}') expected ".($expected ? 'true' : 'false')
+                    "hasDataAccess('{$role}', '{$perm}') expected " . ($expected ? 'true' : 'false')
                 );
             }
         }
@@ -161,7 +161,7 @@ class AccessControlMatrixTest extends TestCase
             $this->assertContains(
                 $response->status(),
                 [302, 403],
-                "Client should NOT reach staff route {$route} — got HTTP ".$response->status()
+                "Client should NOT reach staff route {$route} — got HTTP " . $response->status()
             );
 
             if ($response->status() === 302) {

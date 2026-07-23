@@ -59,7 +59,7 @@ if (! function_exists('badgeClass')) {
             return 'badge';
         }
 
-        return 'badge badge-'.Str::slug($status);
+        return 'badge badge-' . Str::slug($status);
     }
 }
 
@@ -139,7 +139,7 @@ if (! function_exists('initials')) {
 if (! function_exists('uid')) {
     function uid(string $prefix = ''): string
     {
-        return $prefix.Str::random(8);
+        return $prefix . Str::random(8);
     }
 }
 
@@ -154,7 +154,7 @@ if (! function_exists('fmtCurrency')) {
             default => '',
         };
 
-        return $symbol.' '.number_format((float) $amount, 2);
+        return $symbol . ' ' . number_format((float) $amount, 2);
     }
 }
 

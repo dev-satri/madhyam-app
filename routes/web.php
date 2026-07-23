@@ -127,9 +127,9 @@ Route::middleware('auth:web')->group(function () {
             $totalAmount = $logs->sum(fn ($l) => (float) $l->hours * (float) $l->rate);
             $rows->push(['TOTAL', '', $totalHours, '', round($totalAmount, 2), '', '']);
 
-            $csv = implode("\n", array_map(fn ($r) => '"'.implode('","', $r).'"', array_merge([$headers], $rows->toArray())));
+            $csv = implode("\n", array_map(fn ($r) => '"' . implode('","', $r) . '"', array_merge([$headers], $rows->toArray())));
 
-            return response($csv, 200, ['Content-Type' => 'text/csv', 'Content-Disposition' => 'attachment; filename="overtime-logs-'.now()->format('Y-m').'.csv"']);
+            return response($csv, 200, ['Content-Type' => 'text/csv', 'Content-Disposition' => 'attachment; filename="overtime-logs-' . now()->format('Y-m') . '.csv"']);
         })->name('overtime.export');
     });
 

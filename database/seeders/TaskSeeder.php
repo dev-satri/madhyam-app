@@ -23,7 +23,7 @@ class TaskSeeder extends Seeder
             $isShoot = $i % 4 === 0;
             $due = now()->addDays(random_int(0, 14) - 4)->toDateString();
             DB::table('tasks')->insert([
-                'title' => $isShoot ? 'Shoot: '.$titles[$i % count($titles)] : $titles[$i % count($titles)],
+                'title' => $isShoot ? 'Shoot: ' . $titles[$i % count($titles)] : $titles[$i % count($titles)],
                 'type' => $isShoot ? 'shoot' : ($i % 3 === 0 ? 'editing' : 'task'),
                 'client_id' => $clientIds[$i % $c],
                 'assignee' => $teamIds[$i % $t],

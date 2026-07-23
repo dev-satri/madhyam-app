@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\User;
+use App\Services\RbacService;
 use Database\Seeders\DatabaseSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -37,7 +38,7 @@ class DataAccessBatchSaveTest extends TestCase
         $component = Livewire::test('pages.settings.index');
 
         // Verify data matrix has roles
-        $component->assertSet('allPermissions', \App\Services\RbacService::PERMISSIONS);
+        $component->assertSet('allPermissions', RbacService::PERMISSIONS);
         $this->assertNotEmpty(DB::table('data_access')->get());
     }
 
@@ -72,7 +73,7 @@ class DataAccessBatchSaveTest extends TestCase
         // Verify database was updated
         $after = DB::table('data_access')->where('role', $role)->first();
         $afterPerms = json_decode($after->permissions, true);
-        $this->assertEquals(!$originalValue, $afterPerms[$perm]);
+        $this->assertEquals(! $originalValue, $afterPerms[$perm]);
     }
 
     public function test_save_clears_cache(): void
@@ -80,7 +81,7 @@ class DataAccessBatchSaveTest extends TestCase
         $role = 'editor';
 
         // Pre-warm cache
-        $rbac = app(\App\Services\RbacService::class);
+        $rbac = app(RbacService::class);
         $rbac->hasDataAccess($role, 'seeAllTasks');
 
         // Save (should clear cache)

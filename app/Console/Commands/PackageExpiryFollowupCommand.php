@@ -36,13 +36,13 @@ class PackageExpiryFollowupCommand extends Command
             }
 
             Task::create([
-                'title'       => "Follow up: {$client->name} contract expired",
-                'description' => "Contract for {$client->name} ({$client->package}) expired on {$client->contract_end->format('M d, Y')}. Monthly amount: NPR " . number_format($client->amount, 2) . ". Please follow up for renewal.",
-                'client_id'   => $client->id,
-                'assignee'    => $this->getManagerId(),
-                'priority'    => 'high',
-                'status'      => 'todo',
-                'due_date'    => now()->addDays(3),
+                'title' => "Follow up: {$client->name} contract expired",
+                'description' => "Contract for {$client->name} ({$client->package}) expired on {$client->contract_end->format('M d, Y')}. Monthly amount: NPR " . number_format($client->amount, 2) . '. Please follow up for renewal.',
+                'client_id' => $client->id,
+                'assignee' => $this->getManagerId(),
+                'priority' => 'high',
+                'status' => 'todo',
+                'due_date' => now()->addDays(3),
             ]);
 
             $count++;
@@ -68,13 +68,13 @@ class PackageExpiryFollowupCommand extends Command
             }
 
             Task::create([
-                'title'       => "Renewal reminder: {$client->name} ({$daysLeft}d)",
-                'description' => "{$client->name}'s contract expires in {$daysLeft} day(s) on {$client->contract_end->format('M d, Y')}. Package: {$client->package} — NPR " . number_format($client->amount, 2) . "/mo. Initiate renewal discussion.",
-                'client_id'   => $client->id,
-                'assignee'    => $this->getManagerId(),
-                'priority'    => $daysLeft <= 3 ? 'high' : 'medium',
-                'status'      => 'todo',
-                'due_date'    => $client->contract_end,
+                'title' => "Renewal reminder: {$client->name} ({$daysLeft}d)",
+                'description' => "{$client->name}'s contract expires in {$daysLeft} day(s) on {$client->contract_end->format('M d, Y')}. Package: {$client->package} — NPR " . number_format($client->amount, 2) . '/mo. Initiate renewal discussion.',
+                'client_id' => $client->id,
+                'assignee' => $this->getManagerId(),
+                'priority' => $daysLeft <= 3 ? 'high' : 'medium',
+                'status' => 'todo',
+                'due_date' => $client->contract_end,
             ]);
 
             $count++;

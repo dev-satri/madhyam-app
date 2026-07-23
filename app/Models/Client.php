@@ -2,10 +2,11 @@
 
 namespace App\Models;
 
+use App\Services\PackageService;
+use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use Carbon\Carbon;
 
 class Client extends Model
 {
@@ -93,25 +94,25 @@ class Client extends Model
 
     public function getExpiryBadgeClassAttribute(): string
     {
-        return match($this->expiry_status) {
-            'expired'     => 'bg-red-100 text-red-700',
-            'critical'    => 'bg-red-100 text-red-700',
-            'warning'     => 'bg-amber-100 text-amber-700',
-            'active'      => 'bg-green-100 text-green-700',
+        return match ($this->expiry_status) {
+            'expired' => 'bg-red-100 text-red-700',
+            'critical' => 'bg-red-100 text-red-700',
+            'warning' => 'bg-amber-100 text-amber-700',
+            'active' => 'bg-green-100 text-green-700',
             'no-contract' => 'bg-gray-100 text-gray-500',
-            default       => 'bg-gray-100 text-gray-500',
+            default => 'bg-gray-100 text-gray-500',
         };
     }
 
     public function getExpiryLabelAttribute(): string
     {
-        return match($this->expiry_status) {
-            'expired'     => 'Expired',
-            'critical'     => $this->daysUntilExpiry() . 'd left',
-            'warning'      => $this->daysUntilExpiry() . 'd left',
-            'active'       => 'Active',
-            'no-contract'  => 'No Contract',
-            default        => 'Unknown',
+        return match ($this->expiry_status) {
+            'expired' => 'Expired',
+            'critical' => $this->daysUntilExpiry() . 'd left',
+            'warning' => $this->daysUntilExpiry() . 'd left',
+            'active' => 'Active',
+            'no-contract' => 'No Contract',
+            default => 'Unknown',
         };
     }
 
@@ -168,14 +169,14 @@ class Client extends Model
 
     public function getStorageUsedMbAttribute(): float
     {
-        $usage = app(\App\Services\PackageService::class)::getUsage($this->id);
+        $usage = app(PackageService::class)::getUsage($this->id);
 
         return round(($usage['storage_used_bytes'] ?? 0) / 1048576, 2);
     }
 
     public function getStorageLimitMbAttribute(): int
     {
-        $limits = app(\App\Services\PackageService::class)::getLimits($this->id);
+        $limits = app(PackageService::class)::getLimits($this->id);
 
         return $limits['storage_limit_mb'] ?? 5120;
     }
@@ -187,7 +188,7 @@ class Client extends Model
 
     public function getStoragePercentAttribute(): int
     {
-        return app(\App\Services\PackageService::class)::getUsagePercent(
+        return app(PackageService::class)::getUsagePercent(
             (int) $this->storage_used_mb,
             $this->storage_limit_mb
         );

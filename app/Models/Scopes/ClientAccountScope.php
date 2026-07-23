@@ -43,6 +43,6 @@ class ClientAccountScope implements Scope
             return;
         }
 
-        $builder->where($model->getTable().'.client_id', $clientId);
+        $builder->where($model->getTable() . '.client_id', $clientId);
     }
 }

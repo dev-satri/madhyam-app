@@ -72,13 +72,13 @@ class FeatureAccessToggleTest extends TestCase
 
     public function test_toggle_clears_cache(): void
     {
-        Cache::store('array')->put("features:editor", true, 60);
+        Cache::store('array')->put('features:editor', true, 60);
 
         Livewire::test('pages.settings.index')
             ->call('toggleFeature', 'editor', 'reports');
 
         $this->assertNull(
-            Cache::store('array')->get("features:editor"),
+            Cache::store('array')->get('features:editor'),
             'Cache should be cleared after toggle'
         );
     }
