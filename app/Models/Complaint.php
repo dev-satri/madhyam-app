@@ -14,6 +14,7 @@ class Complaint extends Model
     protected $fillable = [
         'client_id', 'title', 'description',
         'status', 'assigned_to', 'priority',
+        'resolution_notes', 'status_notes',
     ];
 
     protected $casts = [];

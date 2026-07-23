@@ -14,7 +14,7 @@ use App\Services\NotificationService;
 
 new #[Layout('components.layouts.app')] class extends Component {
     private mixed $cachedClient = null;
-    private \Illuminate\Support\Collection $cachedStages;
+    private ?\Illuminate\Support\Collection $cachedStages = null;
     public array $packageLimits = [];
     public array $packageUsage = [];
     public array $packageAlerts = [];
@@ -146,12 +146,12 @@ new #[Layout('components.layouts.app')] class extends Component {
 
     public function getStageColor(string $key): string
     {
-        return $this->cachedStages->get($key)?->color ?? '#64748b';
+        return $this->cachedStages?->get($key)?->color ?? '#64748b';
     }
 
     public function getStageName(string $key): string
     {
-        return $this->cachedStages->get($key)?->name ?? ucfirst($key);
+        return $this->cachedStages?->get($key)?->name ?? ucfirst($key);
     }
 
     public function formatTime(string $time): string

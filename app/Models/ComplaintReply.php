@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class ComplaintReply extends Model
 {
-    protected $fillable = ['complaint_id', 'user_id', 'user_name', 'text'];
+    protected $fillable = ['complaint_id', 'user_id', 'user_name', 'text', 'file_path'];
 
     public function complaint(): BelongsTo
     {
