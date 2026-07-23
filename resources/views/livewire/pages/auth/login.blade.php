@@ -489,12 +489,9 @@ new #[Layout('components.layouts.guest')] class extends Component
                 {{-- Staff demo accounts --}}
                 @if ($loginMode === 'staff')
                     <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid #f3f4f6">
-                        <p style="
-                                font-size: 11px;
-                                color: #9ca3af;
-                                text-align: center;
-                                margin-bottom: 12px;
-                            ">Demo Accounts</p>
+                        <p
+                            style="font-size: 11px; color: #9ca3af; text-align: center; margin-bottom: 12px"
+                        >Demo Accounts</p>
                         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px">
                             <button
                                 wire:click="fillDemo('super@madhyam.com', 'admin123')"
@@ -575,12 +572,9 @@ new #[Layout('components.layouts.guest')] class extends Component
                 {{-- Client demo accounts --}}
                 @if ($loginMode === 'client')
                     <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid #f3f4f6">
-                        <p style="
-                                font-size: 11px;
-                                color: #9ca3af;
-                                text-align: center;
-                                margin-bottom: 12px;
-                            ">Demo Client Accounts</p>
+                        <p
+                            style="font-size: 11px; color: #9ca3af; text-align: center; margin-bottom: 12px"
+                        >Demo Client Accounts</p>
                         <div style="display: grid; gap: 8px">
                             <button
                                 wire:click="fillDemo('ram@himalayancoffee.com', 'client123')"
@@ -597,12 +591,9 @@ new #[Layout('components.layouts.guest')] class extends Component
                                 onmouseover="this.style.background = '#f1f5f9'"
                                 onmouseout="this.style.background = '#f9fafb'"
                             >
-                                <p style="
-                                        font-size: 11px;
-                                        font-weight: 600;
-                                        color: #374151;
-                                        margin: 0;
-                                    ">Himalayan Coffee</p>
+                                <p
+                                    style="font-size: 11px; font-weight: 600; color: #374151; margin: 0"
+                                >Himalayan Coffee</p>
                                 <p style="font-size: 10px; color: #9ca3af; margin: 0">ram@himalayancoffee.com</p>
                             </button>
                             <button
@@ -648,12 +639,9 @@ new #[Layout('components.layouts.guest')] class extends Component
         </div>
 
         {{-- Footer --}}
-        <p style="
-                text-align: center;
-                color: rgba(255, 255, 255, 0.4);
-                font-size: 11px;
-                margin-top: 24px;
-            ">&copy; 2026 Madhyam Agency. All rights reserved.</p>
+        <p
+            style="text-align: center; color: rgba(255, 255, 255, 0.4); font-size: 11px; margin-top: 24px"
+        >&copy; 2026 Madhyam Agency. All rights reserved.</p>
         <p style="text-align: center; color: rgba(255, 255, 255, 0.3); font-size: 10px; margin-top: 8px">
             <span
                 role="button"

@@ -681,7 +681,13 @@ new #[Layout('components.layouts.app')] class extends Component
                 $isOverdueDetail = $detail->deadline && $detail->deadline->isPast() && $detail->stage !== 'published';
             @endphp
             <div class="modal-overlay" x-data x-on:keydown.escape.window="$wire.set('showDetail', false)">
-                <div class="modal-box max-w-2xl max-h-[90vh]" x-on:click.stop role="dialog" aria-modal="true" aria-labelledby="workflow-detail-title">
+                <div
+                    class="modal-box max-w-2xl max-h-[90vh]"
+                    x-on:click.stop
+                    role="dialog"
+                    aria-modal="true"
+                    aria-labelledby="workflow-detail-title"
+                >
                     <div class="modal-header">
                         <h3 id="workflow-detail-title" class="text-base font-bold text-gray-900">
                             <i class="fas fa-eye text-[var(--brand)] mr-2"></i>
@@ -700,14 +706,23 @@ new #[Layout('components.layouts.app')] class extends Component
                         {{-- Title + badges --}}
                         <div class="mb-5">
                             <div class="flex flex-wrap items-center gap-1.5 mb-2">
-                                <span class="inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-semibold {{ $typeBadge }}">
+                                <span
+                                    class="inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-semibold {{ $typeBadge }}"
+                                >
                                     {{ ucfirst($detail->type) }}
                                 </span>
-                                <span class="inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-semibold {{ $priorityBadge }}">
+                                <span
+                                    class="inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-semibold {{ $priorityBadge }}"
+                                >
                                     {{ ucfirst($detail->priority) }} priority
                                 </span>
-                                <span class="ml-auto inline-flex items-center gap-1.5 rounded-full bg-gray-50 border border-gray-100 px-2.5 py-1 text-[11px] font-semibold text-gray-700">
-                                    <span class="h-2 w-2 rounded-full" style="background-color: {{ $detail->stageInfo->color ?? '#6b7280' }}"></span>
+                                <span
+                                    class="ml-auto inline-flex items-center gap-1.5 rounded-full bg-gray-50 border border-gray-100 px-2.5 py-1 text-[11px] font-semibold text-gray-700"
+                                >
+                                    <span
+                                        class="h-2 w-2 rounded-full"
+                                        style="background-color: {{ $detail->stageInfo->color ?? '#6b7280' }}"
+                                    ></span>
                                     {{ $detail->stageInfo->name ?? ucfirst($detail->stage) }}
                                 </span>
                             </div>
@@ -732,7 +747,9 @@ new #[Layout('components.layouts.app')] class extends Component
                                 <p class="text-[11px] uppercase tracking-wide font-semibold text-gray-500 mb-1">Assignee</p>
                                 @if ($detail->assigneeUser)
                                     <div class="flex items-center gap-2">
-                                        <div class="flex h-6 w-6 items-center justify-center rounded-full bg-[rgba(var(--brand-rgb),0.1)] text-[10px] font-bold text-[var(--brand)]">
+                                        <div
+                                            class="flex h-6 w-6 items-center justify-center rounded-full bg-[rgba(var(--brand-rgb),0.1)] text-[10px] font-bold text-[var(--brand)]"
+                                        >
                                             {{ $detail->assigneeUser->initials }}
                                         </div>
                                         <span class="text-gray-800">{{ $detail->assigneeUser->name }}</span>
@@ -745,10 +762,15 @@ new #[Layout('components.layouts.app')] class extends Component
                                 <p class="text-[11px] uppercase tracking-wide font-semibold text-gray-500 mb-1">Deadline</p>
                                 @if ($detail->deadline)
                                     <p class="{{ $isOverdueDetail ? 'text-red-600 font-semibold' : 'text-gray-800' }}">
-                                        <i class="fas fa-calendar-alt {{ $isOverdueDetail ? 'text-red-500' : 'text-gray-400' }} mr-1.5"></i>
+                                        <i
+                                            class="fas fa-calendar-alt {{ $isOverdueDetail ? 'text-red-500' : 'text-gray-400' }} mr-1.5"
+                                        ></i>
                                         {{ $detail->deadline->format('M d, Y') }}
                                         @if ($isOverdueDetail)
-                                            <span class="ml-1 inline-flex items-center rounded-md bg-red-100 text-red-700 px-1.5 py-0.5 text-[10px] font-semibold">Overdue</span>
+                                            <span
+                                                class="ml-1 inline-flex items-center rounded-md bg-red-100 text-red-700 px-1.5 py-0.5 text-[10px] font-semibold"
+                                                >Overdue</span
+                                            >
                                         @endif
                                     </p>
                                 @else
@@ -772,7 +794,9 @@ new #[Layout('components.layouts.app')] class extends Component
                                     @foreach (explode(',', $detail->tags) as $tag)
                                         @php $tag = trim($tag); @endphp
                                         @if ($tag !== '')
-                                            <span class="inline-flex items-center rounded-md bg-gray-100 text-gray-700 px-2 py-0.5 text-xs">
+                                            <span
+                                                class="inline-flex items-center rounded-md bg-gray-100 text-gray-700 px-2 py-0.5 text-xs"
+                                            >
                                                 <i class="fas fa-hashtag text-gray-400 text-[9px] mr-1"></i>{{ $tag }}
                                             </span>
                                         @endif
@@ -856,11 +880,15 @@ new #[Layout('components.layouts.app')] class extends Component
 
                             @if ($formClientId)
                                 <div>
-                                    <label class="form-label">Link to Content <span class="text-gray-400 text-xs">(optional)</span></label>
+                                    <label class="form-label"
+                                        >Link to Content <span class="text-gray-400 text-xs">(optional)</span></label
+                                    >
                                     <select wire:model="formContentId" class="form-select">
                                         <option value="">No linked content</option>
                                         @foreach ($this->getAvailableContent() as $content)
-                                            <option value="{{ $content->id }}">{{ $content->title }} — {{ \Carbon\Carbon::parse($content->date)->format('M j') }} ({{ ucfirst($content->platform) }})</option>
+                                            <option value="{{ $content->id }}">
+                                                {{ $content->title }} — {{ \Carbon\Carbon::parse($content->date)->format('M j') }} ({{ ucfirst($content->platform) }})
+                                            </option>
                                         @endforeach
                                     </select>
                                 </div>
@@ -912,7 +940,12 @@ new #[Layout('components.layouts.app')] class extends Component
 
                             <div>
                                 <label class="form-label">Deadline</label>
-                                <input type="date" wire:model="formDeadline" class="form-input" min="{{ now()->format('Y-m-d') }}" />
+                                <input
+                                    type="date"
+                                    wire:model="formDeadline"
+                                    class="form-input"
+                                    min="{{ now()->format('Y-m-d') }}"
+                                />
                             </div>
 
                             <div class="md:col-span-2">
@@ -1034,7 +1067,10 @@ new #[Layout('components.layouts.app')] class extends Component
                                         </div>
                                         <div class="mt-3 pt-3 border-t border-gray-100">
                                             <label class="flex items-center gap-2 text-xs text-gray-600 cursor-pointer">
-                                                <span class="text-[10px] uppercase tracking-wide font-semibold text-gray-400">Custom</span>
+                                                <span
+                                                    class="text-[10px] uppercase tracking-wide font-semibold text-gray-400"
+                                                    >Custom</span
+                                                >
                                                 <input
                                                     type="color"
                                                     value="{{ $stage['color'] }}"
@@ -1042,7 +1078,10 @@ new #[Layout('components.layouts.app')] class extends Component
                                                     class="h-7 w-10 rounded cursor-pointer border border-gray-200"
                                                     aria-label="Pick custom color"
                                                 />
-                                                <span class="text-gray-500 font-mono text-[11px]">{{ strtoupper($stage['color']) }}</span>
+                                                <span
+                                                    class="text-gray-500 font-mono text-[11px]"
+                                                    >{{ strtoupper($stage['color']) }}</span
+                                                >
                                             </label>
                                         </div>
                                     </div>
@@ -1063,7 +1102,10 @@ new #[Layout('components.layouts.app')] class extends Component
                                         }
                                     "
                                     x-on:keydown.enter.prevent="$event.target.blur()"
-                                    x-on:keydown.escape.prevent="$event.target.value = original; $event.target.blur()"
+                                    x-on:keydown.escape.prevent="
+                                        $event.target.value = original;
+                                        $event.target.blur();
+                                    "
                                     maxlength="255"
                                     aria-label="Stage name (click to edit)"
                                     class="flex-1 min-w-0 text-sm font-semibold text-gray-800 bg-transparent border border-transparent rounded-md px-2 py-1 hover:border-gray-200 hover:bg-gray-50 focus:border-[var(--brand)] focus:bg-white focus:outline-none focus:ring-1 focus:ring-[var(--brand)]/20 transition-all"
@@ -1123,14 +1165,20 @@ new #[Layout('components.layouts.app')] class extends Component
                                     </div>
                                     <div class="mt-3 pt-3 border-t border-gray-100">
                                         <label class="flex items-center gap-2 text-xs text-gray-600 cursor-pointer">
-                                            <span class="text-[10px] uppercase tracking-wide font-semibold text-gray-400">Custom</span>
+                                            <span
+                                                class="text-[10px] uppercase tracking-wide font-semibold text-gray-400"
+                                                >Custom</span
+                                            >
                                             <input
                                                 type="color"
                                                 wire:model.live="newStageColor"
                                                 class="h-7 w-10 rounded cursor-pointer border border-gray-200"
                                                 aria-label="Pick custom color"
                                             />
-                                            <span class="text-gray-500 font-mono text-[11px]">{{ strtoupper($newStageColor) }}</span>
+                                            <span
+                                                class="text-gray-500 font-mono text-[11px]"
+                                                >{{ strtoupper($newStageColor) }}</span
+                                            >
                                         </label>
                                     </div>
                                 </div>

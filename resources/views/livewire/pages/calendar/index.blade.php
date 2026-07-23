@@ -567,8 +567,11 @@ new #[Layout('components.layouts.app')] class extends Component
                             >
                                 {{ $day->format('j') }}
                             </span>
-                            @if(count($dayContent) > 0)
-                                <span class="text-[9px] font-bold {{ $isToday ? 'text-[var(--brand)]' : 'text-gray-400' }} bg-gray-100 rounded-full px-1.5 py-0.5 leading-none">{{ count($dayContent) }}</span>
+                            @if (count($dayContent) > 0)
+                                <span
+                                    class="text-[9px] font-bold {{ $isToday ? 'text-[var(--brand)]' : 'text-gray-400' }} bg-gray-100 rounded-full px-1.5 py-0.5 leading-none"
+                                    >{{ count($dayContent) }}</span
+                                >
                             @endif
                         </div>
                         <div class="space-y-0.5" @click.stop>
@@ -687,7 +690,8 @@ new #[Layout('components.layouts.app')] class extends Component
         $platformData = $this->getPlatformData();
         $typeData = $this->getTypeData();
     @endphp
-    <div x-data="{
+    <div
+        x-data="{
         platformData: @js($platformData),
         typeData: @js($typeData),
         init() {
@@ -737,7 +741,9 @@ new #[Layout('components.layouts.app')] class extends Component
                 });
             }
         }
-    }" class="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+    }"
+        class="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6"
+    >
         <div class="bg-white rounded-2xl border border-gray-100 p-5">
             <h3 class="text-sm font-bold text-gray-900 mb-4">Platform Distribution</h3>
             <div style="height: 220px"><canvas id="platformDistChart"></canvas></div>
@@ -795,7 +801,12 @@ new #[Layout('components.layouts.app')] class extends Component
 
                             <div>
                                 <label class="form-label">Date <span class="text-red-500">*</span></label>
-                                <input type="date" wire:model="formDate" class="form-input" min="{{ now()->format('Y-m-d') }}" />
+                                <input
+                                    type="date"
+                                    wire:model="formDate"
+                                    class="form-input"
+                                    min="{{ now()->format('Y-m-d') }}"
+                                />
                                 @error ('formDate')
                                     <span class="text-xs text-red-500 mt-1 block">{{ $message }}</span>
                                 @enderror
@@ -803,8 +814,15 @@ new #[Layout('components.layouts.app')] class extends Component
                             </div>
 
                             <div>
-                                <label class="form-label">Due Date <span class="text-gray-400 text-xs">(optional)</span></label>
-                                <input type="date" wire:model="formDueDate" class="form-input" min="{{ now()->format('Y-m-d') }}" />
+                                <label class="form-label"
+                                    >Due Date <span class="text-gray-400 text-xs">(optional)</span></label
+                                >
+                                <input
+                                    type="date"
+                                    wire:model="formDueDate"
+                                    class="form-input"
+                                    min="{{ now()->format('Y-m-d') }}"
+                                />
                                 <p class="text-[11px] text-gray-400 mt-1">When content must be completed by</p>
                             </div>
 
@@ -932,8 +950,15 @@ new #[Layout('components.layouts.app')] class extends Component
             $platformSummary = $this->getDayPlatformSummary();
             $contentLinks = $this->getContentLinks();
         @endphp
-        <div class="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm" wire:click.self="$set('showDayDetail', false)" x-data x-on:keydown.escape.window="$wire.set('showDayDetail', false)">
-            <div class="relative bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl border border-gray-200 w-full sm:max-w-lg max-h-[90vh] flex flex-col mx-0 sm:mx-4 overflow-hidden z-10">
+        <div
+            class="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm"
+            wire:click.self="$set('showDayDetail', false)"
+            x-data
+            x-on:keydown.escape.window="$wire.set('showDayDetail', false)"
+        >
+            <div
+                class="relative bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl border border-gray-200 w-full sm:max-w-lg max-h-[90vh] flex flex-col mx-0 sm:mx-4 overflow-hidden z-10"
+            >
                 {{-- Header --}}
                 <div class="flex-shrink-0 px-5 py-4 border-b border-gray-100">
                     <div class="flex items-center justify-between">
@@ -942,11 +967,16 @@ new #[Layout('components.layouts.app')] class extends Component
                                 <i class="fas fa-calendar-alt text-[var(--brand)]"></i>
                             </div>
                             <div>
-                                <h3 class="text-lg font-bold text-gray-900">{{ $detailDate ? $detailDate->format('l, F j, Y') : '' }}</h3>
+                                <h3 class="text-lg font-bold text-gray-900">
+                                    {{ $detailDate ? $detailDate->format('l, F j, Y') : '' }}
+                                </h3>
                                 <p class="text-xs text-gray-500 mt-0.5">{{ count($detailItems) }} content item(s) scheduled</p>
                             </div>
                         </div>
-                        <button wire:click="$set('showDayDetail', false)" class="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition">
+                        <button
+                            wire:click="$set('showDayDetail', false)"
+                            class="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition"
+                        >
                             <i class="fas fa-times text-sm"></i>
                         </button>
                     </div>
@@ -957,22 +987,24 @@ new #[Layout('components.layouts.app')] class extends Component
                     <div class="flex-shrink-0 px-5 pt-4 pb-2">
                         <div class="flex flex-wrap gap-2">
                             @foreach ($platformSummary as $platform => $count)
-                                <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold
+                                <span
+                                    class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold
                                     {{ $platform === 'instagram' ? 'bg-pink-50 text-pink-700' : '' }}
                                     {{ $platform === 'facebook' ? 'bg-blue-50 text-blue-700' : '' }}
                                     {{ $platform === 'tiktok' ? 'bg-gray-900 text-white' : '' }}
                                     {{ $platform === 'youtube' ? 'bg-red-50 text-red-700' : '' }}
-                                    {{ !in_array($platform, ['instagram','facebook','tiktok','youtube']) ? 'bg-gray-100 text-gray-700' : '' }}">
+                                    {{ !in_array($platform, ['instagram','facebook','tiktok','youtube']) ? 'bg-gray-100 text-gray-700' : '' }}"
+                                >
                                     @if ($platform === 'instagram')
-                                        <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z"/></svg>
+                                        <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z" /></svg>
                                     @elseif ($platform === 'facebook')
-                                        <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
+                                        <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" /></svg>
                                     @elseif ($platform === 'tiktok')
-                                        <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M19.59 6.69a4.83 4.83 0 01-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 01-2.88 2.5 2.89 2.89 0 01-2.89-2.89 2.89 2.89 0 012.89-2.89c.28 0 .54.04.79.1v-3.51a6.37 6.37 0 00-.79-.05A6.34 6.34 0 003.15 15.2a6.34 6.34 0 0010.86 4.46v-7.12a8.16 8.16 0 005.58 2.18v-3.45a4.85 4.85 0 01-3.77-1.59h-.23z"/></svg>
+                                        <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M19.59 6.69a4.83 4.83 0 01-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 01-2.88 2.5 2.89 2.89 0 01-2.89-2.89 2.89 2.89 0 012.89-2.89c.28 0 .54.04.79.1v-3.51a6.37 6.37 0 00-.79-.05A6.34 6.34 0 003.15 15.2a6.34 6.34 0 0010.86 4.46v-7.12a8.16 8.16 0 005.58 2.18v-3.45a4.85 4.85 0 01-3.77-1.59h-.23z" /></svg>
                                     @elseif ($platform === 'youtube')
-                                        <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M23.498 6.186a3.016 3.016 0 00-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 00.502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 002.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 002.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>
+                                        <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M23.498 6.186a3.016 3.016 0 00-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 00.502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 002.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 002.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z" /></svg>
                                     @else
-                                        <i class="fas fa-globe text-gray-500" style="font-size:14px"></i>
+                                        <i class="fas fa-globe text-gray-500" style="font-size: 14px"></i>
                                     @endif
                                     {{ ucfirst($platform) }} ({{ $count }})
                                 </span>
@@ -1011,13 +1043,23 @@ new #[Layout('components.layouts.app')] class extends Component
                                         'youtube' => 'play',
                                     ];
                                 @endphp
-                                <div wire:click="editContent({{ $item->id }})" class="group flex items-start gap-3 p-3 rounded-xl border border-gray-100 hover:border-gray-200 hover:shadow-sm transition-all duration-150 cursor-pointer">
-                                    <div class="w-9 h-9 rounded-lg bg-{{ $item->platform }}-500/10 flex items-center justify-center flex-shrink-0">
-                                        <i class="fas fa-{{ $platformIcons[$item->platform] ?? 'globe' }} text-{{ $item->platform }}-500" style="font-size:14px"></i>
+                                <div
+                                    wire:click="editContent({{ $item->id }})"
+                                    class="group flex items-start gap-3 p-3 rounded-xl border border-gray-100 hover:border-gray-200 hover:shadow-sm transition-all duration-150 cursor-pointer"
+                                >
+                                    <div
+                                        class="w-9 h-9 rounded-lg bg-{{ $item->platform }}-500/10 flex items-center justify-center flex-shrink-0"
+                                    >
+                                        <i
+                                            class="fas fa-{{ $platformIcons[$item->platform] ?? 'globe' }} text-{{ $item->platform }}-500"
+                                            style="font-size: 14px"
+                                        ></i>
                                     </div>
                                     <div class="flex-1 min-w-0">
                                         <div class="flex items-center gap-2">
-                                            <h4 class="text-sm font-semibold text-gray-800 truncate">{{ $item->title }}</h4>
+                                            <h4 class="text-sm font-semibold text-gray-800 truncate">
+                                                {{ $item->title }}
+                                            </h4>
                                         </div>
                                         <div class="flex items-center gap-1.5 mt-1">
                                             @if ($item->client_id)
@@ -1033,21 +1075,28 @@ new #[Layout('components.layouts.app')] class extends Component
                                                     $dueDate = \Carbon\Carbon::parse($item->due_date);
                                                     $isOverdue = $dueDate->isPast();
                                                 @endphp
-                                                <span class="text-[10px] px-1.5 py-0.5 rounded {{ $isOverdue ? 'bg-red-50 text-red-600 font-semibold' : 'bg-blue-50 text-blue-600' }}">
-                                                    <i class="fas fa-clock" style="font-size:8px"></i>
+                                                <span
+                                                    class="text-[10px] px-1.5 py-0.5 rounded {{ $isOverdue ? 'bg-red-50 text-red-600 font-semibold' : 'bg-blue-50 text-blue-600' }}"
+                                                >
+                                                    <i class="fas fa-clock" style="font-size: 8px"></i>
                                                     Due {{ $dueDate->format('M j') }}
                                                 </span>
                                             @endif
                                             @if ($item->needs_approval)
-                                                <span class="text-xs px-1.5 py-0.5 rounded bg-amber-50 text-amber-600 font-medium">Approval</span>
+                                                <span
+                                                    class="text-xs px-1.5 py-0.5 rounded bg-amber-50 text-amber-600 font-medium"
+                                                    >Approval</span
+                                                >
                                             @endif
                                         </div>
                                         @php $links = $contentLinks[$item->id] ?? null; @endphp
                                         @if ($links && ($links['workflow'] || $links['approval']))
                                             <div class="flex items-center gap-1.5 mt-1.5">
                                                 @if ($links['workflow'])
-                                                    <span class="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-600">
-                                                        <i class="fas fa-columns" style="font-size:8px"></i>
+                                                    <span
+                                                        class="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-600"
+                                                    >
+                                                        <i class="fas fa-columns" style="font-size: 8px"></i>
                                                         {{ str_replace('-', ' ', ucfirst($links['workflow']->stage)) }}
                                                     </span>
                                                 @endif
@@ -1060,15 +1109,22 @@ new #[Layout('components.layouts.app')] class extends Component
                                                             'rejected' => 'bg-red-50 text-red-600',
                                                         ];
                                                     @endphp
-                                                    <span class="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded {{ $approvalColors[$links['approval']->status] ?? 'bg-gray-50 text-gray-600' }}">
-                                                        <i class="fas fa-{{ $links['approval']->status === 'approved' ? 'check-circle' : ($links['approval']->status === 'rejected' ? 'times-circle' : 'clock') }}" style="font-size:8px"></i>
+                                                    <span
+                                                        class="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded {{ $approvalColors[$links['approval']->status] ?? 'bg-gray-50 text-gray-600' }}"
+                                                    >
+                                                        <i
+                                                            class="fas fa-{{ $links['approval']->status === 'approved' ? 'check-circle' : ($links['approval']->status === 'rejected' ? 'times-circle' : 'clock') }}"
+                                                            style="font-size: 8px"
+                                                        ></i>
                                                         {{ ucfirst($links['approval']->status) }}
                                                     </span>
                                                 @endif
                                             </div>
                                         @endif
                                     </div>
-                                    <span class="text-[11px] font-semibold px-2 py-0.5 rounded-lg {{ $statusColors[$item->status] ?? 'bg-gray-100 text-gray-700' }}">
+                                    <span
+                                        class="text-[11px] font-semibold px-2 py-0.5 rounded-lg {{ $statusColors[$item->status] ?? 'bg-gray-100 text-gray-700' }}"
+                                    >
                                         {{ str_replace('-', ' ', ucfirst($item->status)) }}
                                     </span>
                                 </div>
@@ -1079,9 +1135,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
                 {{-- Footer --}}
                 <div class="flex-shrink-0 px-5 py-4 border-t border-gray-100 flex items-center justify-between">
-                    <button wire:click="$set('showDayDetail', false)" class="btn btn-secondary">
-                        Close
-                    </button>
+                    <button wire:click="$set('showDayDetail', false)" class="btn btn-secondary">Close</button>
                     <button wire:click="openForm('{{ $selectedDate }}')" class="btn btn-primary">
                         <i class="fas fa-plus text-xs"></i>
                         Add Content

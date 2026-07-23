@@ -30,7 +30,12 @@ new class extends Component
     }
 }; ?>
 
-<div class="pointer-events-none fixed top-5 right-5 z-[100] flex flex-col gap-2" aria-live="polite" aria-atomic="true" role="status">
+<div
+    class="pointer-events-none fixed top-5 right-5 z-[100] flex flex-col gap-2"
+    aria-live="polite"
+    aria-atomic="true"
+    role="status"
+>
     @foreach ($items as $toast)
         <div
             data-toast-id="{{ $toast['id'] }}"

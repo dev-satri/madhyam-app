@@ -497,9 +497,7 @@ new #[Layout('components.layouts.app')] class extends Component
                         @endforeach
                     </div>
                 @endif
-                <div
-                    class="flex items-center gap-2 mt-auto pt-3 border-t border-gray-100"
-                >
+                <div class="flex items-center gap-2 mt-auto pt-3 border-t border-gray-100">
                     <button
                         type="button"
                         wire:click.stop="openPkgForm({{ $pkg['id'] }})"
@@ -685,184 +683,201 @@ new #[Layout('components.layouts.app')] class extends Component
 
             {{-- Clients Table --}}
             @if ($viewMode === 'table')
-            <div class="overflow-x-auto">
-                <table class="data-table w-full text-xs">
-                    <thead>
-                        <tr>
-                            <th
-                                class="text-left cursor-pointer hover:text-gray-900"
-                                wire:click="toggleSort('client_name')"
-                            >
-                                <div class="flex items-center gap-1">
-                                    Client
-                                    @if ($sortBy === 'client_name')
-                                        <i class="fas fa-sort-{{ $sortDesc ? 'down' : 'up' }} text-[var(--brand)]"></i>
-                                    @else
-                                        <i class="fas fa-sort text-gray-300"></i>
-                                    @endif
-                                </div>
-                            </th>
-                            <th
-                                class="text-left cursor-pointer hover:text-gray-900"
-                                wire:click="toggleSort('package_name')"
-                            >
-                                <div class="flex items-center gap-1">
-                                    Package
-                                    @if ($sortBy === 'package_name')
-                                        <i class="fas fa-sort-{{ $sortDesc ? 'down' : 'up' }} text-[var(--brand)]"></i>
-                                    @else
-                                        <i class="fas fa-sort text-gray-300"></i>
-                                    @endif
-                                </div>
-                            </th>
-                            <th
-                                class="text-center cursor-pointer hover:text-gray-900"
-                                wire:click="toggleSort('content_pct')"
-                            >
-                                <div class="flex items-center justify-center gap-1">
-                                    Content
-                                    @if ($sortBy === 'content_pct')
-                                        <i class="fas fa-sort-{{ $sortDesc ? 'down' : 'up' }} text-[var(--brand)]"></i>
-                                    @else
-                                        <i class="fas fa-sort text-gray-300"></i>
-                                    @endif
-                                </div>
-                            </th>
-                            <th
-                                class="text-center cursor-pointer hover:text-gray-900"
-                                wire:click="toggleSort('workflow_pct')"
-                            >
-                                <div class="flex items-center justify-center gap-1">
-                                    Workflow
-                                    @if ($sortBy === 'workflow_pct')
-                                        <i class="fas fa-sort-{{ $sortDesc ? 'down' : 'up' }} text-[var(--brand)]"></i>
-                                    @else
-                                        <i class="fas fa-sort text-gray-300"></i>
-                                    @endif
-                                </div>
-                            </th>
-                            <th
-                                class="text-center cursor-pointer hover:text-gray-900"
-                                wire:click="toggleSort('storage_pct')"
-                            >
-                                <div class="flex items-center justify-center gap-1">
-                                    Storage
-                                    @if ($sortBy === 'storage_pct')
-                                        <i class="fas fa-sort-{{ $sortDesc ? 'down' : 'up' }} text-[var(--brand)]"></i>
-                                    @else
-                                        <i class="fas fa-sort text-gray-300"></i>
-                                    @endif
-                                </div>
-                            </th>
-                            <th class="text-center">Approvals</th>
-                            <th class="text-center">Files</th>
-                            <th class="text-center">Status</th>
-                            <th class="text-center w-20">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @forelse ($this->filteredClients as $client)
-                            <tr
-                                class="{{ $client['is_over_limit'] ? 'bg-red-50/50' : ($client['needs_attention'] ? 'bg-amber-50/50' : 'hover:bg-gray-50') }} transition-colors cursor-pointer focus-within:bg-gray-50"
-                                wire:click="openClientDetail({{ $client['client_id'] }})"
-                            >
-                                <td>
-                                    <div class="flex items-center gap-2">
-                                        <div
-                                            class="w-8 h-8 rounded-full bg-[var(--brand)]/10 flex items-center justify-center text-[var(--brand)] text-xs font-bold flex-shrink-0"
-                                        >
-                                            {{ strtoupper(substr($client['client_name'], 0, 2)) }}
-                                        </div>
-                                        <span class="font-semibold text-gray-900">{{ $client['client_name'] }}</span>
-                                    </div>
-                                </td>
-                                <td>
-                                    <span
-                                        class="badge badge-{{ $client['package_slug'] }}"
-                                        >{{ $client['package_name'] }}</span
-                                    >
-                                </td>
-                                <td class="text-center">
-                                    <div class="flex items-center justify-center gap-1.5">
-                                        <div class="w-14 h-1.5 bg-gray-200 rounded-full overflow-hidden">
-                                            <div
-                                                class="h-full rounded-full {{ $client['content_pct'] >= 90 ? 'bg-red-500' : ($client['content_pct'] >= 70 ? 'bg-amber-500' : 'bg-green-500') }}"
-                                                style="width: {{ $client['content_pct'] }}%"
-                                            ></div>
-                                        </div>
-                                        <span
-                                            class="font-semibold w-12 text-right {{ $client['content_pct'] >= 90 ? 'text-red-600' : ($client['content_pct'] >= 70 ? 'text-amber-600' : 'text-gray-600') }}"
-                                            >{{ $client['content_used'] }}/{{ $client['content_limit'] }}</span
-                                        >
-                                    </div>
-                                </td>
-                                <td class="text-center">
-                                    <div class="flex items-center justify-center gap-1.5">
-                                        <div class="w-14 h-1.5 bg-gray-200 rounded-full overflow-hidden">
-                                            <div
-                                                class="h-full rounded-full {{ $client['workflow_pct'] >= 90 ? 'bg-red-500' : ($client['workflow_pct'] >= 70 ? 'bg-amber-500' : 'bg-green-500') }}"
-                                                style="width: {{ $client['workflow_pct'] }}%"
-                                            ></div>
-                                        </div>
-                                        <span
-                                            class="font-semibold w-12 text-right {{ $client['workflow_pct'] >= 90 ? 'text-red-600' : ($client['workflow_pct'] >= 70 ? 'text-amber-600' : 'text-gray-600') }}"
-                                            >{{ $client['workflow_used'] }}/{{ $client['workflow_limit'] }}</span
-                                        >
-                                    </div>
-                                </td>
-                                <td class="text-center">
-                                    <div class="flex items-center justify-center gap-1.5">
-                                        <div class="w-14 h-1.5 bg-gray-200 rounded-full overflow-hidden">
-                                            <div
-                                                class="h-full rounded-full {{ $client['storage_pct'] >= 90 ? 'bg-red-500' : ($client['storage_pct'] >= 70 ? 'bg-amber-500' : 'bg-green-500') }}"
-                                                style="width: {{ $client['storage_pct'] }}%"
-                                            ></div>
-                                        </div>
-                                        <span
-                                            class="font-semibold w-16 text-right {{ $client['storage_pct'] >= 90 ? 'text-red-600' : ($client['storage_pct'] >= 70 ? 'text-amber-600' : 'text-gray-600') }}"
-                                            >{{ $client['storage_used'] }}/{{ $client['storage_limit'] }}MB</span
-                                        >
-                                    </div>
-                                </td>
-                                <td class="text-center font-semibold text-gray-600">{{ $client['approvals_used'] }}</td>
-                                <td class="text-center font-semibold text-gray-600">{{ $client['files_uploaded'] }}</td>
-                                <td class="text-center">
-                                    @if ($client['is_over_limit'])
-                                        <span class="badge bg-red-100 text-red-700">Over Limit</span>
-                                    @elseif ($client['needs_attention'])
-                                        <span class="badge bg-amber-100 text-amber-700">Near Limit</span>
-                                    @else
-                                        <span class="badge bg-green-100 text-green-700">On Track</span>
-                                    @endif
-                                </td>
-                                <td class="text-center">
-                                    <button
-                                        type="button"
-                                        wire:click.stop="openClientDetail({{ $client['client_id'] }})"
-                                        aria-label="View {{ $client['client_name'] }} details"
-                                        class="inline-flex h-7 w-7 items-center justify-center rounded-lg text-gray-400 hover:text-[var(--brand)] hover:bg-[var(--brand)]/5 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand)]/40 transition-colors"
-                                    >
-                                        <i class="fas fa-arrow-right text-xs"></i>
-                                    </button>
-                                </td>
-                            </tr>
-                        @empty
+                <div class="overflow-x-auto">
+                    <table class="data-table w-full text-xs">
+                        <thead>
                             <tr>
-                                <td colspan="9" class="text-center py-8 text-gray-400">
-                                    <i class="fas fa-search text-2xl mb-2 block"></i>
-                                    <p class="text-sm">No clients found matching your criteria</p>
-                                    <button
-                                        wire:click="resetFilters"
-                                        class="text-xs text-[var(--brand)] mt-2 hover:underline"
-                                    >
-                                        Clear all filters
-                                    </button>
-                                </td>
+                                <th
+                                    class="text-left cursor-pointer hover:text-gray-900"
+                                    wire:click="toggleSort('client_name')"
+                                >
+                                    <div class="flex items-center gap-1">
+                                        Client
+                                        @if ($sortBy === 'client_name')
+                                            <i
+                                                class="fas fa-sort-{{ $sortDesc ? 'down' : 'up' }} text-[var(--brand)]"
+                                            ></i>
+                                        @else
+                                            <i class="fas fa-sort text-gray-300"></i>
+                                        @endif
+                                    </div>
+                                </th>
+                                <th
+                                    class="text-left cursor-pointer hover:text-gray-900"
+                                    wire:click="toggleSort('package_name')"
+                                >
+                                    <div class="flex items-center gap-1">
+                                        Package
+                                        @if ($sortBy === 'package_name')
+                                            <i
+                                                class="fas fa-sort-{{ $sortDesc ? 'down' : 'up' }} text-[var(--brand)]"
+                                            ></i>
+                                        @else
+                                            <i class="fas fa-sort text-gray-300"></i>
+                                        @endif
+                                    </div>
+                                </th>
+                                <th
+                                    class="text-center cursor-pointer hover:text-gray-900"
+                                    wire:click="toggleSort('content_pct')"
+                                >
+                                    <div class="flex items-center justify-center gap-1">
+                                        Content
+                                        @if ($sortBy === 'content_pct')
+                                            <i
+                                                class="fas fa-sort-{{ $sortDesc ? 'down' : 'up' }} text-[var(--brand)]"
+                                            ></i>
+                                        @else
+                                            <i class="fas fa-sort text-gray-300"></i>
+                                        @endif
+                                    </div>
+                                </th>
+                                <th
+                                    class="text-center cursor-pointer hover:text-gray-900"
+                                    wire:click="toggleSort('workflow_pct')"
+                                >
+                                    <div class="flex items-center justify-center gap-1">
+                                        Workflow
+                                        @if ($sortBy === 'workflow_pct')
+                                            <i
+                                                class="fas fa-sort-{{ $sortDesc ? 'down' : 'up' }} text-[var(--brand)]"
+                                            ></i>
+                                        @else
+                                            <i class="fas fa-sort text-gray-300"></i>
+                                        @endif
+                                    </div>
+                                </th>
+                                <th
+                                    class="text-center cursor-pointer hover:text-gray-900"
+                                    wire:click="toggleSort('storage_pct')"
+                                >
+                                    <div class="flex items-center justify-center gap-1">
+                                        Storage
+                                        @if ($sortBy === 'storage_pct')
+                                            <i
+                                                class="fas fa-sort-{{ $sortDesc ? 'down' : 'up' }} text-[var(--brand)]"
+                                            ></i>
+                                        @else
+                                            <i class="fas fa-sort text-gray-300"></i>
+                                        @endif
+                                    </div>
+                                </th>
+                                <th class="text-center">Approvals</th>
+                                <th class="text-center">Files</th>
+                                <th class="text-center">Status</th>
+                                <th class="text-center w-20">Actions</th>
                             </tr>
-                        @endforelse
-                    </tbody>
-                </table>
-            </div>
+                        </thead>
+                        <tbody>
+                            @forelse ($this->filteredClients as $client)
+                                <tr
+                                    class="{{ $client['is_over_limit'] ? 'bg-red-50/50' : ($client['needs_attention'] ? 'bg-amber-50/50' : 'hover:bg-gray-50') }} transition-colors cursor-pointer focus-within:bg-gray-50"
+                                    wire:click="openClientDetail({{ $client['client_id'] }})"
+                                >
+                                    <td>
+                                        <div class="flex items-center gap-2">
+                                            <div
+                                                class="w-8 h-8 rounded-full bg-[var(--brand)]/10 flex items-center justify-center text-[var(--brand)] text-xs font-bold flex-shrink-0"
+                                            >
+                                                {{ strtoupper(substr($client['client_name'], 0, 2)) }}
+                                            </div>
+                                            <span
+                                                class="font-semibold text-gray-900"
+                                                >{{ $client['client_name'] }}</span
+                                            >
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <span
+                                            class="badge badge-{{ $client['package_slug'] }}"
+                                            >{{ $client['package_name'] }}</span
+                                        >
+                                    </td>
+                                    <td class="text-center">
+                                        <div class="flex items-center justify-center gap-1.5">
+                                            <div class="w-14 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                                                <div
+                                                    class="h-full rounded-full {{ $client['content_pct'] >= 90 ? 'bg-red-500' : ($client['content_pct'] >= 70 ? 'bg-amber-500' : 'bg-green-500') }}"
+                                                    style="width: {{ $client['content_pct'] }}%"
+                                                ></div>
+                                            </div>
+                                            <span
+                                                class="font-semibold w-12 text-right {{ $client['content_pct'] >= 90 ? 'text-red-600' : ($client['content_pct'] >= 70 ? 'text-amber-600' : 'text-gray-600') }}"
+                                                >{{ $client['content_used'] }}/{{ $client['content_limit'] }}</span
+                                            >
+                                        </div>
+                                    </td>
+                                    <td class="text-center">
+                                        <div class="flex items-center justify-center gap-1.5">
+                                            <div class="w-14 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                                                <div
+                                                    class="h-full rounded-full {{ $client['workflow_pct'] >= 90 ? 'bg-red-500' : ($client['workflow_pct'] >= 70 ? 'bg-amber-500' : 'bg-green-500') }}"
+                                                    style="width: {{ $client['workflow_pct'] }}%"
+                                                ></div>
+                                            </div>
+                                            <span
+                                                class="font-semibold w-12 text-right {{ $client['workflow_pct'] >= 90 ? 'text-red-600' : ($client['workflow_pct'] >= 70 ? 'text-amber-600' : 'text-gray-600') }}"
+                                                >{{ $client['workflow_used'] }}/{{ $client['workflow_limit'] }}</span
+                                            >
+                                        </div>
+                                    </td>
+                                    <td class="text-center">
+                                        <div class="flex items-center justify-center gap-1.5">
+                                            <div class="w-14 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                                                <div
+                                                    class="h-full rounded-full {{ $client['storage_pct'] >= 90 ? 'bg-red-500' : ($client['storage_pct'] >= 70 ? 'bg-amber-500' : 'bg-green-500') }}"
+                                                    style="width: {{ $client['storage_pct'] }}%"
+                                                ></div>
+                                            </div>
+                                            <span
+                                                class="font-semibold w-16 text-right {{ $client['storage_pct'] >= 90 ? 'text-red-600' : ($client['storage_pct'] >= 70 ? 'text-amber-600' : 'text-gray-600') }}"
+                                                >{{ $client['storage_used'] }}/{{ $client['storage_limit'] }}MB</span
+                                            >
+                                        </div>
+                                    </td>
+                                    <td class="text-center font-semibold text-gray-600">
+                                        {{ $client['approvals_used'] }}
+                                    </td>
+                                    <td class="text-center font-semibold text-gray-600">
+                                        {{ $client['files_uploaded'] }}
+                                    </td>
+                                    <td class="text-center">
+                                        @if ($client['is_over_limit'])
+                                            <span class="badge bg-red-100 text-red-700">Over Limit</span>
+                                        @elseif ($client['needs_attention'])
+                                            <span class="badge bg-amber-100 text-amber-700">Near Limit</span>
+                                        @else
+                                            <span class="badge bg-green-100 text-green-700">On Track</span>
+                                        @endif
+                                    </td>
+                                    <td class="text-center">
+                                        <button
+                                            type="button"
+                                            wire:click.stop="openClientDetail({{ $client['client_id'] }})"
+                                            aria-label="View {{ $client['client_name'] }} details"
+                                            class="inline-flex h-7 w-7 items-center justify-center rounded-lg text-gray-400 hover:text-[var(--brand)] hover:bg-[var(--brand)]/5 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand)]/40 transition-colors"
+                                        >
+                                            <i class="fas fa-arrow-right text-xs"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                            @empty
+                                <tr>
+                                    <td colspan="9" class="text-center py-8 text-gray-400">
+                                        <i class="fas fa-search text-2xl mb-2 block"></i>
+                                        <p class="text-sm">No clients found matching your criteria</p>
+                                        <button
+                                            wire:click="resetFilters"
+                                            class="text-xs text-[var(--brand)] mt-2 hover:underline"
+                                        >
+                                            Clear all filters
+                                        </button>
+                                    </td>
+                                </tr>
+                            @endforelse
+                        </tbody>
+                    </table>
+                </div>
             @endif
 
             {{-- Grid View --}}
@@ -1011,7 +1026,12 @@ new #[Layout('components.layouts.app')] class extends Component
 
     {{-- Package Form Modal --}}
     @if ($showPkgForm)
-        <div class="fixed inset-0 z-50 flex items-center justify-center p-4" x-data x-transition x-on:keydown.escape.window="$wire.set('showPkgForm', false)">
+        <div
+            class="fixed inset-0 z-50 flex items-center justify-center p-4"
+            x-data
+            x-transition
+            x-on:keydown.escape.window="$wire.set('showPkgForm', false)"
+        >
             <div class="fixed inset-0 bg-black/50 backdrop-blur-sm" wire:click="$set('showPkgForm', false)"></div>
             <div
                 class="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto"
@@ -1172,7 +1192,12 @@ new #[Layout('components.layouts.app')] class extends Component
     {{-- Package Detail Modal --}}
     @if ($showDetailModal)
         @php $summary = $this->detailSummary; @endphp
-        <div class="fixed inset-0 z-50 flex items-center justify-center p-4" x-data x-transition x-on:keydown.escape.window="$wire.set('showDetailModal', false)">
+        <div
+            class="fixed inset-0 z-50 flex items-center justify-center p-4"
+            x-data
+            x-transition
+            x-on:keydown.escape.window="$wire.set('showDetailModal', false)"
+        >
             <div class="fixed inset-0 bg-black/50 backdrop-blur-sm" wire:click="$set('showDetailModal', false)"></div>
             <div
                 class="relative bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto"
@@ -1400,7 +1425,12 @@ new #[Layout('components.layouts.app')] class extends Component
 
     {{-- Client Detail Modal --}}
     @if ($showClientModal && !empty($clientDetail))
-        <div class="fixed inset-0 z-50 flex items-center justify-center p-4" x-data x-transition x-on:keydown.escape.window="$wire.set('showClientModal', false)">
+        <div
+            class="fixed inset-0 z-50 flex items-center justify-center p-4"
+            x-data
+            x-transition
+            x-on:keydown.escape.window="$wire.set('showClientModal', false)"
+        >
             <div class="fixed inset-0 bg-black/50 backdrop-blur-sm" wire:click="$set('showClientModal', false)"></div>
             <div
                 class="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto"
@@ -1413,7 +1443,9 @@ new #[Layout('components.layouts.app')] class extends Component
                     class="sticky top-0 bg-white border-b border-gray-100 px-6 py-4 flex items-center justify-between z-10"
                 >
                     <div>
-                        <h3 id="client-detail-title" class="text-base font-bold text-gray-900">{{ $clientDetail['name'] }}</h3>
+                        <h3 id="client-detail-title" class="text-base font-bold text-gray-900">
+                            {{ $clientDetail['name'] }}
+                        </h3>
                         <p class="text-xs text-gray-500">{{ $clientDetail['email'] }} {{ $clientDetail['phone'] ? '· ' . $clientDetail['phone'] : '' }}</p>
                     </div>
                     <button

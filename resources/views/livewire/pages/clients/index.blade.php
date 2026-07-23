@@ -335,7 +335,7 @@ new #[Layout('components.layouts.app')] class extends Component
             <label class="form-label">Package</label
             ><select wire:model.live="packageFilter" class="form-select">
                 <option value="">All Packages</option>
-                @foreach(\App\Models\Package::where('status', 'active')->orderBy('name')->get() as $pkg)
+                @foreach (\App\Models\Package::where('status', 'active')->orderBy('name')->get() as $pkg)
                     <option value="{{ $pkg->slug }}">{{ $pkg->name }}</option>
                 @endforeach
             </select>
@@ -356,7 +356,11 @@ new #[Layout('components.layouts.app')] class extends Component
     </div>
 
     {{-- ========== CLIENTS TABLE ========== --}}
-    <div wire:loading.remove.delay class="bg-white rounded-2xl border border-gray-100 overflow-hidden" wire:loading.target="search,statusFilter">
+    <div
+        wire:loading.remove.delay
+        class="bg-white rounded-2xl border border-gray-100 overflow-hidden"
+        wire:loading.target="search,statusFilter"
+    >
         <div wire:loading class="p-6 space-y-3">
             @for ($i = 0; $i < 5; $i++)
                 <div class="skeleton-row">
@@ -428,8 +432,8 @@ new #[Layout('components.layouts.app')] class extends Component
                                             x-transition
                                             class="absolute z-10 mt-1 w-36 rounded-xl border border-gray-100 bg-white py-1 shadow-lg"
                                         >
-                                            @foreach(['active', 'inactive', 'pending'] as $statusOption)
-                                                @if($statusOption !== $client->status)
+                                            @foreach (['active', 'inactive', 'pending'] as $statusOption)
+                                                @if ($statusOption !== $client->status)
                                                     <button
                                                         wire:click="confirmStatus({{ $client->id }}, '{{ $statusOption }}')"
                                                         @click="open = false"
@@ -459,7 +463,9 @@ new #[Layout('components.layouts.app')] class extends Component
                                             default       => 'bg-gray-100 text-gray-500',
                                         };
                                     @endphp
-                                    <span class="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold {{ $expiryClass }}">
+                                    <span
+                                        class="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold {{ $expiryClass }}"
+                                    >
                                         {{ $client->expiry_label }}
                                     </span>
                                 </td>
@@ -580,8 +586,10 @@ new #[Layout('components.layouts.app')] class extends Component
                                 <label class="form-label">Package <span class="text-red-500">*</span></label>
                                 <select wire:model="package_id" class="form-select">
                                     <option value="">Select package...</option>
-                                    @foreach($this->packages as $pkg)
-                                        <option value="{{ $pkg->id }}">{{ $pkg->name }} — NPR {{ number_format($pkg->monthly_amount, 0) }}/mo</option>
+                                    @foreach ($this->packages as $pkg)
+                                        <option value="{{ $pkg->id }}">
+                                            {{ $pkg->name }} — NPR {{ number_format($pkg->monthly_amount, 0) }}/mo
+                                        </option>
                                     @endforeach
                                 </select>
                                 <span wire:error="package_id" class="text-red-500 text-xs mt-1 block"></span>
@@ -795,7 +803,7 @@ new #[Layout('components.layouts.app')] class extends Component
                             </div>
 
                             {{-- Expiry Status Bar --}}
-                            @if($selectedClient->contract_end)
+                            @if ($selectedClient->contract_end)
                                 @php
                                     $expiryBarClass = match($selectedClient->expiry_status) {
                                         'expired' => 'border-red-200 bg-red-50',
@@ -812,27 +820,33 @@ new #[Layout('components.layouts.app')] class extends Component
                                         default => 'text-gray-600',
                                     };
                                 @endphp
-                                <div class="rounded-xl border {{ $expiryBarClass }} p-3 flex items-center justify-between">
+                                <div
+                                    class="rounded-xl border {{ $expiryBarClass }} p-3 flex items-center justify-between"
+                                >
                                     <div class="flex items-center gap-2">
-                                        <i class="fas fa-{{ $selectedClient->expiry_status === 'expired' ? 'times-circle' : ($selectedClient->expiry_status === 'active' ? 'check-circle' : 'exclamation-triangle') }} {{ $expiryTextClass }}"></i>
+                                        <i
+                                            class="fas fa-{{ $selectedClient->expiry_status === 'expired' ? 'times-circle' : ($selectedClient->expiry_status === 'active' ? 'check-circle' : 'exclamation-triangle') }} {{ $expiryTextClass }}"
+                                        ></i>
                                         <span class="text-sm font-semibold {{ $expiryTextClass }}">
-                                            @if($selectedClient->expiry_status === 'expired')
+                                            @if ($selectedClient->expiry_status === 'expired')
                                                 Contract expired {{ $selectedClient->daysUntilExpiry() }} day(s) ago
-                                            @elseif($selectedClient->expiry_status === 'no-contract')
+                                            @elseif ($selectedClient->expiry_status === 'no-contract')
                                                 No contract end date set
                                             @else
                                                 {{ $selectedClient->daysUntilExpiry() }} day(s) until contract expires
                                             @endif
                                         </span>
                                     </div>
-                                    <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold {{ $selectedClient->expiry_badge_class }}">
+                                    <span
+                                        class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold {{ $selectedClient->expiry_badge_class }}"
+                                    >
                                         {{ $selectedClient->expiry_label }}
                                     </span>
                                 </div>
                             @endif
 
                             {{-- Package Limits (if linked) --}}
-                            @if($selectedClient->linkedPackage)
+                            @if ($selectedClient->linkedPackage)
                                 <div class="rounded-xl border border-gray-100 bg-gray-50 p-4">
                                     <p class="text-[11px] font-semibold uppercase tracking-wider text-gray-400 mb-3">Package Limits</p>
                                     <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
@@ -1057,15 +1071,15 @@ new #[Layout('components.layouts.app')] class extends Component
     @if ($showStatusConfirm)
         <div class="confirm-overlay" x-data x-on:keydown.escape.window="$wire.cancelStatusChange()">
             <div class="confirm-box">
-                <div class="confirm-icon {{ $newStatus === 'active' ? 'bg-green-100 text-green-600' : ($newStatus === 'inactive' ? 'bg-gray-100 text-gray-600' : 'bg-blue-100 text-blue-600') }}">
+                <div
+                    class="confirm-icon {{ $newStatus === 'active' ? 'bg-green-100 text-green-600' : ($newStatus === 'inactive' ? 'bg-gray-100 text-gray-600' : 'bg-blue-100 text-blue-600') }}"
+                >
                     <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
                     </svg>
                 </div>
                 <h3 class="mb-2 text-lg font-bold text-gray-900">Change Client Status</h3>
-                <p class="mb-6 text-sm text-gray-500">
-                    Change status from <strong class="text-gray-700">{{ ucfirst($currentStatus) }}</strong> to <strong class="text-gray-700">{{ ucfirst($newStatus) }}</strong>?
-                </p>
+                <p class="mb-6 text-sm text-gray-500">Change status from <strong class="text-gray-700">{{ ucfirst($currentStatus) }}</strong> to <strong class="text-gray-700">{{ ucfirst($newStatus) }}</strong>?</p>
                 <div class="flex gap-3">
                     <button
                         wire:click="cancelStatusChange"
