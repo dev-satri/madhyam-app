@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Models\Concerns\ScopesToClientAccount;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
 
 class Workflow extends Model
@@ -12,7 +13,7 @@ class Workflow extends Model
     use ScopesToClientAccount;
 
     protected $fillable = [
-        'title', 'client_id', 'type', 'stage', 'deadline', 'assignee',
+        'title', 'client_id', 'content_id', 'type', 'stage', 'deadline', 'assignee',
         'priority', 'notes', 'tags', 'status', 'submitted_by',
     ];
 
@@ -24,6 +25,11 @@ class Workflow extends Model
     public function client(): BelongsTo
     {
         return $this->belongsTo(Client::class);
+    }
+
+    public function content(): BelongsTo
+    {
+        return $this->belongsTo(Content::class);
     }
 
     public function stageInfo(): BelongsTo
@@ -39,6 +45,11 @@ class Workflow extends Model
     public function submitter(): BelongsTo
     {
         return $this->belongsTo(User::class, 'submitted_by');
+    }
+
+    public function tasks(): HasMany
+    {
+        return $this->hasMany(Task::class);
     }
 
     public function scopeOverdue($query)

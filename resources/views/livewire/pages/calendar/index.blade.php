@@ -24,6 +24,7 @@ new #[Layout('components.layouts.app')] class extends Component
     public string $title = '';
     public int $formClientId = 0;
     public string $formDate = '';
+    public string $formDueDate = '';
     public array $formPlatforms = [];
     public array $formTypes = [];
     public string $formStatus = 'draft';
@@ -177,11 +178,40 @@ new #[Layout('components.layouts.app')] class extends Component
         return $summary;
     }
 
+    public function getContentLinks(): array
+    {
+        $items = $this->getDayContent();
+        $ids = array_map(fn($i) => $i->id, $items);
+        if (empty($ids)) return [];
+
+        $workflows = DB::table('workflows')
+            ->whereIn('content_id', $ids)
+            ->select('id', 'content_id', 'stage')
+            ->get()
+            ->keyBy('content_id');
+
+        $approvals = DB::table('approvals')
+            ->whereIn('content_id', $ids)
+            ->select('id', 'content_id', 'status')
+            ->get()
+            ->keyBy('content_id');
+
+        $links = [];
+        foreach ($ids as $id) {
+            $links[$id] = [
+                'workflow' => $workflows->get($id),
+                'approval' => $approvals->get($id),
+            ];
+        }
+        return $links;
+    }
+
     public function openForm(?string $date = null): void
     {
         $this->resetForm();
         $this->selectedDate = $date ?? now()->format('Y-m-d');
         $this->formDate = $this->selectedDate;
+        $this->formDueDate = '';
         $this->showForm = true;
         $this->showDayDetail = false;
     }
@@ -195,6 +225,7 @@ new #[Layout('components.layouts.app')] class extends Component
         $this->title = $content->title;
         $this->formClientId = (int) $content->client_id;
         $this->formDate = $content->date instanceof Carbon ? $content->date->format('Y-m-d') : $content->date;
+        $this->formDueDate = $content->due_date instanceof Carbon ? $content->due_date->format('Y-m-d') : ($content->due_date ?? '');
         $this->formPlatforms = $content->platform ? [$content->platform] : [];
         $this->formTypes = $content->type ? [$content->type] : [];
         $this->formStatus = $content->status;
@@ -209,11 +240,15 @@ new #[Layout('components.layouts.app')] class extends Component
     {
         $this->validate([
             'title' => 'required|string|max:255',
-            'formClientId' => 'required|integer',
-            'formDate' => 'required|date',
+            'formClientId' => 'nullable|integer',
+            'formDate' => 'required|date|after_or_equal:today',
+            'formDueDate' => 'nullable|date|after_or_equal:today',
             'formPlatforms' => 'required|array|min:1',
             'formTypes' => 'required|array|min:1',
             'formStatus' => 'required|string|in:draft,scripting,in-review,scheduled,published',
+        ], [
+            'formDate.after_or_equal' => 'Content date must be today or a future date',
+            'formDueDate.after_or_equal' => 'Due date must be today or a future date',
         ]);
 
         if ($this->editingId) {
@@ -221,6 +256,7 @@ new #[Layout('components.layouts.app')] class extends Component
                 'title' => $this->title,
                 'client_id' => $this->formClientId,
                 'date' => $this->formDate,
+                'due_date' => $this->formDueDate ?: null,
                 'platform' => $this->formPlatforms[0] ?? 'instagram',
                 'type' => $this->formTypes[0] ?? 'post',
                 'status' => $this->formStatus,
@@ -232,12 +268,14 @@ new #[Layout('components.layouts.app')] class extends Component
             $this->dispatch('toast', message: 'Content updated successfully', type: 'success');
         } else {
             $count = 0;
+            $firstStage = DB::table('workflow_stages')->orderBy('order')->first();
             foreach ($this->formPlatforms as $platform) {
                 foreach ($this->formTypes as $type) {
-                    DB::table('contents')->insert([
+                    $contentId = DB::table('contents')->insertGetId([
                         'title' => $this->title,
-                        'client_id' => $this->formClientId,
+                        'client_id' => $this->formClientId ?: null,
                         'date' => $this->formDate,
+                        'due_date' => $this->formDueDate ?: null,
                         'platform' => $platform,
                         'type' => $type,
                         'status' => $this->formStatus,
@@ -248,21 +286,41 @@ new #[Layout('components.layouts.app')] class extends Component
                         'created_at' => now(),
                         'updated_at' => now(),
                     ]);
+
+                    $wfTitle = $this->title . ' (' . ucfirst($platform) . ' / ' . ucfirst($type) . ')';
+                    DB::table('workflows')->insert([
+                        'title' => $wfTitle,
+                        'client_id' => $this->formClientId ?: null,
+                        'content_id' => $contentId,
+                        'type' => $type,
+                        'stage' => $firstStage->key ?? 'idea',
+                        'deadline' => $this->formDueDate ?: null,
+                        'submitted_by' => auth()->id(),
+                        'created_at' => now(),
+                        'updated_at' => now(),
+                    ]);
+
                     $count++;
-                    // Track package usage
-                    PackageService::recordContent($this->formClientId, $this->formStatus === 'published' ? 'published' : 'created');
+                    if ($this->formClientId) {
+                        PackageService::recordContent($this->formClientId, $this->formStatus === 'published' ? 'published' : 'created');
+                    }
                 }
             }
-            $this->dispatch('toast', message: "Created {$count} content item(s)", type: 'success');
+            $this->dispatch('toast', message: "Created {$count} content item(s) + workflow pipeline", type: 'success');
         }
 
         $this->showForm = false;
         $this->resetForm();
+        $this->loadMonthContent();
+        $this->dispatch('contentUpdated');
+        $this->dispatch('workflowUpdated');
     }
 
     public function deleteContent(int $id): void
     {
         DB::table('contents')->where('id', $id)->delete();
+        $this->loadMonthContent();
+        $this->dispatch('contentUpdated');
         $this->dispatch('toast', message: 'Content deleted successfully', type: 'success');
     }
 
@@ -338,6 +396,7 @@ new #[Layout('components.layouts.app')] class extends Component
         $this->title = '';
         $this->formClientId = 0;
         $this->formDate = '';
+        $this->formDueDate = '';
         $this->formPlatforms = [];
         $this->formTypes = [];
         $this->formStatus = 'draft';
@@ -628,7 +687,57 @@ new #[Layout('components.layouts.app')] class extends Component
         $platformData = $this->getPlatformData();
         $typeData = $this->getTypeData();
     @endphp
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+    <div x-data="{
+        platformData: @js($platformData),
+        typeData: @js($typeData),
+        init() {
+            this.$nextTick(() => this.renderCharts());
+            $wire.on('contentUpdated', () => {
+                this.platformData = @js($platformData);
+                this.typeData = @js($typeData);
+                this.$nextTick(() => this.renderCharts());
+            });
+            Livewire.on('contentUpdated', () => {
+                this.platformData = @js($platformData);
+                this.typeData = @js($typeData);
+                this.$nextTick(() => this.renderCharts());
+            });
+        },
+        renderCharts() {
+            const brand = getComputedStyle(document.documentElement).getPropertyValue('--brand').trim() || '#4f46e5';
+            const platformColors = { instagram: '#E1306C', facebook: '#1877F2', tiktok: '#000000', youtube: '#FF0000', twitter: '#1DA1F2', linkedin: '#0A66C2' };
+            const typeColors = { reel: '#8b5cf6', post: '#3b82f6', story: '#ec4899', video: '#ef4444', carousel: '#f59e0b', blog: '#22c55e' };
+
+            const existingPlatform = Chart.getChart('platformDistChart');
+            if (existingPlatform) existingPlatform.destroy();
+            const existingType = Chart.getChart('typeMixChart');
+            if (existingType) existingType.destroy();
+
+            const pCtx = document.getElementById('platformDistChart');
+            if (pCtx && Object.keys(this.platformData).length > 0) {
+                const labels = Object.keys(this.platformData).map((k) => k.charAt(0).toUpperCase() + k.slice(1));
+                const data = Object.values(this.platformData);
+                const colors = Object.keys(this.platformData).map((k) => platformColors[k] || brand);
+                new Chart(pCtx, {
+                    type: 'bar',
+                    data: { labels, datasets: [{ label: 'Content', data, backgroundColor: colors, borderRadius: 6, barThickness: 28 }] },
+                    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, grid: { color: '#f1f5f9' }, ticks: { stepSize: 1 } }, x: { grid: { display: false } } } }
+                });
+            }
+
+            const tCtx = document.getElementById('typeMixChart');
+            if (tCtx && Object.keys(this.typeData).length > 0) {
+                const labels = Object.keys(this.typeData).map((k) => k.charAt(0).toUpperCase() + k.slice(1));
+                const data = Object.values(this.typeData);
+                const colors = Object.keys(this.typeData).map((k) => typeColors[k] || brand);
+                new Chart(tCtx, {
+                    type: 'doughnut',
+                    data: { labels, datasets: [{ data, backgroundColor: colors, borderWidth: 0 }] },
+                    options: { responsive: true, maintainAspectRatio: false, cutout: '65%', plugins: { legend: { position: 'right', labels: { boxWidth: 10, padding: 8, font: { size: 11 } } } } }
+                });
+            }
+        }
+    }" class="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
         <div class="bg-white rounded-2xl border border-gray-100 p-5">
             <h3 class="text-sm font-bold text-gray-900 mb-4">Platform Distribution</h3>
             <div style="height: 220px"><canvas id="platformDistChart"></canvas></div>
@@ -674,26 +783,29 @@ new #[Layout('components.layouts.app')] class extends Component
                             </div>
 
                             <div>
-                                <label class="form-label">Client <span class="text-red-500">*</span></label>
+                                <label class="form-label">Client</label>
                                 <select wire:model="formClientId" class="form-select">
-                                    <option value="0">Select Client</option>
+                                    <option value="">Internal / Own Company</option>
                                     @foreach ($clients as $c)
                                         <option value="{{ $c->id }}">{{ $c->name }}</option>
                                     @endforeach
                                 </select>
-                                @error ('formClientId')
-                                    <span class="text-xs text-red-500 mt-1 block">{{ $message }}</span>
-                                @enderror
-                                <span wire:error="formClientId" class="text-red-500 text-xs mt-1 block"></span>
+                                <p class="text-[11px] text-gray-400 mt-1">Leave as Internal for own company content</p>
                             </div>
 
                             <div>
                                 <label class="form-label">Date <span class="text-red-500">*</span></label>
-                                <input type="date" wire:model="formDate" class="form-input" />
+                                <input type="date" wire:model="formDate" class="form-input" min="{{ now()->format('Y-m-d') }}" />
                                 @error ('formDate')
                                     <span class="text-xs text-red-500 mt-1 block">{{ $message }}</span>
                                 @enderror
                                 <span wire:error="formDate" class="text-red-500 text-xs mt-1 block"></span>
+                            </div>
+
+                            <div>
+                                <label class="form-label">Due Date <span class="text-gray-400 text-xs">(optional)</span></label>
+                                <input type="date" wire:model="formDueDate" class="form-input" min="{{ now()->format('Y-m-d') }}" />
+                                <p class="text-[11px] text-gray-400 mt-1">When content must be completed by</p>
                             </div>
 
                             <div>
@@ -818,10 +930,10 @@ new #[Layout('components.layouts.app')] class extends Component
             $detailDate = $selectedDate ? \Carbon\Carbon::parse($selectedDate) : null;
             $detailItems = $this->getDayContent();
             $platformSummary = $this->getDayPlatformSummary();
+            $contentLinks = $this->getContentLinks();
         @endphp
-        <div class="fixed inset-0 z-50 flex items-end sm:items-center justify-center" x-data="{ open: true }" x-show="open" x-transition:enter="ease-out duration-200" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100" x-transition:leave="ease-in duration-150" x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0">
-            <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" @click="open = false; $wire.set('showDayDetail', false)"></div>
-            <div class="relative bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl border border-gray-200 w-full sm:max-w-lg max-h-[90vh] flex flex-col mx-0 sm:mx-4 overflow-hidden z-10" x-show="open" x-transition:enter="ease-out duration-200" x-transition:enter-start="translate-y-8 sm:translate-y-0 sm:scale-95" x-transition:enter-end="translate-y-0 sm:scale-100" @click.away="open = false; $wire.set('showDayDetail', false)">
+        <div class="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm" wire:click.self="$set('showDayDetail', false)" x-data x-on:keydown.escape.window="$wire.set('showDayDetail', false)">
+            <div class="relative bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl border border-gray-200 w-full sm:max-w-lg max-h-[90vh] flex flex-col mx-0 sm:mx-4 overflow-hidden z-10">
                 {{-- Header --}}
                 <div class="flex-shrink-0 px-5 py-4 border-b border-gray-100">
                     <div class="flex items-center justify-between">
@@ -834,7 +946,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                 <p class="text-xs text-gray-500 mt-0.5">{{ count($detailItems) }} content item(s) scheduled</p>
                             </div>
                         </div>
-                        <button @click="open = false; $wire.set('showDayDetail', false)" class="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition">
+                        <button wire:click="$set('showDayDetail', false)" class="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition">
                             <i class="fas fa-times text-sm"></i>
                         </button>
                     </div>
@@ -892,15 +1004,6 @@ new #[Layout('components.layouts.app')] class extends Component
                                         'published' => 'bg-green-100 text-green-700',
                                         'completed' => 'bg-emerald-100 text-emerald-700',
                                     ];
-                                    $statusIcons = [
-                                        'draft' => 'pencil',
-                                        'scripting' => 'document-text',
-                                        'in-review' => 'eye',
-                                        'revision' => 'arrow-uturn-left',
-                                        'scheduled' => 'clock',
-                                        'published' => 'globe-alt',
-                                        'completed' => 'check-circle',
-                                    ];
                                     $platformIcons = [
                                         'instagram' => 'camera',
                                         'facebook' => 'globe',
@@ -908,7 +1011,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                         'youtube' => 'play',
                                     ];
                                 @endphp
-                                <div class="group flex items-start gap-3 p-3 rounded-xl border border-gray-100 hover:border-gray-200 hover:shadow-sm transition-all duration-150">
+                                <div wire:click="editContent({{ $item->id }})" class="group flex items-start gap-3 p-3 rounded-xl border border-gray-100 hover:border-gray-200 hover:shadow-sm transition-all duration-150 cursor-pointer">
                                     <div class="w-9 h-9 rounded-lg bg-{{ $item->platform }}-500/10 flex items-center justify-center flex-shrink-0">
                                         <i class="fas fa-{{ $platformIcons[$item->platform] ?? 'globe' }} text-{{ $item->platform }}-500" style="font-size:14px"></i>
                                     </div>
@@ -925,10 +1028,45 @@ new #[Layout('components.layouts.app')] class extends Component
                                                 @endif
                                             @endif
                                             <span class="text-xs text-gray-400 capitalize">{{ $item->type }}</span>
+                                            @if ($item->due_date && $item->due_date !== $item->date)
+                                                @php
+                                                    $dueDate = \Carbon\Carbon::parse($item->due_date);
+                                                    $isOverdue = $dueDate->isPast();
+                                                @endphp
+                                                <span class="text-[10px] px-1.5 py-0.5 rounded {{ $isOverdue ? 'bg-red-50 text-red-600 font-semibold' : 'bg-blue-50 text-blue-600' }}">
+                                                    <i class="fas fa-clock" style="font-size:8px"></i>
+                                                    Due {{ $dueDate->format('M j') }}
+                                                </span>
+                                            @endif
                                             @if ($item->needs_approval)
                                                 <span class="text-xs px-1.5 py-0.5 rounded bg-amber-50 text-amber-600 font-medium">Approval</span>
                                             @endif
                                         </div>
+                                        @php $links = $contentLinks[$item->id] ?? null; @endphp
+                                        @if ($links && ($links['workflow'] || $links['approval']))
+                                            <div class="flex items-center gap-1.5 mt-1.5">
+                                                @if ($links['workflow'])
+                                                    <span class="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-600">
+                                                        <i class="fas fa-columns" style="font-size:8px"></i>
+                                                        {{ str_replace('-', ' ', ucfirst($links['workflow']->stage)) }}
+                                                    </span>
+                                                @endif
+                                                @if ($links['approval'])
+                                                    @php
+                                                        $approvalColors = [
+                                                            'pending' => 'bg-yellow-50 text-yellow-600',
+                                                            'approved' => 'bg-green-50 text-green-600',
+                                                            'revision' => 'bg-orange-50 text-orange-600',
+                                                            'rejected' => 'bg-red-50 text-red-600',
+                                                        ];
+                                                    @endphp
+                                                    <span class="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded {{ $approvalColors[$links['approval']->status] ?? 'bg-gray-50 text-gray-600' }}">
+                                                        <i class="fas fa-{{ $links['approval']->status === 'approved' ? 'check-circle' : ($links['approval']->status === 'rejected' ? 'times-circle' : 'clock') }}" style="font-size:8px"></i>
+                                                        {{ ucfirst($links['approval']->status) }}
+                                                    </span>
+                                                @endif
+                                            </div>
+                                        @endif
                                     </div>
                                     <span class="text-[11px] font-semibold px-2 py-0.5 rounded-lg {{ $statusColors[$item->status] ?? 'bg-gray-100 text-gray-700' }}">
                                         {{ str_replace('-', ' ', ucfirst($item->status)) }}
@@ -941,10 +1079,10 @@ new #[Layout('components.layouts.app')] class extends Component
 
                 {{-- Footer --}}
                 <div class="flex-shrink-0 px-5 py-4 border-t border-gray-100 flex items-center justify-between">
-                    <button @click="open = false; $wire.set('showDayDetail', false)" class="btn btn-secondary">
+                    <button wire:click="$set('showDayDetail', false)" class="btn btn-secondary">
                         Close
                     </button>
-                    <button wire:click="openForm('{{ $selectedDate }}')" class="btn btn-primary" onclick="setTimeout(() => $wire.set('showDayDetail', false), 100)">
+                    <button wire:click="openForm('{{ $selectedDate }}')" class="btn btn-primary">
                         <i class="fas fa-plus text-xs"></i>
                         Add Content
                     </button>
@@ -956,94 +1094,7 @@ new #[Layout('components.layouts.app')] class extends Component
     @script
         <script>
             document.addEventListener('livewire:initialized', () => {
-                Livewire.on('contentUpdated', () => {
-                    initCharts();
-                });
-            });
-
-            function initCharts() {
-                const brand = getComputedStyle(document.documentElement).getPropertyValue('--brand').trim() || '#4f46e5';
-                const platformData = @js ($platformData);
-                const typeData = @js ($typeData);
-
-                const platformColors = {
-                    instagram: '#E1306C',
-                    facebook: '#1877F2',
-                    tiktok: '#000000',
-                    youtube: '#FF0000',
-                    twitter: '#1DA1F2',
-                    linkedin: '#0A66C2'
-                };
-
-                const typeColors = {
-                    reel: '#8b5cf6',
-                    post: '#3b82f6',
-                    story: '#ec4899',
-                    video: '#ef4444',
-                    carousel: '#f59e0b',
-                    blog: '#22c55e'
-                };
-
-                // Destroy existing charts
-                const existingPlatform = Chart.getChart('platformDistChart');
-                if (existingPlatform) existingPlatform.destroy();
-                const existingType = Chart.getChart('typeMixChart');
-                if (existingType) existingType.destroy();
-
-                // Platform Distribution Bar
-                const pCtx = document.getElementById('platformDistChart');
-                if (pCtx && Object.keys(platformData).length > 0) {
-                    const labels = Object.keys(platformData).map((k) => k.charAt(0).toUpperCase() + k.slice(1));
-                    const data = Object.values(platformData);
-                    const colors = Object.keys(platformData).map((k) => platformColors[k] || brand);
-                    new Chart(pCtx, {
-                        type: 'bar',
-                        data: {
-                            labels,
-                            datasets: [{ label: 'Content', data, backgroundColor: colors, borderRadius: 6, barThickness: 28 }]
-                        },
-                        options: {
-                            responsive: true,
-                            maintainAspectRatio: false,
-                            plugins: { legend: { display: false } },
-                            scales: {
-                                y: { beginAtZero: true, grid: { color: '#f1f5f9' }, ticks: { stepSize: 1 } },
-                                x: { grid: { display: false } }
-                            }
-                        }
-                    });
-                }
-
-                // Content Type Mix Donut
-                const tCtx = document.getElementById('typeMixChart');
-                if (tCtx && Object.keys(typeData).length > 0) {
-                    const labels = Object.keys(typeData).map((k) => k.charAt(0).toUpperCase() + k.slice(1));
-                    const data = Object.values(typeData);
-                    const colors = Object.keys(typeData).map((k) => typeColors[k] || brand);
-                    new Chart(tCtx, {
-                        type: 'doughnut',
-                        data: {
-                            labels,
-                            datasets: [{ data, backgroundColor: colors, borderWidth: 0 }]
-                        },
-                        options: {
-                            responsive: true,
-                            maintainAspectRatio: false,
-                            cutout: '65%',
-                            plugins: {
-                                legend: { position: 'right', labels: { boxWidth: 10, padding: 8, font: { size: 11 } } }
-                            }
-                        }
-                    });
-                }
-            }
-
-            document.addEventListener('livewire:load', () => {
-                setTimeout(initCharts, 100);
-            });
-
-            document.addEventListener('DOMContentLoaded', () => {
-                setTimeout(initCharts, 200);
+                Livewire.on('contentUpdated', () => {});
             });
         </script>
     @endscript

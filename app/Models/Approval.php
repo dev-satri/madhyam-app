@@ -12,7 +12,7 @@ class Approval extends Model
     use ScopesToClientAccount;
 
     protected $fillable = [
-        'title', 'client_id', 'type', 'status',
+        'title', 'client_id', 'content_id', 'type', 'status',
         'submitted_by', 'notes', 'reference_file',
     ];
 
@@ -21,6 +21,11 @@ class Approval extends Model
     public function client(): BelongsTo
     {
         return $this->belongsTo(Client::class);
+    }
+
+    public function content(): BelongsTo
+    {
+        return $this->belongsTo(Content::class);
     }
 
     public function submitter(): BelongsTo

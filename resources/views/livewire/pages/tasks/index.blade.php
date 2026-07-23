@@ -31,6 +31,7 @@ new #[Layout('components.layouts.app')] class extends Component
     public string $formType = 'task';
     public string $formPriority = 'medium';
     public int $formClientId = 0;
+    public ?int $formWorkflowId = null;
     public int $formAssigneeId = 0;
     public string $formDueDate = '';
     public string $formLocation = '';
@@ -44,6 +45,15 @@ new #[Layout('components.layouts.app')] class extends Component
     public function mount(): void
     {
         $this->formDueDate = now()->format('Y-m-d');
+    }
+
+    public function getAvailableWorkflows(): \Illuminate\Support\Collection
+    {
+        if (!$this->formClientId) return collect();
+        return DB::table('workflows')
+            ->where('client_id', $this->formClientId)
+            ->orderBy('created_at', 'desc')
+            ->get();
     }
 
     #[Computed]
@@ -141,6 +151,7 @@ new #[Layout('components.layouts.app')] class extends Component
                 $this->formType = $t->type;
                 $this->formPriority = $t->priority;
                 $this->formClientId = $t->client_id ?? 0;
+                $this->formWorkflowId = $t->workflow_id ?? null;
                 $this->formAssigneeId = $t->assignee ?? 0;
                 $this->formDueDate = $t->due_date ?? '';
                 $this->formLocation = $t->location ?? '';
@@ -149,7 +160,7 @@ new #[Layout('components.layouts.app')] class extends Component
             }
         } else {
             $this->editingId = 0;
-            $this->reset(['formTitle', 'formDescription', 'formType', 'formPriority', 'formClientId', 'formAssigneeId', 'formDueDate', 'formLocation', 'formChecklist', 'formNotes']);
+            $this->reset(['formTitle', 'formDescription', 'formType', 'formPriority', 'formClientId', 'formWorkflowId', 'formAssigneeId', 'formDueDate', 'formLocation', 'formChecklist', 'formNotes']);
             $this->formType = 'task';
             $this->formPriority = 'medium';
             $this->formDueDate = now()->format('Y-m-d');
@@ -163,6 +174,9 @@ new #[Layout('components.layouts.app')] class extends Component
             'formTitle' => 'required|string|max:255',
             'formType' => 'required|in:task,shoot,editing',
             'formPriority' => 'required|in:low,medium,high,urgent',
+            'formDueDate' => 'nullable|date|after_or_equal:today',
+        ], [
+            'formDueDate.after_or_equal' => 'Due date must be today or a future date',
         ]);
 
         $data = [
@@ -171,6 +185,7 @@ new #[Layout('components.layouts.app')] class extends Component
             'type' => $this->formType,
             'priority' => $this->formPriority,
             'client_id' => $this->formClientId ?: null,
+            'workflow_id' => $this->formWorkflowId ?: null,
             'assignee' => $this->formAssigneeId ?: null,
             'due_date' => $this->formDueDate ?: null,
             'location' => $this->formType === 'shoot' ? $this->formLocation : null,
@@ -204,6 +219,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
         $this->showForm = false;
         $this->dispatch('toast', message: $this->editingId ? 'Task updated' : 'Task created', type: 'success');
+        $this->resetPage();
     }
 
     public function openDetail(int $id): void
@@ -247,6 +263,7 @@ new #[Layout('components.layouts.app')] class extends Component
     {
         DB::table('tasks')->where('id', $id)->delete();
         app(ActivityLogger::class)->record(Auth::user(), "Deleted task #{$id}");
+        $this->resetPage();
         $this->dispatch('toast', message: 'Task deleted', type: 'success');
     }
 
@@ -352,7 +369,10 @@ new #[Layout('components.layouts.app')] class extends Component
                             <div><label class="form-label">Client</label><select wire:model="formClientId" class="form-select"><option value="0">None</option>@foreach($this->clients as $c)<option value="{{ $c->id }}">{{ $c->name }}</option>@endforeach</select></div>
                             <div><label class="form-label">Assignee</label><select wire:model="formAssigneeId" class="form-select"><option value="0">Unassigned</option>@foreach($this->team as $u)<option value="{{ $u->id }}">{{ $u->name }}</option>@endforeach</select></div>
                         </div>
-                        <div><label class="form-label">Due Date</label><input type="date" wire:model="formDueDate" class="form-input"></div>
+                        @if ($formClientId)
+                            <div><label class="form-label">Link to Workflow <span class="text-gray-400 text-xs">(optional)</span></label><select wire:model="formWorkflowId" class="form-select"><option value="">No linked workflow</option>@foreach($this->getAvailableWorkflows() as $wf)<option value="{{ $wf->id }}">{{ $wf->title }} — {{ ucfirst($wf->type) }} ({{ ucfirst($wf->stage) }})</option>@endforeach</select></div>
+                        @endif
+                        <div><label class="form-label">Due Date</label><input type="date" wire:model="formDueDate" class="form-input" min="{{ now()->format('Y-m-d') }}"></div>
                         @if($formType === 'shoot')
                         <div><label class="form-label">Location</label><input type="text" wire:model="formLocation" class="form-input" placeholder="Shoot location"></div>
                         <div><label class="form-label">Checklist</label><textarea wire:model="formChecklist" class="form-textarea" placeholder="One item per line"></textarea></div>

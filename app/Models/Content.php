@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Models\Concerns\ScopesToClientAccount;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Content extends Model
 {
@@ -13,12 +14,13 @@ class Content extends Model
     protected $table = 'contents';
 
     protected $fillable = [
-        'title', 'client_id', 'platform', 'type', 'date', 'status',
+        'title', 'client_id', 'platform', 'type', 'date', 'due_date', 'status',
         'caption', 'hashtags', 'reference_file', 'needs_approval', 'created_by',
     ];
 
     protected $casts = [
         'date' => 'date',
+        'due_date' => 'date',
         'needs_approval' => 'boolean',
     ];
 
@@ -30,5 +32,20 @@ class Content extends Model
     public function creator(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function workflows(): HasMany
+    {
+        return $this->hasMany(Workflow::class);
+    }
+
+    public function approvals(): HasMany
+    {
+        return $this->hasMany(Approval::class);
+    }
+
+    public function tasks(): HasMany
+    {
+        return $this->hasMany(Task::class);
     }
 }

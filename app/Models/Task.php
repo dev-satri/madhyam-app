@@ -10,7 +10,7 @@ use Illuminate\Support\Carbon;
 class Task extends Model
 {
     protected $fillable = [
-        'title', 'type', 'client_id', 'assignee', 'due_date', 'priority',
+        'title', 'type', 'client_id', 'workflow_id', 'assignee', 'due_date', 'priority',
         'status', 'description', 'location', 'checklist',
         'reference_file', 'submission_file', 'submission_notes', 'progress',
     ];
@@ -24,6 +24,11 @@ class Task extends Model
     public function client(): BelongsTo
     {
         return $this->belongsTo(Client::class);
+    }
+
+    public function workflow(): BelongsTo
+    {
+        return $this->belongsTo(Workflow::class);
     }
 
     public function assigneeUser(): BelongsTo

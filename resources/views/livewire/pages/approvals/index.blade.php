@@ -24,6 +24,7 @@ new #[Layout('components.layouts.app')] class extends Component
     public string $formTitle = '';
     public string $formNotes = '';
     public int $formClientId = 0;
+    public ?int $formContentId = null;
     public string $formStatus = 'pending';
     public string $formType = 'post';
     public string $formReferenceFile = '';
@@ -37,6 +38,15 @@ new #[Layout('components.layouts.app')] class extends Component
     public string $reasonText = '';
 
     public function mount(): void {}
+
+    public function getAvailableContent(): \Illuminate\Support\Collection
+    {
+        if (!$this->formClientId) return collect();
+        return DB::table('contents')
+            ->where('client_id', $this->formClientId)
+            ->orderBy('date', 'desc')
+            ->get();
+    }
 
     public function updatedSearch(): void { $this->resetPage(); }
     public function updatedTypeFilter(): void { $this->resetPage(); }
@@ -156,6 +166,7 @@ new #[Layout('components.layouts.app')] class extends Component
         }
         $this->applyStatus($id, $status);
         $this->dispatch('toast', message: "Approval {$status}", type: $status === 'approved' ? 'success' : 'info');
+        $this->resetPage();
     }
 
     private function applyStatus(int $id, string $status, ?string $reason = null, bool $suppressSideEffects = false): bool
@@ -222,6 +233,7 @@ new #[Layout('components.layouts.app')] class extends Component
             $this->dispatch('toast', message: "{$count} approval(s) {$action}", type: 'success');
         }
         $this->selectedItems = [];
+        $this->resetPage();
     }
 
     public function toggleSelect(int $id): void
@@ -252,6 +264,7 @@ new #[Layout('components.layouts.app')] class extends Component
         }
         DB::table('approvals')->where('id', $id)->delete();
         app(ActivityLogger::class)->record(Auth::user() ?? Auth::guard('client')->user(), "Deleted approval #{$id}");
+        $this->resetPage();
         $this->dispatch('toast', message: 'Approval deleted', type: 'success');
     }
 
@@ -276,6 +289,7 @@ new #[Layout('components.layouts.app')] class extends Component
         $this->formTitle = $row->title ?? '';
         $this->formNotes = $row->notes ?? '';
         $this->formClientId = (int) ($row->client_id ?? 0);
+        $this->formContentId = $row->content_id ?? null;
         $this->formType = $row->type ?? 'post';
         $this->formReferenceFile = $row->reference_file ?? '';
         $this->showDetail = false;
@@ -289,6 +303,7 @@ new #[Layout('components.layouts.app')] class extends Component
         $this->formTitle = '';
         $this->formNotes = '';
         $this->formClientId = 0;
+        $this->formContentId = null;
         $this->formType = 'post';
         $this->formReferenceFile = '';
         $this->showForm = true;
@@ -302,6 +317,7 @@ new #[Layout('components.layouts.app')] class extends Component
             'title' => $this->formTitle,
             'type' => $this->formType,
             'client_id' => $this->formClientId ?: null,
+            'content_id' => $this->formContentId ?: null,
             'notes' => $this->formNotes,
             'reference_file' => $this->formReferenceFile ?: null,
         ];
@@ -317,6 +333,7 @@ new #[Layout('components.layouts.app')] class extends Component
             $this->dispatch('toast', message: 'Approval created', type: 'success');
         }
         $this->showForm = false;
+        $this->resetPage();
     }
 
     public function openReasonModal(int $id, string $action): void
@@ -617,7 +634,10 @@ new #[Layout('components.layouts.app')] class extends Component
                     <div class="modal-body space-y-4">
                         <div><label class="form-label">Title</label><input type="text" wire:model="formTitle" class="form-input" placeholder="Approval title" /></div>
                         <div><label class="form-label">Type</label><select wire:model="formType" class="form-select"><option value="post">Post</option><option value="reel">Reel</option><option value="story">Story</option><option value="video">Video</option><option value="carousel">Carousel</option><option value="blog">Blog</option></select></div>
-                        <div><label class="form-label">Client</label><select wire:model="formClientId" class="form-select"><option value="0">— Select Client —</option>@foreach($this->clients as $c)<option value="{{ $c->id }}">{{ $c->name }}</option>@endforeach</select></div>
+                        <div><label class="form-label">Client</label><select wire:model="formClientId" class="form-select"><option value="0">Internal / Own Company</option>@foreach($this->clients as $c)<option value="{{ $c->id }}">{{ $c->name }}</option>@endforeach</select></div>
+                        @if ($formClientId)
+                            <div><label class="form-label">Link to Content <span class="text-gray-400 text-xs">(optional)</span></label><select wire:model="formContentId" class="form-select"><option value="">No linked content</option>@foreach($this->getAvailableContent() as $content)<option value="{{ $content->id }}">{{ $content->title }} — {{ \Carbon\Carbon::parse($content->date)->format('M j') }} ({{ ucfirst($content->platform) }})</option>@endforeach</select></div>
+                        @endif
                         <div><label class="form-label">Notes</label><textarea wire:model="formNotes" class="form-textarea" rows="3" placeholder="Notes..."></textarea></div>
                         <div><label class="form-label">Reference File</label><input type="text" wire:model="formReferenceFile" class="form-input" placeholder="Path or URL" /></div>
                         <div class="flex justify-end gap-2 pt-2">

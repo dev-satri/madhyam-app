@@ -29,6 +29,7 @@ new #[Layout('components.layouts.app')] class extends Component
     public string $formTitle = '';
     public string $formDescription = '';
     public ?int $formClientId = null;
+    public ?int $formContentId = null;
     public string $formType = 'post';
     public string $formPriority = 'medium';
     public ?int $formAssignee = null;
@@ -64,6 +65,15 @@ new #[Layout('components.layouts.app')] class extends Component
     public function loadStages(): void
     {
         $this->stages = WorkflowStage::orderBy('order')->get()->toArray();
+    }
+
+    public function getAvailableContent(): \Illuminate\Support\Collection
+    {
+        if (!$this->formClientId) return collect();
+        return DB::table('contents')
+            ->where('client_id', $this->formClientId)
+            ->orderBy('date', 'desc')
+            ->get();
     }
 
     #[Computed]
@@ -166,6 +176,7 @@ new #[Layout('components.layouts.app')] class extends Component
         $this->formTitle = $workflow->title;
         $this->formDescription = $workflow->notes ?? '';
         $this->formClientId = $workflow->client_id;
+        $this->formContentId = $workflow->content_id;
         $this->formType = $workflow->type;
         $this->formPriority = $workflow->priority;
         $this->formAssignee = $workflow->assignee;
@@ -179,18 +190,21 @@ new #[Layout('components.layouts.app')] class extends Component
     {
         $this->validate([
             'formTitle'      => 'required|string|max:255',
-            'formClientId'   => 'required|exists:clients,id',
+            'formClientId'   => 'nullable|exists:clients,id',
             'formType'       => 'required|string|in:reel,post,story,video,carousel,blog',
             'formPriority'   => 'required|string|in:low,medium,high,urgent',
             'formStage'      => 'required|string',
-            'formDeadline'   => 'nullable|date',
+            'formDeadline'   => 'nullable|date|after_or_equal:today',
             'formAssignee'   => 'nullable|exists:users,id',
+        ], [
+            'formDeadline.after_or_equal' => 'Deadline must be today or a future date',
         ]);
 
         $data = [
             'title'       => $this->formTitle,
             'notes'       => $this->formDescription,
             'client_id'   => $this->formClientId,
+            'content_id'  => $this->formContentId ?: null,
             'type'        => $this->formType,
             'priority'    => $this->formPriority,
             'assignee'    => $this->formAssignee,
@@ -231,12 +245,14 @@ new #[Layout('components.layouts.app')] class extends Component
         $this->dispatch('toast', message: "Workflow item {$verb}", type: 'success');
         $this->showForm = false;
         $this->resetForm();
+        $this->dispatch('workflowUpdated');
     }
 
     public function delete(int $id): void
     {
         Workflow::find($id)?->delete();
         app(ActivityLogger::class)->record(Auth::user(), "Deleted workflow #{$id}");
+        $this->dispatch('workflowUpdated');
         $this->dispatch('toast', message: 'Workflow item deleted', type: 'success');
     }
 
@@ -369,6 +385,7 @@ new #[Layout('components.layouts.app')] class extends Component
         $this->formTitle = '';
         $this->formDescription = '';
         $this->formClientId = null;
+        $this->formContentId = null;
         $this->formType = 'post';
         $this->formPriority = 'medium';
         $this->formAssignee = null;
@@ -827,7 +844,7 @@ new #[Layout('components.layouts.app')] class extends Component
                             <div>
                                 <label class="form-label">Client <span class="text-red-500">*</span></label>
                                 <select wire:model="formClientId" class="form-select">
-                                    <option value="">Select Client</option>
+                                    <option value="">Internal / Own Company</option>
                                     @foreach ($this->getClientList() as $client)
                                         <option value="{{ $client->id }}">{{ $client->name }}</option>
                                     @endforeach
@@ -836,6 +853,18 @@ new #[Layout('components.layouts.app')] class extends Component
                                     <span class="text-xs text-red-500 mt-1 block">{{ $message }}</span>
                                 @enderror
                             </div>
+
+                            @if ($formClientId)
+                                <div>
+                                    <label class="form-label">Link to Content <span class="text-gray-400 text-xs">(optional)</span></label>
+                                    <select wire:model="formContentId" class="form-select">
+                                        <option value="">No linked content</option>
+                                        @foreach ($this->getAvailableContent() as $content)
+                                            <option value="{{ $content->id }}">{{ $content->title }} — {{ \Carbon\Carbon::parse($content->date)->format('M j') }} ({{ ucfirst($content->platform) }})</option>
+                                        @endforeach
+                                    </select>
+                                </div>
+                            @endif
 
                             <div>
                                 <label class="form-label">Type <span class="text-red-500">*</span></label>
@@ -883,7 +912,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
                             <div>
                                 <label class="form-label">Deadline</label>
-                                <input type="date" wire:model="formDeadline" class="form-input" />
+                                <input type="date" wire:model="formDeadline" class="form-input" min="{{ now()->format('Y-m-d') }}" />
                             </div>
 
                             <div class="md:col-span-2">
