@@ -8,12 +8,12 @@ use Illuminate\Support\Facades\Schema;
 class DataBackupService
 {
     protected array $tables = [
-        'users', 'clients', 'departments', 'tasks', 'workflows', 'workflow_stages',
+        'users', 'clients', 'departments', 'tasks', 'task_comments', 'workflows', 'workflow_stages',
         'contents', 'files', 'folders', 'file_expiries', 'invoices', 'invoice_payments',
         'leaves', 'salaries', 'overtime_logs', 'expenses', 'complaints', 'complaint_replies',
         'settings', 'working_hours', 'feature_access', 'data_access', 'custom_roles',
         'notifications', 'notification_rules', 'activity_logs', 'client_accounts',
-        'packages', 'approval_comments',
+        'packages', 'approvals', 'approval_comments',
     ];
 
     public function export(): array
