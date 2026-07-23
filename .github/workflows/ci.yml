@@ -55,7 +55,7 @@ jobs:
         run: php artisan test
 
       - name: Laravel Pint (code style)
-        run: composer exec pint --test
+        run: composer exec pint -- --test
 
       - name: npm install (for lint)
         run: npm ci
