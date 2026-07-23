@@ -45,6 +45,30 @@ new #[Layout('components.layouts.app')] class extends Component
     {
         $this->monthFilter = (int) now()->month;
         $this->yearFilter = (int) now()->year;
+        $this->syncSalaryRecords();
+    }
+
+    public function updatedMonthFilter(): void
+    {
+        $this->syncSalaryRecords();
+    }
+
+    public function updatedYearFilter(): void
+    {
+        $this->syncSalaryRecords();
+    }
+
+    protected function syncSalaryRecords(): void
+    {
+        if (!$this->isManager()) return;
+        $activeUsers = DB::table('users')->where('status', 'active')->get();
+        foreach ($activeUsers as $u) {
+            $model = \App\Models\User::find($u->id);
+            if ($model) {
+                $salary = $this->calculator->ensureFor($model, $this->monthFilter, $this->yearFilter);
+                $this->calculator->recalc($salary);
+            }
+        }
     }
 
     public function isManager(): bool
@@ -207,6 +231,18 @@ new #[Layout('components.layouts.app')] class extends Component
                 default => 'pending',
             };
             DB::table('salaries')->where('id', $id)->update(['status' => $next, 'updated_at' => now()]);
+            // Toggle OT paid status based on new salary status
+            $otPaid = ($next === 'paid' || $next === 'approved');
+            $start = \Carbon\Carbon::createFromDate($salary->year, $salary->month, 1)->startOfMonth();
+            $end = $start->copy()->endOfMonth();
+            DB::table('overtime_logs')
+                ->where('member_id', $salary->member_id)
+                ->where('approved', true)
+                ->whereBetween('date', [$start, $end])
+                ->update(['paid' => $otPaid, 'updated_at' => now()]);
+            // Recalc to keep OT/leaves in sync
+            $model = \App\Models\Salary::find($id);
+            if ($model) $this->calculator->recalc($model);
             $this->dispatch('toast', message: "Status changed to $next", type: 'success');
         }
     }
@@ -221,6 +257,18 @@ new #[Layout('components.layouts.app')] class extends Component
     {
         if (!$this->isManager()) return;
         DB::table('salaries')->where('id', $this->selectedSalaryId)->update(['status' => 'paid', 'updated_at' => now()]);
+        // Mark associated overtime logs as paid
+        $salary = DB::table('salaries')->where('id', $this->selectedSalaryId)->first();
+        if ($salary) {
+            $start = \Carbon\Carbon::createFromDate($salary->year, $salary->month, 1)->startOfMonth();
+            $end = $start->copy()->endOfMonth();
+            DB::table('overtime_logs')
+                ->where('member_id', $salary->member_id)
+                ->where('approved', true)
+                ->where('paid', false)
+                ->whereBetween('date', [$start, $end])
+                ->update(['paid' => true, 'updated_at' => now()]);
+        }
         $this->showPayConfirm = false;
         $this->dispatch('toast', message: 'Salary marked as paid', type: 'success');
     }
@@ -258,7 +306,19 @@ new #[Layout('components.layouts.app')] class extends Component
     public function confirmBulkPay(): void
     {
         if (!$this->isManager() || empty($this->selectedIds)) return;
+        $salaries = DB::table('salaries')->whereIn('id', $this->selectedIds)->where('status', '!=', 'paid')->get();
         DB::table('salaries')->whereIn('id', $this->selectedIds)->where('status', 'pending')->update(['status' => 'paid', 'updated_at' => now()]);
+        // Mark associated overtime logs as paid for each salary
+        foreach ($salaries as $salary) {
+            $start = \Carbon\Carbon::createFromDate($salary->year, $salary->month, 1)->startOfMonth();
+            $end = $start->copy()->endOfMonth();
+            DB::table('overtime_logs')
+                ->where('member_id', $salary->member_id)
+                ->where('approved', true)
+                ->where('paid', false)
+                ->whereBetween('date', [$start, $end])
+                ->update(['paid' => true, 'updated_at' => now()]);
+        }
         $count = count($this->selectedIds);
         $this->selectedIds = [];
         $this->selectAll = false;
@@ -312,44 +372,70 @@ new #[Layout('components.layouts.app')] class extends Component
     {
         if (!$this->isManager()) return;
         $activeUsers = DB::table('users')->where('status', 'active')->get();
-        $created = 0;
+        $count = 0;
         foreach ($activeUsers as $u) {
             $model = \App\Models\User::find($u->id);
             if ($model) {
-                $this->calculator->ensureFor($model, $this->monthFilter, $this->yearFilter);
-                $created++;
+                $salary = $this->calculator->ensureFor($model, $this->monthFilter, $this->yearFilter);
+                // Always recalc to pick up any new OT, leaves, etc.
+                $this->calculator->recalc($salary);
+                $count++;
             }
         }
-        $this->dispatch('toast', message: "Salary records ensured for $created staff", type: 'success');
+        $this->dispatch('toast', message: "Salary records synced for $count staff", type: 'success');
     }
 
     public function getOtLogs()
     {
         $salary = $this->getSelectedSalary();
         if (!$salary) return collect();
+        $start = \Carbon\Carbon::createFromDate($salary->year, $salary->month, 1)->startOfMonth();
+        $end = $start->copy()->endOfMonth();
         return DB::table('overtime_logs')
             ->join('users', 'overtime_logs.member_id', '=', 'users.id')
             ->where('overtime_logs.member_id', $salary->member_id)
-            ->whereRaw('MONTH(overtime_logs.date) = ?', [$salary->month])
-            ->whereRaw('YEAR(overtime_logs.date) = ?', [$salary->year])
+            ->whereBetween('overtime_logs.date', [$start, $end])
             ->where('overtime_logs.approved', true)
             ->select('overtime_logs.*', 'users.name as member_name')
             ->orderBy('overtime_logs.date')
             ->get();
     }
 
+    public function markOtPaid(int $otId): void
+    {
+        if (!$this->isManager()) return;
+        DB::table('overtime_logs')->where('id', $otId)->update(['paid' => true, 'updated_at' => now()]);
+        $this->dispatch('toast', message: 'Overtime marked as paid', type: 'success');
+    }
+
+    public function markAllOtPaid(): void
+    {
+        if (!$this->isManager()) return;
+        $salary = $this->getSelectedSalary();
+        if (!$salary) return;
+        $start = \Carbon\Carbon::createFromDate($salary->year, $salary->month, 1)->startOfMonth();
+        $end = $start->copy()->endOfMonth();
+        $count = DB::table('overtime_logs')
+            ->where('member_id', $salary->member_id)
+            ->where('approved', true)
+            ->where('paid', false)
+            ->whereBetween('date', [$start, $end])
+            ->update(['paid' => true, 'updated_at' => now()]);
+        $this->dispatch('toast', message: "$count overtime log(s) marked as paid", type: 'success');
+    }
+
     public function getLeaveLogs()
     {
         $salary = $this->getSelectedSalary();
         if (!$salary) return collect();
+        $start = \Carbon\Carbon::createFromDate($salary->year, $salary->month, 1)->startOfMonth();
+        $end = $start->copy()->endOfMonth();
         return DB::table('leaves')
             ->join('users', 'leaves.member_id', '=', 'users.id')
             ->where('leaves.member_id', $salary->member_id)
             ->where('leaves.status', 'approved')
-            ->whereRaw('MONTH(leaves.start_date) <= ?', [$salary->month])
-            ->whereRaw('MONTH(leaves.end_date) >= ?', [$salary->month])
-            ->whereRaw('YEAR(leaves.start_date) <= ?', [$salary->year])
-            ->whereRaw('YEAR(leaves.end_date) >= ?', [$salary->year])
+            ->whereDate('leaves.start_date', '<=', $end)
+            ->whereDate('leaves.end_date', '>=', $start)
             ->select('leaves.*', 'users.name as member_name')
             ->orderBy('leaves.start_date')
             ->get();
@@ -615,65 +701,159 @@ new #[Layout('components.layouts.app')] class extends Component
 
             {{-- OT Detail Modal --}}
             @if($showOtDetail && $this->selectedSalary)
-                <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" wire:click.self="$set('showOtDetail', false)" x-on:keydown.escape.window="$wire.set('showOtDetail', false)">
-                    <div class="modal-box w-full max-w-md mx-4">
-                        <div class="sticky top-0 bg-white flex items-center justify-between p-4 border-b">
-                            <h3 class="font-bold text-lg">Overtime Details</h3>
-                            <button wire:click="$set('showOtDetail', false)" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
+                <div class="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4 bg-black/50 backdrop-blur-sm" wire:click.self="$set('showOtDetail', false)" x-on:keydown.escape.window="$wire.set('showOtDetail', false)">
+                    <div class="bg-white w-full sm:w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl max-h-[85vh] sm:max-h-[80vh] flex flex-col shadow-2xl">
+                        {{-- Header --}}
+                        <div class="flex-shrink-0 flex items-center justify-between px-5 py-4 border-b">
+                            <div class="min-w-0">
+                                <h3 class="font-bold text-lg">Overtime Details</h3>
+                                <p class="text-xs text-gray-400 mt-0.5 truncate">{{ $this->selectedSalary->member_name }} &middot; {{ date('M Y', mktime(0,0,0,$this->selectedSalary->month,1,$this->selectedSalary->year)) }}</p>
+                            </div>
+                            <button wire:click="$set('showOtDetail', false)" class="flex-shrink-0 ml-3 w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition"><i class="fas fa-times"></i></button>
                         </div>
-                        <div class="p-4">
-                            <div class="text-sm text-gray-500 mb-3">{{ $this->selectedSalary->member_name }}</div>
+
+                        {{-- Content --}}
+                        <div class="flex-1 overflow-y-auto px-5 py-4">
                             @if($this->otLogs->count())
-                                <table class="data-table w-full text-sm">
-                                    <thead><tr><th>Date</th><th>Hours</th><th>Rate</th><th>Amount</th></tr></thead>
-                                    <tbody>
-                                        @foreach($this->otLogs as $ot)
-                                            <tr><td>{{ fmtDate($ot->date) }}</td><td>{{ $ot->hours }}h</td><td>{{ fmtCurrency($ot->rate) }}/hr</td><td class="font-semibold">{{ fmtCurrency((float)$ot->hours * (float)$ot->rate) }}</td></tr>
-                                        @endforeach
-                                    </tbody>
-                                </table>
-                                <div class="text-right font-bold mt-3 text-green-600">Total: {{ fmtCurrency($this->selectedSalary->overtime_pay) }}</div>
+                                @php
+                                    $unpaidOt = $this->otLogs->filter(fn($ot) => !$ot->paid);
+                                    $paidOt = $this->otLogs->filter(fn($ot) => $ot->paid);
+                                    $totalAmount = $this->otLogs->sum(fn($ot) => (float)$ot->hours * (float)$ot->rate);
+                                    $unpaidAmount = $unpaidOt->sum(fn($ot) => (float)$ot->hours * (float)$ot->rate);
+                                    $paidAmount = $paidOt->sum(fn($ot) => (float)$ot->hours * (float)$ot->rate);
+                                @endphp
+
+                                {{-- Summary Cards --}}
+                                <div class="grid grid-cols-3 gap-2 mb-4">
+                                    <div class="bg-green-50 border border-green-100 rounded-lg p-2.5 text-center">
+                                        <div class="text-[10px] uppercase tracking-wider text-green-600/70 font-semibold">Total</div>
+                                        <div class="font-bold text-green-700 text-sm mt-0.5">{{ fmtCurrency($totalAmount) }}</div>
+                                    </div>
+                                    <div class="bg-amber-50 border border-amber-100 rounded-lg p-2.5 text-center">
+                                        <div class="text-[10px] uppercase tracking-wider text-amber-600/70 font-semibold">Unpaid</div>
+                                        <div class="font-bold text-amber-700 text-sm mt-0.5">{{ fmtCurrency($unpaidAmount) }}</div>
+                                    </div>
+                                    <div class="bg-blue-50 border border-blue-100 rounded-lg p-2.5 text-center">
+                                        <div class="text-[10px] uppercase tracking-wider text-blue-600/70 font-semibold">Paid</div>
+                                        <div class="font-bold text-blue-700 text-sm mt-0.5">{{ fmtCurrency($paidAmount) }}</div>
+                                    </div>
+                                </div>
+
+                                {{-- OT Entries --}}
+                                <div class="space-y-2">
+                                    @foreach($this->otLogs as $ot)
+                                        @php $amount = (float)$ot->hours * (float)$ot->rate; @endphp
+                                        <div class="flex items-center gap-3 p-3 rounded-xl border {{ $ot->paid ? 'bg-blue-50/50 border-blue-100' : 'bg-white border-gray-100' }}">
+                                            {{-- Date Badge --}}
+                                            <div class="w-11 h-11 rounded-lg {{ $ot->paid ? 'bg-blue-100' : 'bg-gray-100' }} flex flex-col items-center justify-center flex-shrink-0">
+                                                <div class="text-[9px] font-semibold {{ $ot->paid ? 'text-blue-600' : 'text-gray-500' }} uppercase leading-none">{{ date('M', strtotime($ot->date)) }}</div>
+                                                <div class="text-sm font-bold {{ $ot->paid ? 'text-blue-700' : 'text-gray-800' }} leading-none mt-0.5">{{ date('d', strtotime($ot->date)) }}</div>
+                                            </div>
+
+                                            {{-- Details --}}
+                                            <div class="flex-1 min-w-0">
+                                                <div class="flex items-baseline gap-1.5">
+                                                    <span class="font-semibold text-sm text-gray-900">{{ $ot->hours }}h</span>
+                                                    <span class="text-[10px] text-gray-400">x</span>
+                                                    <span class="text-[11px] text-gray-500">{{ fmtCurrency($ot->rate) }}/hr</span>
+                                                </div>
+                                                @if($ot->description)
+                                                    <p class="text-[11px] text-gray-400 mt-0.5 truncate">{{ $ot->description }}</p>
+                                                @endif
+                                            </div>
+
+                                            {{-- Amount + Action --}}
+                                            <div class="flex items-center gap-2 flex-shrink-0">
+                                                <div class="text-right">
+                                                    <div class="font-bold text-sm text-gray-900">{{ fmtCurrency($amount) }}</div>
+                                                    <div class="text-[10px] font-semibold {{ $ot->paid ? 'text-blue-600' : 'text-amber-600' }}">{{ $ot->paid ? 'Paid' : 'Unpaid' }}</div>
+                                                </div>
+                                                @if(!$ot->paid)
+                                                    <button wire:click="markOtPaid({{ $ot->id }})" class="w-8 h-8 rounded-full bg-green-500 hover:bg-green-600 text-white flex items-center justify-center shadow-sm transition flex-shrink-0" title="Mark as Paid">
+                                                        <i class="fas fa-check text-[11px]"></i>
+                                                    </button>
+                                                @endif
+                                            </div>
+                                        </div>
+                                    @endforeach
+                                </div>
                             @else
-                                <p class="text-center text-gray-400 py-4">No approved overtime logs</p>
+                                <div class="py-10 text-center">
+                                    <div class="w-12 h-12 rounded-xl bg-gray-100 flex items-center justify-center mx-auto mb-2"><i class="fas fa-clock text-xl text-gray-300"></i></div>
+                                    <p class="text-gray-400 text-sm">No approved overtime logs</p>
+                                </div>
                             @endif
                         </div>
+
+                        {{-- Footer --}}
+                        @if($this->otLogs->count() && $unpaidOt->count())
+                            <div class="flex-shrink-0 border-t px-5 py-3">
+                                <button wire:click="markAllOtPaid" wire:loading.attr="disabled" wire:target="markAllOtPaid" class="w-full bg-green-500 hover:bg-green-600 disabled:opacity-50 text-white font-semibold py-2.5 rounded-xl transition flex items-center justify-center gap-2">
+                                    <span wire:loading.remove wire:target="markAllOtPaid"><i class="fas fa-money-bill-wave text-xs"></i> Pay All Unpaid ({{ fmtCurrency($unpaidAmount) }})</span>
+                                    <span wire:loading wire:target="markAllOtPaid" class="flex items-center gap-2"><svg class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Paying...</span>
+                                </button>
+                            </div>
+                        @elseif($this->otLogs->count())
+                            <div class="flex-shrink-0 border-t px-5 py-3">
+                                <div class="flex items-center justify-center gap-2 text-green-600 py-1">
+                                    <i class="fas fa-check-circle text-sm"></i>
+                                    <span class="text-sm font-semibold">All overtime paid</span>
+                                </div>
+                            </div>
+                        @endif
                     </div>
                 </div>
             @endif
 
             {{-- Leave Deduction Detail Modal --}}
             @if($showLeaveDetail && $this->selectedSalary)
-                <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" wire:click.self="$set('showLeaveDetail', false)" x-on:keydown.escape.window="$wire.set('showLeaveDetail', false)">
-                    <div class="modal-box w-full max-w-md mx-4">
-                        <div class="sticky top-0 bg-white flex items-center justify-between p-4 border-b">
-                            <h3 class="font-bold text-lg">Leave Deduction Details</h3>
-                            <button wire:click="$set('showLeaveDetail', false)" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
+                <div class="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4 bg-black/50 backdrop-blur-sm" wire:click.self="$set('showLeaveDetail', false)" x-on:keydown.escape.window="$wire.set('showLeaveDetail', false)">
+                    <div class="bg-white w-full sm:w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl max-h-[85vh] sm:max-h-[80vh] flex flex-col shadow-2xl">
+                        <div class="flex-shrink-0 flex items-center justify-between px-5 py-4 border-b">
+                            <div class="min-w-0">
+                                <h3 class="font-bold text-lg">Leave Details</h3>
+                                <p class="text-xs text-gray-400 mt-0.5 truncate">{{ $this->selectedSalary->member_name }}</p>
+                            </div>
+                            <button wire:click="$set('showLeaveDetail', false)" class="flex-shrink-0 ml-3 w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition"><i class="fas fa-times"></i></button>
                         </div>
-                        <div class="p-4 space-y-4">
-                            <div class="text-sm text-gray-500">{{ $this->selectedSalary->member_name }}</div>
-                            <div class="grid grid-cols-3 gap-3">
-                                <div class="bg-blue-50 rounded-xl p-3 text-center"><div class="text-lg font-bold text-blue-600">{{ $this->selectedSalary->paid_leaves }}</div><div class="text-xs text-gray-500">Paid Leaves</div></div>
-                                <div class="bg-green-50 rounded-xl p-3 text-center"><div class="text-lg font-bold text-green-600">{{ $this->selectedSalary->total_work_days }}</div><div class="text-xs text-gray-500">Work Days</div></div>
-                                <div class="bg-gray-50 rounded-xl p-3 text-center"><div class="text-lg font-bold">{{ fmtCurrency((float)$this->selectedSalary->base_salary / 30) }}</div><div class="text-xs text-gray-500">Daily Rate</div></div>
+                        <div class="flex-1 overflow-y-auto px-5 py-4 space-y-3">
+                            <div class="grid grid-cols-3 gap-2">
+                                <div class="bg-blue-50 border border-blue-100 rounded-lg p-2.5 text-center"><div class="text-lg font-bold text-blue-600">{{ $this->selectedSalary->paid_leaves }}</div><div class="text-[10px] uppercase tracking-wider text-gray-500 font-semibold">Paid</div></div>
+                                <div class="bg-green-50 border border-green-100 rounded-lg p-2.5 text-center"><div class="text-lg font-bold text-green-600">{{ $this->selectedSalary->total_work_days }}</div><div class="text-[10px] uppercase tracking-wider text-gray-500 font-semibold">Work Days</div></div>
+                                <div class="bg-gray-50 border border-gray-100 rounded-lg p-2.5 text-center"><div class="text-lg font-bold">{{ fmtCurrency((float)$this->selectedSalary->base_salary / 30) }}</div><div class="text-[10px] uppercase tracking-wider text-gray-500 font-semibold">Daily Rate</div></div>
                             </div>
                             @if($this->leaveLogs->count())
-                                <table class="data-table w-full text-sm">
-                                    <thead><tr><th>Type</th><th>Dates</th><th>Days</th><th>Category</th></tr></thead>
-                                    <tbody>
-                                        @foreach($this->leaveLogs as $lv)
-                                            <tr>
-                                                <td class="capitalize">{{ $lv->type }}</td>
-                                                <td>{{ fmtDate($lv->start_date) }} — {{ fmtDate($lv->end_date) }}</td>
-                                                <td>{{ $days = (int)\Carbon\Carbon::parse($lv->start_date)->diffInDays(\Carbon\Carbon::parse($lv->end_date)) + 1 }}</td>
-                                                <td><span class="badge {{ in_array($lv->type, ['annual','casual']) ? 'badge-approved' : 'badge-pending' }}">{{ in_array($lv->type, ['annual','casual']) ? 'Paid' : 'Unpaid' }}</span></td>
-                                            </tr>
-                                        @endforeach
-                                    </tbody>
-                                </table>
+                                <div class="space-y-2">
+                                    @foreach($this->leaveLogs as $lv)
+                                        <div class="flex items-center gap-3 p-3 rounded-xl border border-gray-100">
+                                            <div class="w-9 h-9 rounded-lg {{ in_array($lv->type, ['annual','casual']) ? 'bg-green-100' : 'bg-red-100' }} flex items-center justify-center flex-shrink-0">
+                                                <i class="fas {{ in_array($lv->type, ['annual','casual']) ? 'fa-umbrella-beach text-green-600' : 'fa-calendar-minus text-red-500' }} text-xs"></i>
+                                            </div>
+                                            <div class="flex-1 min-w-0">
+                                                <div class="flex items-center gap-1.5">
+                                                    <span class="font-semibold text-sm capitalize">{{ $lv->type }}</span>
+                                                    <span class="text-[9px] font-semibold px-1.5 py-0.5 rounded-full {{ in_array($lv->type, ['annual','casual']) ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600' }}">{{ in_array($lv->type, ['annual','casual']) ? 'Paid' : 'Unpaid' }}</span>
+                                                </div>
+                                                <p class="text-[11px] text-gray-400 mt-0.5">{{ fmtDate($lv->start_date) }} — {{ fmtDate($lv->end_date) }}</p>
+                                            </div>
+                                            <div class="text-right flex-shrink-0">
+                                                <div class="font-bold text-sm">{{ $days = (int)\Carbon\Carbon::parse($lv->start_date)->diffInDays(\Carbon\Carbon::parse($lv->end_date)) + 1 }}d</div>
+                                            </div>
+                                        </div>
+                                    @endforeach
+                                </div>
                             @else
-                                <p class="text-center text-gray-400 py-2">No approved leaves</p>
+                                <div class="py-8 text-center">
+                                    <div class="w-12 h-12 rounded-xl bg-gray-100 flex items-center justify-center mx-auto mb-2"><i class="fas fa-umbrella-beach text-lg text-gray-300"></i></div>
+                                    <p class="text-gray-400 text-sm">No approved leaves</p>
+                                </div>
                             @endif
-                            <div class="text-right font-bold text-red-600">Total Deduction: {{ fmtCurrency($this->selectedSalary->leave_deduction) }}</div>
+                        </div>
+                        <div class="flex-shrink-0 border-t px-5 py-3">
+                            <div class="flex items-center justify-between">
+                                <span class="text-sm text-gray-500">Total Deduction</span>
+                                <span class="font-bold text-red-600 text-lg">{{ fmtCurrency($this->selectedSalary->leave_deduction) }}</span>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -681,34 +861,48 @@ new #[Layout('components.layouts.app')] class extends Component
 
             {{-- Breakdown Modal --}}
             @if($showBreakdown && $this->selectedSalary)
-                <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" wire:click.self="$set('showBreakdown', false)" x-on:keydown.escape.window="$wire.set('showBreakdown', false)">
-                    <div class="modal-box w-full max-w-md mx-4">
-                        <div class="sticky top-0 bg-white flex items-center justify-between p-4 border-b">
+                <div class="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4 bg-black/50 backdrop-blur-sm" wire:click.self="$set('showBreakdown', false)" x-on:keydown.escape.window="$wire.set('showBreakdown', false)">
+                    <div class="bg-white w-full sm:w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl max-h-[85vh] sm:max-h-[80vh] flex flex-col shadow-2xl">
+                        <div class="flex-shrink-0 flex items-center justify-between px-5 py-4 border-b">
                             <h3 class="font-bold text-lg">Salary Breakdown</h3>
-                            <button wire:click="$set('showBreakdown', false)" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
+                            <button wire:click="$set('showBreakdown', false)" class="flex-shrink-0 ml-3 w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition"><i class="fas fa-times"></i></button>
                         </div>
-                        <div class="p-4 space-y-4">
+                        <div class="flex-1 overflow-y-auto px-5 py-4 space-y-3">
                             <div class="text-center">
-                                <div class="w-14 h-14 rounded-full bg-gray-200 flex items-center justify-center mx-auto mb-2 font-bold text-lg">{{ strtoupper(substr($this->selectedSalary->member_name, 0, 2)) }}</div>
-                                <div class="font-bold">{{ $this->selectedSalary->member_name }}</div>
-                                <div class="text-sm text-gray-500">{{ date('F Y', mktime(0,0,0,$this->selectedSalary->month,1,$this->selectedSalary->year)) }}</div>
+                                <div class="w-12 h-12 rounded-full bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center mx-auto mb-1.5 font-bold text-sm text-gray-600">{{ strtoupper(substr($this->selectedSalary->member_name, 0, 2)) }}</div>
+                                <div class="font-bold text-sm">{{ $this->selectedSalary->member_name }}</div>
+                                <div class="text-[11px] text-gray-400">{{ date('F Y', mktime(0,0,0,$this->selectedSalary->month,1,$this->selectedSalary->year)) }}</div>
                             </div>
-                            <div class="grid grid-cols-2 gap-3">
-                                <div class="bg-blue-50 rounded-xl p-3"><div class="text-xs text-gray-500">Base Salary</div><div class="font-bold">{{ fmtCurrency($this->selectedSalary->base_salary) }}</div></div>
-                                <div class="bg-gray-50 rounded-xl p-3"><div class="text-xs text-gray-500">Daily Rate</div><div class="font-bold">{{ fmtCurrency((float)$this->selectedSalary->base_salary / 30) }}</div></div>
-                                <div class="bg-green-50 rounded-xl p-3"><div class="text-xs text-gray-500">Overtime Pay</div><div class="font-bold">{{ fmtCurrency($this->selectedSalary->overtime_pay) }}</div></div>
-                                <div class="bg-purple-50 rounded-xl p-3"><div class="text-xs text-gray-500">Bonus</div><div class="font-bold">{{ fmtCurrency($this->selectedSalary->bonus) }}</div></div>
-                                <div class="bg-red-50 rounded-xl p-3"><div class="text-xs text-gray-500">Leave Deduction</div><div class="font-bold text-red-600">-{{ fmtCurrency($this->selectedSalary->leave_deduction) }}</div></div>
-                                <div class="bg-amber-50 rounded-xl p-3"><div class="text-xs text-gray-500">Paid Leaves</div><div class="font-bold">{{ $this->selectedSalary->paid_leaves }} days</div></div>
-                                <div class="bg-gray-50 rounded-xl p-3"><div class="text-xs text-gray-500">Work Days</div><div class="font-bold">{{ $this->selectedSalary->total_work_days }} days</div></div>
-                                <div class="bg-cyan-50 rounded-xl p-3"><div class="text-xs text-gray-500">Unpaid Leaves</div><div class="font-bold">{{ $this->selectedSalary->unpaid_leaves }} days</div></div>
+                            <div class="grid grid-cols-2 gap-2">
+                                <div class="bg-blue-50 border border-blue-100 rounded-lg p-2.5"><div class="text-[10px] uppercase tracking-wider text-gray-500 font-semibold">Base Salary</div><div class="font-bold text-sm mt-0.5">{{ fmtCurrency($this->selectedSalary->base_salary) }}</div></div>
+                                <div class="bg-gray-50 border border-gray-100 rounded-lg p-2.5"><div class="text-[10px] uppercase tracking-wider text-gray-500 font-semibold">Daily Rate</div><div class="font-bold text-sm mt-0.5">{{ fmtCurrency((float)$this->selectedSalary->base_salary / 30) }}</div></div>
+                                <div class="bg-green-50 border border-green-100 rounded-lg p-2.5">
+                                    <div class="text-[10px] uppercase tracking-wider text-gray-500 font-semibold">Overtime Pay</div>
+                                    <div class="font-bold text-sm mt-0.5">{{ fmtCurrency($this->selectedSalary->overtime_pay) }}</div>
+                                    @php
+                                        $unpaidOt = $this->otLogs->filter(fn($ot) => !$ot->paid);
+                                        $unpaidOtAmount = $unpaidOt->sum(fn($ot) => (float)$ot->hours * (float)$ot->rate);
+                                    @endphp
+                                    @if($unpaidOtAmount > 0)
+                                        <div class="text-[10px] text-amber-600 font-semibold mt-0.5"><i class="fas fa-exclamation-circle"></i> {{ fmtCurrency($unpaidOtAmount) }} unpaid</div>
+                                    @endif
+                                </div>
+                                <div class="bg-purple-50 border border-purple-100 rounded-lg p-2.5"><div class="text-[10px] uppercase tracking-wider text-gray-500 font-semibold">Bonus</div><div class="font-bold text-sm mt-0.5">{{ fmtCurrency($this->selectedSalary->bonus) }}</div></div>
+                                <div class="bg-red-50 border border-red-100 rounded-lg p-2.5"><div class="text-[10px] uppercase tracking-wider text-gray-500 font-semibold">Leave Deduction</div><div class="font-bold text-sm mt-0.5 text-red-600">-{{ fmtCurrency($this->selectedSalary->leave_deduction) }}</div></div>
+                                <div class="bg-amber-50 border border-amber-100 rounded-lg p-2.5"><div class="text-[10px] uppercase tracking-wider text-gray-500 font-semibold">Paid Leaves</div><div class="font-bold text-sm mt-0.5">{{ $this->selectedSalary->paid_leaves }}d</div></div>
+                                <div class="bg-gray-50 border border-gray-100 rounded-lg p-2.5"><div class="text-[10px] uppercase tracking-wider text-gray-500 font-semibold">Work Days</div><div class="font-bold text-sm mt-0.5">{{ $this->selectedSalary->total_work_days }}d</div></div>
+                                <div class="bg-cyan-50 border border-cyan-100 rounded-lg p-2.5"><div class="text-[10px] uppercase tracking-wider text-gray-500 font-semibold">Unpaid Leaves</div><div class="font-bold text-sm mt-0.5">{{ $this->selectedSalary->unpaid_leaves }}d</div></div>
                             </div>
                             <div class="bg-gradient-to-r from-green-500 to-emerald-600 rounded-xl p-4 text-white text-center">
-                                <div class="text-sm opacity-80">Net Salary</div>
-                                <div class="text-2xl font-extrabold">{{ fmtCurrency($this->selectedSalary->net_salary) }}</div>
-                                <div class="text-xs opacity-60 mt-1">{{ fmtCurrency($this->selectedSalary->base_salary) }} + {{ fmtCurrency($this->selectedSalary->overtime_pay) }} + {{ fmtCurrency($this->selectedSalary->bonus) }} - {{ fmtCurrency($this->selectedSalary->leave_deduction) }}</div>
+                                <div class="text-[10px] uppercase tracking-wider opacity-80 font-semibold">Net Salary</div>
+                                <div class="text-2xl font-extrabold mt-1">{{ fmtCurrency($this->selectedSalary->net_salary) }}</div>
+                                <div class="text-[10px] opacity-60 mt-1.5">{{ fmtCurrency($this->selectedSalary->base_salary) }} + {{ fmtCurrency($this->selectedSalary->overtime_pay) }} + {{ fmtCurrency($this->selectedSalary->bonus) }} - {{ fmtCurrency($this->selectedSalary->leave_deduction) }}</div>
                             </div>
-                            <button wire:click="printSlip({{ $this->selectedSalary->id }})" class="btn btn-secondary w-full"><i class="fas fa-print text-sm"></i> Print Salary Slip</button>
+                        </div>
+                        <div class="flex-shrink-0 border-t px-5 py-3">
+                            <button wire:click="printSlip({{ $this->selectedSalary->id }})" class="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold py-2.5 rounded-xl transition flex items-center justify-center gap-2">
+                                <i class="fas fa-print text-sm"></i> Print Salary Slip
+                            </button>
                         </div>
                     </div>
                 </div>

@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class OvertimeLog extends Model
 {
     protected $fillable = [
-        'member_id', 'date', 'hours', 'description', 'approved', 'rate',
+        'member_id', 'date', 'hours', 'description', 'approved', 'rate', 'paid',
     ];
 
     protected $casts = [
@@ -16,6 +16,7 @@ class OvertimeLog extends Model
         'hours' => 'decimal:1',
         'rate' => 'decimal:2',
         'approved' => 'boolean',
+        'paid' => 'boolean',
     ];
 
     public function member(): BelongsTo

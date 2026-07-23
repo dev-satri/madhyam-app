@@ -89,6 +89,8 @@ new #[Layout('components.layouts.app')] class extends Component
             $q->where('overtime_logs.approved', true);
         } elseif ($this->statusFilter === 'pending') {
             $q->where('overtime_logs.approved', false);
+        } elseif ($this->statusFilter === 'paid') {
+            $q->where('overtime_logs.paid', true);
         }
 
         if ($this->search) {
@@ -170,12 +172,32 @@ new #[Layout('components.layouts.app')] class extends Component
         ];
 
         if ($this->editingId) {
-            DB::table('overtime_logs')->where('id', $this->editingId)->update($data);
+            DB::table('overtime_logs')->where('id', $this->editingId)->update($data + ['updated_at' => now()]);
+            // Recalculate salary for that member/month/year
+            $date = \Carbon\Carbon::parse($this->formDate);
+            $salary = \App\Models\Salary::where('member_id', $memberId)
+                ->where('month', $date->month)
+                ->where('year', $date->year)
+                ->first();
+            if ($salary) {
+                app(\App\Services\SalaryCalculator::class)->recalc($salary);
+            }
         } else {
             $data['approved'] = $this->isManager();
             $data['created_at'] = now();
             $data['updated_at'] = now();
             DB::table('overtime_logs')->insert($data);
+            // If auto-approved, recalculate salary
+            if ($this->isManager()) {
+                $date = \Carbon\Carbon::parse($this->formDate);
+                $salary = \App\Models\Salary::where('member_id', $memberId)
+                    ->where('month', $date->month)
+                    ->where('year', $date->year)
+                    ->first();
+                if ($salary) {
+                    app(\App\Services\SalaryCalculator::class)->recalc($salary);
+                }
+            }
         }
 
         $this->showForm = false;
@@ -187,18 +209,69 @@ new #[Layout('components.layouts.app')] class extends Component
         if (!$this->isManager()) return;
         $log = DB::table('overtime_logs')->where('id', $id)->first();
         if ($log) {
+            $newApproved = !$log->approved;
             DB::table('overtime_logs')->where('id', $id)->update([
-                'approved' => !$log->approved,
+                'approved' => $newApproved,
+                'paid' => $newApproved ? $log->paid : false,
                 'updated_at' => now(),
             ]);
+
+            // Recalculate salary for that member/month/year
+            $date = \Carbon\Carbon::parse($log->date);
+            $salary = \App\Models\Salary::where('member_id', $log->member_id)
+                ->where('month', $date->month)
+                ->where('year', $date->year)
+                ->first();
+            if ($salary) {
+                app(\App\Services\SalaryCalculator::class)->recalc($salary);
+            }
+
             $this->dispatch('toast', message: $log->approved ? 'Approval revoked' : 'Overtime approved', type: 'success');
         }
     }
 
     public function deleteLog(int $id): void
     {
-        DB::table('overtime_logs')->where('id', $id)->delete();
-        $this->dispatch('toast', message: 'Overtime log deleted', type: 'success');
+        $log = DB::table('overtime_logs')->where('id', $id)->first();
+        if ($log) {
+            DB::table('overtime_logs')->where('id', $id)->delete();
+            // Recalculate salary for that member/month/year
+            $date = \Carbon\Carbon::parse($log->date);
+            $salary = \App\Models\Salary::where('member_id', $log->member_id)
+                ->where('month', $date->month)
+                ->where('year', $date->year)
+                ->first();
+            if ($salary) {
+                app(\App\Services\SalaryCalculator::class)->recalc($salary);
+            }
+            $this->dispatch('toast', message: 'Overtime log deleted', type: 'success');
+        }
+    }
+
+    public function togglePaid(int $id): void
+    {
+        if (!$this->isManager()) return;
+        $log = DB::table('overtime_logs')->where('id', $id)->first();
+        if ($log) {
+            DB::table('overtime_logs')->where('id', $id)->update([
+                'paid' => !$log->paid,
+                'updated_at' => now(),
+            ]);
+            $this->dispatch('toast', message: $log->paid ? 'Marked as unpaid' : 'Marked as paid', type: 'success');
+        }
+    }
+
+    public function markAllPaid(): void
+    {
+        if (!$this->isManager()) return;
+        $month = $this->monthFilter;
+        $q = DB::table('overtime_logs')->where('approved', true)->where('paid', false);
+        if ($month) {
+            $q->whereRaw('YEAR(date) = ?', [substr($month, 0, 4)])
+              ->whereRaw('MONTH(date) = ?', [substr($month, 5, 2)]);
+        }
+        $count = $q->update(['paid' => true, 'updated_at' => now()]);
+        $this->dispatch('toast', message: "$count overtime log(s) marked as paid", type: 'success');
     }
 
     #[Computed]
@@ -288,6 +361,7 @@ new #[Layout('components.layouts.app')] class extends Component
                     <option value="">All Status</option>
                     <option value="approved">Approved</option>
                     <option value="pending">Pending</option>
+                    <option value="paid">Paid</option>
                 </select></div>
                 @if($this->isMgr)
                     <div><label class="form-label">Staff</label><select wire:model.live="staffFilter" class="form-select">
@@ -299,10 +373,17 @@ new #[Layout('components.layouts.app')] class extends Component
                 @endif
             </div>
 
+            {{-- Bulk Pay Action --}}
+            @if($this->isMgr)
+                <div class="flex items-center gap-3">
+                    <button wire:click="markAllPaid" class="btn btn-success btn-sm"><i class="fas fa-money-bill-wave text-xs"></i> Mark All Approved as Paid</button>
+                </div>
+            @endif
+
             {{-- Table --}}
             <div class="overflow-x-auto">
                 <table class="data-table w-full">
-                    <thead><tr><th>Staff</th><th>Date</th><th>Hours</th><th>Rate</th><th>Amount</th><th>Description</th><th>Approved</th><th>Actions</th></tr></thead>
+                    <thead><tr><th>Staff</th><th>Date</th><th>Hours</th><th>Rate</th><th>Amount</th><th>Description</th><th>Approved</th><th>Paid</th><th>Actions</th></tr></thead>
                     <tbody>
                         @forelse($this->logs as $log)
                             <tr>
@@ -320,6 +401,15 @@ new #[Layout('components.layouts.app')] class extends Component
                                     @endif
                                 </td>
                                 <td>
+                                    @if($log->paid)
+                                        <span class="badge badge-approved"><i class="fas fa-check-circle text-[10px] mr-1"></i>Paid</span>
+                                    @elseif($this->isMgr && $log->approved)
+                                        <button wire:click="togglePaid({{ $log->id }})" class="btn btn-success btn-xs"><i class="fas fa-money-bill-wave text-[10px]"></i> Pay</button>
+                                    @else
+                                        <span class="badge badge-pending">Unpaid</span>
+                                    @endif
+                                </td>
+                                <td>
                                     <div class="flex items-center gap-1">
                                         <button wire:click="openForm({{ $log->id }})" class="btn btn-icon btn-ghost" title="Edit"><i class="fas fa-pen text-gray-400 hover:text-[var(--brand)] text-xs"></i></button>
                                         <button type="button" wire:click="$dispatch('open-confirm', { title: 'Delete Overtime Log?', message: 'This overtime log will be permanently removed.', type: 'danger', action: 'deleteLog', params: [{{ $log->id }}] })" class="btn btn-icon btn-ghost" aria-label="Delete overtime log" title="Delete"><i class="fas fa-trash text-gray-400 hover:text-red-500 text-xs"></i></button>
@@ -327,7 +417,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                 </td>
                             </tr>
                         @empty
-                            <tr><td colspan="8">
+                            <tr><td colspan="9">
                                 <div class="py-16 text-center">
                                     <div class="flex h-14 w-14 mx-auto items-center justify-center rounded-2xl bg-gray-100 mb-4"><i class="fas fa-clock text-2xl text-gray-300"></i></div>
                                     <p class="text-gray-500 font-medium text-sm">No overtime logs found</p>
