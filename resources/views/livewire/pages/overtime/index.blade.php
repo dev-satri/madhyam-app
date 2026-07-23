@@ -376,7 +376,7 @@ new #[Layout('components.layouts.app')] class extends Component
             {{-- Bulk Pay Action --}}
             @if($this->isMgr)
                 <div class="flex items-center gap-3">
-                    <button wire:click="markAllPaid" class="btn btn-success btn-sm"><i class="fas fa-money-bill-wave text-xs"></i> Mark All Approved as Paid</button>
+                    <button type="button" wire:click="$dispatch('open-confirm', { title: 'Mark All as Paid?', message: 'This will mark all approved overtime logs as paid. This action cannot be undone.', type: 'warning', action: 'markAllPaid', confirmLabel: 'Mark All Paid' })" class="btn btn-success btn-sm"><i class="fas fa-money-bill-wave text-xs"></i> Mark All Approved as Paid</button>
                 </div>
             @endif
 
