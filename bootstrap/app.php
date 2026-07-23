@@ -26,6 +26,7 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withSchedule(function (Schedule $schedule): void {
         $schedule->command('files:expire')->daily();
         $schedule->command('backup:remind')->dailyAt('09:00');
+        $schedule->command('notifications:content-daily')->dailyAt('07:30');
         $schedule->command('notifications:shoot-reminders')->dailyAt('08:00');
         $schedule->command('notifications:deadline-reminders')->dailyAt('08:30');
         $schedule->command('notifications:contract-expiry')->dailyAt('09:00');

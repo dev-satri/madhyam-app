@@ -17,6 +17,7 @@ new #[Layout('components.layouts.app')] class extends Component
     public string $statusFilter = '';
     public string $clientFilter = '';
     public bool $showForm = false;
+    public bool $showDayDetail = false;
     public ?string $selectedDate = null;
     public int $editingId = 0;
 
@@ -148,12 +149,41 @@ new #[Layout('components.layouts.app')] class extends Component
         return $this->contentByDate[$date] ?? [];
     }
 
+    public function openDayDetail(string $date): void
+    {
+        $this->selectedDate = $date;
+        $this->showDayDetail = true;
+    }
+
+    public function getDayContent(): array
+    {
+        if (!$this->selectedDate) return [];
+        return $this->contentByDate[$this->selectedDate] ?? [];
+    }
+
+    public function getDayContentCount(): int
+    {
+        return count($this->getDayContent());
+    }
+
+    public function getDayPlatformSummary(): array
+    {
+        $items = $this->getDayContent();
+        $summary = [];
+        foreach ($items as $item) {
+            $platform = $item->platform ?? 'unknown';
+            $summary[$platform] = ($summary[$platform] ?? 0) + 1;
+        }
+        return $summary;
+    }
+
     public function openForm(?string $date = null): void
     {
         $this->resetForm();
         $this->selectedDate = $date ?? now()->format('Y-m-d');
         $this->formDate = $this->selectedDate;
         $this->showForm = true;
+        $this->showDayDetail = false;
     }
 
     public function editContent(int $id): void
@@ -172,6 +202,7 @@ new #[Layout('components.layouts.app')] class extends Component
         $this->hashtags = $content->hashtags ?? '';
         $this->referenceFile = $content->reference_file ?? '';
         $this->showForm = true;
+        $this->showDayDetail = false;
     }
 
     public function save(): void
@@ -468,7 +499,7 @@ new #[Layout('components.layouts.app')] class extends Component
                     @endphp
                     <div
                         class="cal-day {{ $isToday ? 'today' : '' }} {{ $isWeekend && !$isOtherMonth ? 'weekend' : '' }} {{ $isOtherMonth ? 'other-month' : '' }}"
-                        wire:click="openForm('{{ $dateStr }}')"
+                        wire:click="openDayDetail('{{ $dateStr }}')"
                         wire:loading.class="opacity-50"
                     >
                         <div class="flex items-center justify-between mb-1">
@@ -477,6 +508,9 @@ new #[Layout('components.layouts.app')] class extends Component
                             >
                                 {{ $day->format('j') }}
                             </span>
+                            @if(count($dayContent) > 0)
+                                <span class="text-[9px] font-bold {{ $isToday ? 'text-[var(--brand)]' : 'text-gray-400' }} bg-gray-100 rounded-full px-1.5 py-0.5 leading-none">{{ count($dayContent) }}</span>
+                            @endif
                         </div>
                         <div class="space-y-0.5" @click.stop>
                             @foreach (array_slice($dayContent, 0, 2) as $item)
@@ -774,6 +808,146 @@ new #[Layout('components.layouts.app')] class extends Component
                             </button>
                         </div>
                     </form>
+                </div>
+            </div>
+        </div>
+    @endif
+
+    @if ($showDayDetail)
+        @php
+            $detailDate = $selectedDate ? \Carbon\Carbon::parse($selectedDate) : null;
+            $detailItems = $this->getDayContent();
+            $platformSummary = $this->getDayPlatformSummary();
+        @endphp
+        <div class="fixed inset-0 z-50 flex items-end sm:items-center justify-center" x-data="{ open: true }" x-show="open" x-transition:enter="ease-out duration-200" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100" x-transition:leave="ease-in duration-150" x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0">
+            <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" @click="open = false; $wire.set('showDayDetail', false)"></div>
+            <div class="relative bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl border border-gray-200 w-full sm:max-w-lg max-h-[90vh] flex flex-col mx-0 sm:mx-4 overflow-hidden z-10" x-show="open" x-transition:enter="ease-out duration-200" x-transition:enter-start="translate-y-8 sm:translate-y-0 sm:scale-95" x-transition:enter-end="translate-y-0 sm:scale-100" @click.away="open = false; $wire.set('showDayDetail', false)">
+                {{-- Header --}}
+                <div class="flex-shrink-0 px-5 py-4 border-b border-gray-100">
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-xl bg-[var(--brand)]/10 flex items-center justify-center">
+                                <i class="fas fa-calendar-alt text-[var(--brand)]"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-lg font-bold text-gray-900">{{ $detailDate ? $detailDate->format('l, F j, Y') : '' }}</h3>
+                                <p class="text-xs text-gray-500 mt-0.5">{{ count($detailItems) }} content item(s) scheduled</p>
+                            </div>
+                        </div>
+                        <button @click="open = false; $wire.set('showDayDetail', false)" class="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition">
+                            <i class="fas fa-times text-sm"></i>
+                        </button>
+                    </div>
+                </div>
+
+                {{-- Platform Summary --}}
+                @if (count($platformSummary) > 0)
+                    <div class="flex-shrink-0 px-5 pt-4 pb-2">
+                        <div class="flex flex-wrap gap-2">
+                            @foreach ($platformSummary as $platform => $count)
+                                <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold
+                                    {{ $platform === 'instagram' ? 'bg-pink-50 text-pink-700' : '' }}
+                                    {{ $platform === 'facebook' ? 'bg-blue-50 text-blue-700' : '' }}
+                                    {{ $platform === 'tiktok' ? 'bg-gray-900 text-white' : '' }}
+                                    {{ $platform === 'youtube' ? 'bg-red-50 text-red-700' : '' }}
+                                    {{ !in_array($platform, ['instagram','facebook','tiktok','youtube']) ? 'bg-gray-100 text-gray-700' : '' }}">
+                                    @if ($platform === 'instagram')
+                                        <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z"/></svg>
+                                    @elseif ($platform === 'facebook')
+                                        <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
+                                    @elseif ($platform === 'tiktok')
+                                        <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M19.59 6.69a4.83 4.83 0 01-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 01-2.88 2.5 2.89 2.89 0 01-2.89-2.89 2.89 2.89 0 012.89-2.89c.28 0 .54.04.79.1v-3.51a6.37 6.37 0 00-.79-.05A6.34 6.34 0 003.15 15.2a6.34 6.34 0 0010.86 4.46v-7.12a8.16 8.16 0 005.58 2.18v-3.45a4.85 4.85 0 01-3.77-1.59h-.23z"/></svg>
+                                    @elseif ($platform === 'youtube')
+                                        <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M23.498 6.186a3.016 3.016 0 00-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 00.502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 002.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 002.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>
+                                    @else
+                                        <i class="fas fa-globe text-gray-500" style="font-size:14px"></i>
+                                    @endif
+                                    {{ ucfirst($platform) }} ({{ $count }})
+                                </span>
+                            @endforeach
+                        </div>
+                    </div>
+                @endif
+
+                {{-- Content Items --}}
+                <div class="flex-1 overflow-y-auto px-5 py-3">
+                    @if (count($detailItems) === 0)
+                        <div class="flex flex-col items-center justify-center py-12 text-center">
+                            <div class="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center mb-4">
+                                <i class="fas fa-file-alt text-2xl text-gray-300"></i>
+                            </div>
+                            <p class="text-gray-400 font-medium">No content scheduled</p>
+                            <p class="text-gray-300 text-sm mt-1">Click the button below to create content for this day</p>
+                        </div>
+                    @else
+                        <div class="space-y-2">
+                            @foreach ($detailItems as $item)
+                                @php
+                                    $statusColors = [
+                                        'draft' => 'bg-gray-100 text-gray-700',
+                                        'scripting' => 'bg-purple-100 text-purple-700',
+                                        'in-review' => 'bg-amber-100 text-amber-700',
+                                        'revision' => 'bg-orange-100 text-orange-700',
+                                        'scheduled' => 'bg-blue-100 text-blue-700',
+                                        'published' => 'bg-green-100 text-green-700',
+                                        'completed' => 'bg-emerald-100 text-emerald-700',
+                                    ];
+                                    $statusIcons = [
+                                        'draft' => 'pencil',
+                                        'scripting' => 'document-text',
+                                        'in-review' => 'eye',
+                                        'revision' => 'arrow-uturn-left',
+                                        'scheduled' => 'clock',
+                                        'published' => 'globe-alt',
+                                        'completed' => 'check-circle',
+                                    ];
+                                    $platformIcons = [
+                                        'instagram' => 'camera',
+                                        'facebook' => 'globe',
+                                        'tiktok' => 'music',
+                                        'youtube' => 'play',
+                                    ];
+                                @endphp
+                                <div class="group flex items-start gap-3 p-3 rounded-xl border border-gray-100 hover:border-gray-200 hover:shadow-sm transition-all duration-150">
+                                    <div class="w-9 h-9 rounded-lg bg-{{ $item->platform }}-500/10 flex items-center justify-center flex-shrink-0">
+                                        <i class="fas fa-{{ $platformIcons[$item->platform] ?? 'globe' }} text-{{ $item->platform }}-500" style="font-size:14px"></i>
+                                    </div>
+                                    <div class="flex-1 min-w-0">
+                                        <div class="flex items-center gap-2">
+                                            <h4 class="text-sm font-semibold text-gray-800 truncate">{{ $item->title }}</h4>
+                                        </div>
+                                        <div class="flex items-center gap-1.5 mt-1">
+                                            @if ($item->client_id)
+                                                @php $client = \App\Models\Client::find($item->client_id); @endphp
+                                                @if ($client)
+                                                    <span class="text-xs text-gray-500">{{ $client->name }}</span>
+                                                    <span class="text-gray-300">·</span>
+                                                @endif
+                                            @endif
+                                            <span class="text-xs text-gray-400 capitalize">{{ $item->type }}</span>
+                                            @if ($item->needs_approval)
+                                                <span class="text-xs px-1.5 py-0.5 rounded bg-amber-50 text-amber-600 font-medium">Approval</span>
+                                            @endif
+                                        </div>
+                                    </div>
+                                    <span class="text-[11px] font-semibold px-2 py-0.5 rounded-lg {{ $statusColors[$item->status] ?? 'bg-gray-100 text-gray-700' }}">
+                                        {{ str_replace('-', ' ', ucfirst($item->status)) }}
+                                    </span>
+                                </div>
+                            @endforeach
+                        </div>
+                    @endif
+                </div>
+
+                {{-- Footer --}}
+                <div class="flex-shrink-0 px-5 py-4 border-t border-gray-100 flex items-center justify-between">
+                    <button @click="open = false; $wire.set('showDayDetail', false)" class="btn btn-secondary">
+                        Close
+                    </button>
+                    <button wire:click="openForm('{{ $selectedDate }}')" class="btn btn-primary" onclick="setTimeout(() => $wire.set('showDayDetail', false), 100)">
+                        <i class="fas fa-plus text-xs"></i>
+                        Add Content
+                    </button>
                 </div>
             </div>
         </div>
