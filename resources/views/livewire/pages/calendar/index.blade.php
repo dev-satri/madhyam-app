@@ -37,7 +37,7 @@ new #[Layout('components.layouts.app')] class extends Component
     public const TYPES = ['reel', 'post', 'story', 'video', 'carousel', 'blog'];
     public const STATUSES = ['draft', 'scripting', 'in-review', 'scheduled', 'published'];
 
-    private array $contentByDate = [];
+    public array $contentByDate = [];
 
     public function mount(): void
     {
