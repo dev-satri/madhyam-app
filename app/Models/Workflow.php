@@ -14,7 +14,7 @@ class Workflow extends Model
 
     protected $fillable = [
         'title', 'client_id', 'content_id', 'type', 'stage', 'deadline', 'assignee',
-        'priority', 'notes', 'tags', 'status', 'submitted_by',
+        'priority', 'notes', 'tags', 'status', 'submitted_by', 'revision_notes',
     ];
 
     protected $casts = [

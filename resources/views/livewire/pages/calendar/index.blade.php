@@ -22,7 +22,7 @@ new #[Layout('components.layouts.app')] class extends Component
     public int $editingId = 0;
 
     public string $title = '';
-    public int $formClientId = 0;
+    public ?int $formClientId = null;
     public string $formDate = '';
     public string $formDueDate = '';
     public array $formPlatforms = [];
@@ -36,7 +36,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public const PLATFORMS = ['instagram', 'facebook', 'tiktok', 'youtube', 'twitter', 'linkedin'];
     public const TYPES = ['reel', 'post', 'story', 'video', 'carousel', 'blog'];
-    public const STATUSES = ['draft', 'scripting', 'in-review', 'scheduled', 'published'];
+    public const STATUSES = ['draft', 'scripting', 'in-review', 'revision', 'published'];
 
     public array $contentByDate = [];
 
@@ -83,7 +83,7 @@ new #[Layout('components.layouts.app')] class extends Component
         $end = Carbon::createFromDate($this->currentYear, $this->currentMonth, 1)->endOfMonth()->endOfWeek(Carbon::SATURDAY);
 
         $query = DB::table('contents')
-            ->join('clients', 'contents.client_id', '=', 'clients.id')
+            ->leftJoin('clients', 'contents.client_id', '=', 'clients.id')
             ->whereBetween('contents.date', [$start->format('Y-m-d'), $end->format('Y-m-d')])
             ->select('contents.*', 'clients.name as client_name');
 
@@ -221,9 +221,14 @@ new #[Layout('components.layouts.app')] class extends Component
         $content = DB::table('contents')->where('id', $id)->first();
         if (!$content) return;
 
+        if ($content->status === 'published') {
+            $this->dispatch('toast', message: 'Published content cannot be edited', type: 'error');
+            return;
+        }
+
         $this->editingId = $id;
         $this->title = $content->title;
-        $this->formClientId = (int) $content->client_id;
+        $this->formClientId = $content->client_id ? (int) $content->client_id : null;
         $this->formDate = $content->date instanceof Carbon ? $content->date->format('Y-m-d') : $content->date;
         $this->formDueDate = $content->due_date instanceof Carbon ? $content->due_date->format('Y-m-d') : ($content->due_date ?? '');
         $this->formPlatforms = $content->platform ? [$content->platform] : [];
@@ -241,79 +246,64 @@ new #[Layout('components.layouts.app')] class extends Component
         $this->validate([
             'title' => 'required|string|max:255',
             'formClientId' => 'nullable|integer',
-            'formDate' => 'required|date|after_or_equal:today',
-            'formDueDate' => 'nullable|date|after_or_equal:today',
+            'formDate' => 'required|date',
+            'formDueDate' => 'nullable|date',
             'formPlatforms' => 'required|array|min:1',
             'formTypes' => 'required|array|min:1',
-            'formStatus' => 'required|string|in:draft,scripting,in-review,scheduled,published',
-        ], [
-            'formDate.after_or_equal' => 'Content date must be today or a future date',
-            'formDueDate.after_or_equal' => 'Due date must be today or a future date',
+            'formStatus' => 'required|string|in:draft,scripting,in-review,revision,published',
         ]);
 
-        if ($this->editingId) {
-            DB::table('contents')->where('id', $this->editingId)->update([
-                'title' => $this->title,
-                'client_id' => $this->formClientId,
-                'date' => $this->formDate,
-                'due_date' => $this->formDueDate ?: null,
-                'platform' => $this->formPlatforms[0] ?? 'instagram',
-                'type' => $this->formTypes[0] ?? 'post',
-                'status' => $this->formStatus,
-                'caption' => $this->caption,
-                'hashtags' => $this->hashtags,
-                'reference_file' => $this->referenceFile,
-                'updated_at' => now(),
-            ]);
-            $this->dispatch('toast', message: 'Content updated successfully', type: 'success');
-        } else {
-            $count = 0;
-            $firstStage = DB::table('workflow_stages')->orderBy('order')->first();
-            foreach ($this->formPlatforms as $platform) {
-                foreach ($this->formTypes as $type) {
-                    $contentId = DB::table('contents')->insertGetId([
-                        'title' => $this->title,
-                        'client_id' => $this->formClientId ?: null,
-                        'date' => $this->formDate,
-                        'due_date' => $this->formDueDate ?: null,
-                        'platform' => $platform,
-                        'type' => $type,
-                        'status' => $this->formStatus,
-                        'caption' => $this->caption,
-                        'hashtags' => $this->hashtags,
-                        'reference_file' => $this->referenceFile,
-                        'created_by' => auth()->id(),
-                        'created_at' => now(),
-                        'updated_at' => now(),
-                    ]);
+        try {
+            if ($this->editingId) {
+                DB::table('contents')->where('id', $this->editingId)->update([
+                    'title' => $this->title,
+                    'client_id' => $this->formClientId,
+                    'date' => $this->formDate,
+                    'due_date' => $this->formDueDate ?: null,
+                    'platform' => $this->formPlatforms[0] ?? 'instagram',
+                    'type' => $this->formTypes[0] ?? 'post',
+                    'status' => $this->formStatus,
+                    'caption' => $this->caption,
+                    'hashtags' => $this->hashtags,
+                    'reference_file' => $this->referenceFile,
+                    'updated_at' => now(),
+                ]);
+                $this->dispatch('toast', message: 'Content updated successfully', type: 'success');
+            } else {
+                $count = 0;
+                foreach ($this->formPlatforms as $platform) {
+                    foreach ($this->formTypes as $type) {
+                        DB::table('contents')->insert([
+                            'title' => $this->title,
+                            'client_id' => $this->formClientId ?: null,
+                            'date' => $this->formDate,
+                            'due_date' => $this->formDueDate ?: null,
+                            'platform' => $platform,
+                            'type' => $type,
+                            'status' => $this->formStatus,
+                            'caption' => $this->caption,
+                            'hashtags' => $this->hashtags,
+                            'reference_file' => $this->referenceFile,
+                            'created_by' => auth()->id(),
+                            'created_at' => now(),
+                            'updated_at' => now(),
+                        ]);
 
-                    $wfTitle = $this->title . ' (' . ucfirst($platform) . ' / ' . ucfirst($type) . ')';
-                    DB::table('workflows')->insert([
-                        'title' => $wfTitle,
-                        'client_id' => $this->formClientId ?: null,
-                        'content_id' => $contentId,
-                        'type' => $type,
-                        'stage' => $firstStage->key ?? 'idea',
-                        'deadline' => $this->formDueDate ?: null,
-                        'submitted_by' => auth()->id(),
-                        'created_at' => now(),
-                        'updated_at' => now(),
-                    ]);
-
-                    $count++;
-                    if ($this->formClientId) {
-                        PackageService::recordContent($this->formClientId, $this->formStatus === 'published' ? 'published' : 'created');
+                        $count++;
+                        if ($this->formClientId) {
+                            PackageService::recordContent($this->formClientId, $this->formStatus === 'published' ? 'published' : 'created');
+                        }
                     }
                 }
+                $this->dispatch('toast', message: "Created {$count} content item(s)", type: 'success');
             }
-            $this->dispatch('toast', message: "Created {$count} content item(s) + workflow pipeline", type: 'success');
-        }
 
-        $this->showForm = false;
-        $this->resetForm();
-        $this->loadMonthContent();
-        $this->dispatch('contentUpdated');
-        $this->dispatch('workflowUpdated');
+            $this->showForm = false;
+            $this->resetForm();
+            $this->loadMonthContent();
+        } catch (\Exception $e) {
+            $this->dispatch('toast', message: 'Error saving content: ' . $e->getMessage(), type: 'error');
+        }
     }
 
     public function deleteContent(int $id): void
@@ -349,7 +339,7 @@ new #[Layout('components.layouts.app')] class extends Component
     public function getListContent()
     {
         $query = DB::table('contents')
-            ->join('clients', 'contents.client_id', '=', 'clients.id')
+            ->leftJoin('clients', 'contents.client_id', '=', 'clients.id')
             ->select('contents.*', 'clients.name as client_name')
             ->orderBy('contents.date', 'desc');
 
@@ -390,11 +380,73 @@ new #[Layout('components.layouts.app')] class extends Component
             ->toArray();
     }
 
+    public function submitForApproval(int $contentId): void
+    {
+        $content = DB::table('contents')->where('id', $contentId)->first();
+        if (!$content) return;
+
+        if ($content->status === 'published') {
+            $this->dispatch('toast', message: 'Published content cannot be changed', type: 'error');
+            return;
+        }
+
+        if ($content->status === 'in-review') {
+            $this->dispatch('toast', message: 'Content is already submitted for approval', type: 'info');
+            return;
+        }
+
+        // Advance: draft → scripting, scripting → in-review
+        $next = match($content->status) {
+            'draft' => 'scripting',
+            'scripting' => 'in-review',
+            'revision' => 'in-review',
+            default => null,
+        };
+
+        if (!$next) {
+            $this->dispatch('toast', message: 'Cannot advance from this status', type: 'error');
+            return;
+        }
+
+        DB::table('contents')->where('id', $contentId)->update([
+            'status' => $next,
+            'updated_at' => now(),
+        ]);
+
+        // If moving to in-review, create Approval #1
+        if ($next === 'in-review') {
+            DB::table('contents')->where('id', $contentId)->update([
+                'submitted_for_approval_at' => now(),
+            ]);
+
+            $platform = ucfirst($content->platform ?? 'general');
+            $type = ucfirst($content->type ?? 'post');
+            DB::table('approvals')->insert([
+                'title' => $content->title . " ({$platform} / {$type})",
+                'client_id' => $content->client_id,
+                'content_id' => $contentId,
+                'type' => $content->type ?? 'post',
+                'status' => 'pending',
+                'approval_stage' => 'first',
+                'submitted_by' => auth()->id(),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+
+            app(\App\Services\NotificationService::class)->notifyContentSubmittedForApproval($content->title, $contentId);
+            $this->dispatch('toast', message: 'Content submitted for approval', type: 'success');
+        } else {
+            $this->dispatch('toast', message: "Status changed to " . str_replace('-', ' ', ucfirst($next)), type: 'success');
+        }
+
+        $this->loadMonthContent();
+    }
+
     private function resetForm(): void
     {
         $this->editingId = 0;
         $this->title = '';
-        $this->formClientId = 0;
+        $this->formClientId = null;
         $this->formDate = '';
         $this->formDueDate = '';
         $this->formPlatforms = [];
@@ -645,22 +697,46 @@ new #[Layout('components.layouts.app')] class extends Component
                                 </td>
                                 <td>
                                     <div class="flex items-center justify-end gap-1">
-                                        <button
-                                            wire:click="editContent({{ $item->id }})"
-                                            class="btn btn-icon btn-ghost"
-                                            title="Edit"
-                                        >
-                                            <i class="fas fa-pen text-gray-400 hover:text-[var(--brand)]"></i>
-                                        </button>
-                                        <button
-                                            type="button"
-                                            wire:click="$dispatch('open-confirm', { title: 'Delete Content?', message: 'Are you sure you want to delete this content? This cannot be undone.', type: 'danger', action: 'deleteContent', params: [{{ $item->id }}] })"
-                                            class="btn btn-icon btn-ghost"
-                                            aria-label="Delete content"
-                                            title="Delete"
-                                        >
-                                            <i class="fas fa-trash text-gray-400 hover:text-red-500"></i>
-                                        </button>
+                                        @if (in_array($item->status, ['draft', 'scripting', 'revision']))
+                                            @php
+                                                $btnClass = $item->status === 'draft' ? 'btn-ghost' : 'btn-primary';
+                                                $btnIcon = match($item->status) { 'draft' => 'fa-arrow-right', 'scripting' => 'fa-paper-plane', 'revision' => 'fa-redo', default => 'fa-arrow-right' };
+                                                $btnLabel = match($item->status) { 'draft' => 'Script', 'scripting' => 'Submit', 'revision' => 'Resubmit', default => '' };
+                                            @endphp
+                                            <button
+                                                wire:click="submitForApproval({{ $item->id }})"
+                                                class="btn btn-sm {{ $btnClass }} py-1 px-2 text-xs"
+                                            >
+                                                <i class="fas {{ $btnIcon }} mr-1"></i> {{ $btnLabel }}
+                                            </button>
+                                        @endif
+                                        @if ($item->status === 'in-review')
+                                            <span class="text-xs text-amber-600 font-medium"
+                                                ><i class="fas fa-clock mr-1"></i>Pending</span
+                                            >
+                                        @endif
+                                        @if ($item->status !== 'published' && $item->status !== 'in-review')
+                                            <button
+                                                wire:click="editContent({{ $item->id }})"
+                                                class="btn btn-icon btn-ghost"
+                                                title="Edit"
+                                            >
+                                                <i class="fas fa-pen text-gray-400 hover:text-[var(--brand)]"></i>
+                                            </button>
+                                            <button
+                                                type="button"
+                                                wire:click="$dispatch('open-confirm', { title: 'Delete Content?', message: 'Are you sure you want to delete this content? This cannot be undone.', type: 'danger', action: 'deleteContent', params: [{{ $item->id }}] })"
+                                                class="btn btn-icon btn-ghost"
+                                                aria-label="Delete content"
+                                                title="Delete"
+                                            >
+                                                <i class="fas fa-trash text-gray-400 hover:text-red-500"></i>
+                                            </button>
+                                        @else
+                                            <span class="text-xs text-green-600 font-medium"
+                                                ><i class="fas fa-lock mr-1"></i>Published</span
+                                            >
+                                        @endif
                                     </div>
                                 </td>
                             </tr>
@@ -801,12 +877,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
                             <div>
                                 <label class="form-label">Date <span class="text-red-500">*</span></label>
-                                <input
-                                    type="date"
-                                    wire:model="formDate"
-                                    class="form-input"
-                                    min="{{ now()->format('Y-m-d') }}"
-                                />
+                                <input type="date" wire:model="formDate" class="form-input" />
                                 @error ('formDate')
                                     <span class="text-xs text-red-500 mt-1 block">{{ $message }}</span>
                                 @enderror
@@ -817,12 +888,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                 <label class="form-label"
                                     >Due Date <span class="text-gray-400 text-xs">(optional)</span></label
                                 >
-                                <input
-                                    type="date"
-                                    wire:model="formDueDate"
-                                    class="form-input"
-                                    min="{{ now()->format('Y-m-d') }}"
-                                />
+                                <input type="date" wire:model="formDueDate" class="form-input" />
                                 <p class="text-[11px] text-gray-400 mt-1">When content must be completed by</p>
                             </div>
 
@@ -945,11 +1011,32 @@ new #[Layout('components.layouts.app')] class extends Component
 
     @if ($showDayDetail)
         @php
-            $detailDate = $selectedDate ? \Carbon\Carbon::parse($selectedDate) : null;
-            $detailItems = $this->getDayContent();
-            $platformSummary = $this->getDayPlatformSummary();
-            $contentLinks = $this->getContentLinks();
-        @endphp
+        $detailDate = $selectedDate ? \Carbon\Carbon::parse($selectedDate) : null;
+        $detailItems = $this->getDayContent();
+        $platformSummary = $this->getDayPlatformSummary();
+        $contentLinks = $this->getContentLinks();
+
+        $statusColors = [
+            'draft' => 'bg-gray-100 text-gray-600',
+            'scripting' => 'bg-purple-50 text-purple-700',
+            'in-review' => 'bg-amber-50 text-amber-700',
+            'revision' => 'bg-orange-50 text-orange-700',
+            'scheduled' => 'bg-blue-50 text-blue-700',
+            'published' => 'bg-emerald-50 text-emerald-700',
+        ];
+        $platformIcons = [
+            'instagram' => 'camera',
+            'facebook' => 'globe',
+            'tiktok' => 'music',
+            'youtube' => 'play',
+        ];
+        $platformBadge = [
+            'instagram' => 'bg-pink-50 text-pink-600',
+            'facebook' => 'bg-blue-50 text-blue-600',
+            'tiktok' => 'bg-gray-100 text-gray-800',
+            'youtube' => 'bg-red-50 text-red-600',
+        ];
+    @endphp
         <div
             class="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm"
             wire:click.self="$set('showDayDetail', false)"
@@ -957,21 +1044,16 @@ new #[Layout('components.layouts.app')] class extends Component
             x-on:keydown.escape.window="$wire.set('showDayDetail', false)"
         >
             <div
-                class="relative bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl border border-gray-200 w-full sm:max-w-lg max-h-[90vh] flex flex-col mx-0 sm:mx-4 overflow-hidden z-10"
+                class="relative bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl w-full sm:max-w-lg max-h-[85vh] flex flex-col mx-0 sm:mx-4 overflow-hidden"
             >
                 {{-- Header --}}
-                <div class="flex-shrink-0 px-5 py-4 border-b border-gray-100">
+                <div class="flex-shrink-0 px-6 py-4 border-b border-gray-100 bg-white">
                     <div class="flex items-center justify-between">
-                        <div class="flex items-center gap-3">
-                            <div class="w-10 h-10 rounded-xl bg-[var(--brand)]/10 flex items-center justify-center">
-                                <i class="fas fa-calendar-alt text-[var(--brand)]"></i>
-                            </div>
-                            <div>
-                                <h3 class="text-lg font-bold text-gray-900">
-                                    {{ $detailDate ? $detailDate->format('l, F j, Y') : '' }}
-                                </h3>
-                                <p class="text-xs text-gray-500 mt-0.5">{{ count($detailItems) }} content item(s) scheduled</p>
-                            </div>
+                        <div>
+                            <h3 class="text-base font-bold text-gray-900">
+                                {{ $detailDate ? $detailDate->format('l, F j, Y') : '' }}
+                            </h3>
+                            <p class="text-xs text-gray-400 mt-0.5">{{ count($detailItems) }} {{ Str::plural('item', count($detailItems)) }}</p>
                         </div>
                         <button
                             wire:click="$set('showDayDetail', false)"
@@ -980,153 +1062,124 @@ new #[Layout('components.layouts.app')] class extends Component
                             <i class="fas fa-times text-sm"></i>
                         </button>
                     </div>
-                </div>
-
-                {{-- Platform Summary --}}
-                @if (count($platformSummary) > 0)
-                    <div class="flex-shrink-0 px-5 pt-4 pb-2">
-                        <div class="flex flex-wrap gap-2">
+                    {{-- Platform pills --}}
+                    @if (count($platformSummary) > 0)
+                        <div class="flex flex-wrap gap-1.5 mt-3">
                             @foreach ($platformSummary as $platform => $count)
                                 <span
-                                    class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold
-                                    {{ $platform === 'instagram' ? 'bg-pink-50 text-pink-700' : '' }}
-                                    {{ $platform === 'facebook' ? 'bg-blue-50 text-blue-700' : '' }}
-                                    {{ $platform === 'tiktok' ? 'bg-gray-900 text-white' : '' }}
-                                    {{ $platform === 'youtube' ? 'bg-red-50 text-red-700' : '' }}
-                                    {{ !in_array($platform, ['instagram','facebook','tiktok','youtube']) ? 'bg-gray-100 text-gray-700' : '' }}"
+                                    class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium {{ $platformBadge[$platform] ?? 'bg-gray-100 text-gray-600' }}"
                                 >
-                                    @if ($platform === 'instagram')
-                                        <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z" /></svg>
-                                    @elseif ($platform === 'facebook')
-                                        <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" /></svg>
-                                    @elseif ($platform === 'tiktok')
-                                        <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M19.59 6.69a4.83 4.83 0 01-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 01-2.88 2.5 2.89 2.89 0 01-2.89-2.89 2.89 2.89 0 012.89-2.89c.28 0 .54.04.79.1v-3.51a6.37 6.37 0 00-.79-.05A6.34 6.34 0 003.15 15.2a6.34 6.34 0 0010.86 4.46v-7.12a8.16 8.16 0 005.58 2.18v-3.45a4.85 4.85 0 01-3.77-1.59h-.23z" /></svg>
-                                    @elseif ($platform === 'youtube')
-                                        <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M23.498 6.186a3.016 3.016 0 00-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 00.502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 002.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 002.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z" /></svg>
-                                    @else
-                                        <i class="fas fa-globe text-gray-500" style="font-size: 14px"></i>
-                                    @endif
+                                    <i
+                                        class="fas fa-{{ $platformIcons[$platform] ?? 'globe' }}"
+                                        style="font-size: 9px"
+                                    ></i>
                                     {{ ucfirst($platform) }} ({{ $count }})
                                 </span>
                             @endforeach
                         </div>
-                    </div>
-                @endif
+                    @endif
+                </div>
 
-                {{-- Content Items --}}
-                <div class="flex-1 overflow-y-auto px-5 py-3">
+                {{-- Content List --}}
+                <div class="flex-1 overflow-y-auto">
                     @if (count($detailItems) === 0)
-                        <div class="flex flex-col items-center justify-center py-12 text-center">
-                            <div class="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center mb-4">
-                                <i class="fas fa-file-alt text-2xl text-gray-300"></i>
+                        <div class="flex flex-col items-center justify-center py-16 text-center px-6">
+                            <div class="w-14 h-14 rounded-full bg-gray-50 flex items-center justify-center mb-3">
+                                <i class="fas fa-calendar-plus text-xl text-gray-300"></i>
                             </div>
-                            <p class="text-gray-400 font-medium">No content scheduled</p>
-                            <p class="text-gray-300 text-sm mt-1">Click the button below to create content for this day</p>
+                            <p class="text-sm font-medium text-gray-400">No content scheduled</p>
+                            <p class="text-xs text-gray-300 mt-1">Create content for this day</p>
                         </div>
                     @else
-                        <div class="space-y-2">
+                        <div class="divide-y divide-gray-50">
                             @foreach ($detailItems as $item)
                                 @php
-                                    $statusColors = [
-                                        'draft' => 'bg-gray-100 text-gray-700',
-                                        'scripting' => 'bg-purple-100 text-purple-700',
-                                        'in-review' => 'bg-amber-100 text-amber-700',
-                                        'revision' => 'bg-orange-100 text-orange-700',
-                                        'scheduled' => 'bg-blue-100 text-blue-700',
-                                        'published' => 'bg-green-100 text-green-700',
-                                        'completed' => 'bg-emerald-100 text-emerald-700',
-                                    ];
-                                    $platformIcons = [
-                                        'instagram' => 'camera',
-                                        'facebook' => 'globe',
-                                        'tiktok' => 'music',
-                                        'youtube' => 'play',
-                                    ];
-                                @endphp
+                                $links = $contentLinks[$item->id] ?? null;
+                                $workflow = $links['workflow'] ?? null;
+                                $approval = $links['approval'] ?? null;
+                                $clientName = null;
+                                if ($item->client_id) {
+                                    $c = \App\Models\Client::find($item->client_id);
+                                    $clientName = $c?->name;
+                                }
+                            @endphp
                                 <div
-                                    wire:click="editContent({{ $item->id }})"
-                                    class="group flex items-start gap-3 p-3 rounded-xl border border-gray-100 hover:border-gray-200 hover:shadow-sm transition-all duration-150 cursor-pointer"
+                                    class="flex items-start gap-3 px-6 py-3.5 {{ $item->status !== 'published' ? 'hover:bg-gray-50/50 cursor-pointer' : '' }} transition-colors"
+                                    @if ($item->status !== 'published') wire:click="editContent({{ $item->id }})" @endif
                                 >
+                                    {{-- Platform icon --}}
                                     <div
-                                        class="w-9 h-9 rounded-lg bg-{{ $item->platform }}-500/10 flex items-center justify-center flex-shrink-0"
+                                        class="w-8 h-8 rounded-lg bg-{{ $item->platform }}-500/10 flex items-center justify-center flex-shrink-0 mt-0.5"
                                     >
                                         <i
-                                            class="fas fa-{{ $platformIcons[$item->platform] ?? 'globe' }} text-{{ $item->platform }}-500"
-                                            style="font-size: 14px"
+                                            class="fas fa-{{ $platformIcons[$item->platform] ?? 'globe' }} text-{{ $item->platform }}-500 text-xs"
                                         ></i>
                                     </div>
+
+                                    {{-- Content info --}}
                                     <div class="flex-1 min-w-0">
                                         <div class="flex items-center gap-2">
                                             <h4 class="text-sm font-semibold text-gray-800 truncate">
                                                 {{ $item->title }}
                                             </h4>
+                                            <span
+                                                class="flex-shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded-md {{ $statusColors[$item->status] ?? 'bg-gray-100 text-gray-600' }}"
+                                            >
+                                                {{ str_replace('-', ' ', ucfirst($item->status)) }}
+                                            </span>
                                         </div>
-                                        <div class="flex items-center gap-1.5 mt-1">
-                                            @if ($item->client_id)
-                                                @php $client = \App\Models\Client::find($item->client_id); @endphp
-                                                @if ($client)
-                                                    <span class="text-xs text-gray-500">{{ $client->name }}</span>
-                                                    <span class="text-gray-300">·</span>
-                                                @endif
+                                        <div class="flex items-center gap-1.5 mt-1 text-xs text-gray-400">
+                                            @if ($clientName)
+                                                <span class="text-gray-500">{{ $clientName }}</span>
+                                                <span>·</span>
                                             @endif
-                                            <span class="text-xs text-gray-400 capitalize">{{ $item->type }}</span>
-                                            @if ($item->due_date && $item->due_date !== $item->date)
-                                                @php
-                                                    $dueDate = \Carbon\Carbon::parse($item->due_date);
-                                                    $isOverdue = $dueDate->isPast();
-                                                @endphp
+                                            <span class="capitalize">{{ $item->type }}</span>
+                                            @if ($workflow)
+                                                <span>·</span>
                                                 <span
-                                                    class="text-[10px] px-1.5 py-0.5 rounded {{ $isOverdue ? 'bg-red-50 text-red-600 font-semibold' : 'bg-blue-50 text-blue-600' }}"
+                                                    class="text-indigo-500 font-medium capitalize"
+                                                    >{{ str_replace('-', ' ', $workflow->stage) }}</span
                                                 >
-                                                    <i class="fas fa-clock" style="font-size: 8px"></i>
-                                                    Due {{ $dueDate->format('M j') }}
+                                            @endif
+                                        </div>
+                                    </div>
+
+                                    {{-- Right side: action or status indicator --}}
+                                    <div class="flex-shrink-0 ml-2">
+                                        @if (in_array($item->status, ['draft', 'scripting', 'revision']))
+                                            @php
+                                            $ddBtnIcon = match($item->status) { 'draft' => 'fa-arrow-right', 'scripting' => 'fa-paper-plane', 'revision' => 'fa-redo', default => 'fa-arrow-right' };
+                                            $ddBtnLabel = match($item->status) { 'draft' => 'Script', 'scripting' => 'Submit', 'revision' => 'Resubmit', default => '' };
+                                        @endphp
+                                            <button
+                                                wire:click.stop="submitForApproval({{ $item->id }})"
+                                                class="text-[11px] px-2.5 py-1 rounded-lg {{ $item->status === 'draft' ? 'bg-gray-100 text-gray-600 hover:bg-gray-200' : 'bg-[var(--brand)] text-white hover:opacity-90' }} font-medium transition"
+                                            >
+                                                <i class="fas {{ $ddBtnIcon }} mr-1 text-[9px]"></i>{{ $ddBtnLabel }}
+                                            </button>
+                                        @elseif ($item->status === 'in-review')
+                                            @if ($approval)
+                                                <span
+                                                    class="text-[11px] px-2 py-1 rounded-lg bg-amber-50 text-amber-600 font-medium inline-flex items-center gap-1"
+                                                >
+                                                    <i class="fas fa-clock text-[9px]"></i
+                                                    >{{ ucfirst($approval->status) }}
+                                                </span>
+                                            @else
+                                                <span
+                                                    class="text-[11px] px-2 py-1 rounded-lg bg-amber-50 text-amber-600 font-medium inline-flex items-center gap-1"
+                                                >
+                                                    <i class="fas fa-clock text-[9px]"></i>In Review
                                                 </span>
                                             @endif
-                                            @if ($item->needs_approval)
-                                                <span
-                                                    class="text-xs px-1.5 py-0.5 rounded bg-amber-50 text-amber-600 font-medium"
-                                                    >Approval</span
-                                                >
-                                            @endif
-                                        </div>
-                                        @php $links = $contentLinks[$item->id] ?? null; @endphp
-                                        @if ($links && ($links['workflow'] || $links['approval']))
-                                            <div class="flex items-center gap-1.5 mt-1.5">
-                                                @if ($links['workflow'])
-                                                    <span
-                                                        class="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-600"
-                                                    >
-                                                        <i class="fas fa-columns" style="font-size: 8px"></i>
-                                                        {{ str_replace('-', ' ', ucfirst($links['workflow']->stage)) }}
-                                                    </span>
-                                                @endif
-                                                @if ($links['approval'])
-                                                    @php
-                                                        $approvalColors = [
-                                                            'pending' => 'bg-yellow-50 text-yellow-600',
-                                                            'approved' => 'bg-green-50 text-green-600',
-                                                            'revision' => 'bg-orange-50 text-orange-600',
-                                                            'rejected' => 'bg-red-50 text-red-600',
-                                                        ];
-                                                    @endphp
-                                                    <span
-                                                        class="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded {{ $approvalColors[$links['approval']->status] ?? 'bg-gray-50 text-gray-600' }}"
-                                                    >
-                                                        <i
-                                                            class="fas fa-{{ $links['approval']->status === 'approved' ? 'check-circle' : ($links['approval']->status === 'rejected' ? 'times-circle' : 'clock') }}"
-                                                            style="font-size: 8px"
-                                                        ></i>
-                                                        {{ ucfirst($links['approval']->status) }}
-                                                    </span>
-                                                @endif
-                                            </div>
+                                        @elseif ($item->status === 'published')
+                                            <span
+                                                class="text-[11px] px-2 py-1 rounded-lg bg-emerald-50 text-emerald-600 font-medium inline-flex items-center gap-1"
+                                            >
+                                                <i class="fas fa-check text-[9px]"></i>Published
+                                            </span>
                                         @endif
                                     </div>
-                                    <span
-                                        class="text-[11px] font-semibold px-2 py-0.5 rounded-lg {{ $statusColors[$item->status] ?? 'bg-gray-100 text-gray-700' }}"
-                                    >
-                                        {{ str_replace('-', ' ', ucfirst($item->status)) }}
-                                    </span>
                                 </div>
                             @endforeach
                         </div>
@@ -1134,11 +1187,12 @@ new #[Layout('components.layouts.app')] class extends Component
                 </div>
 
                 {{-- Footer --}}
-                <div class="flex-shrink-0 px-5 py-4 border-t border-gray-100 flex items-center justify-between">
-                    <button wire:click="$set('showDayDetail', false)" class="btn btn-secondary">Close</button>
-                    <button wire:click="openForm('{{ $selectedDate }}')" class="btn btn-primary">
-                        <i class="fas fa-plus text-xs"></i>
-                        Add Content
+                <div
+                    class="flex-shrink-0 px-6 py-3.5 border-t border-gray-100 bg-white flex items-center justify-between"
+                >
+                    <button wire:click="$set('showDayDetail', false)" class="btn btn-secondary text-sm">Close</button>
+                    <button wire:click="openForm('{{ $selectedDate }}')" class="btn btn-primary text-sm">
+                        <i class="fas fa-plus text-xs mr-1"></i> Add Content
                     </button>
                 </div>
             </div>

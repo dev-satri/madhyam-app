@@ -12,8 +12,8 @@ class Approval extends Model
     use ScopesToClientAccount;
 
     protected $fillable = [
-        'title', 'client_id', 'content_id', 'type', 'status',
-        'submitted_by', 'notes', 'reference_file',
+        'title', 'client_id', 'content_id', 'type', 'status', 'approval_stage',
+        'submitted_by', 'notes', 'reference_file', 'rejection_reason',
     ];
 
     protected $casts = [];

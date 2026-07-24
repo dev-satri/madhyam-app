@@ -413,13 +413,14 @@ new #[Layout('components.layouts.app')] class extends Component
                     @php
                         $statusDot = match($c->status) { 'open' => 'bg-red-500', 'in-progress' => 'bg-amber-500', 'resolved' => 'bg-green-500', default => 'bg-gray-400' };
                         $priorityBadge = match($c->priority) { 'urgent' => 'badge-urgent', 'high' => 'badge-high', 'medium' => 'badge-medium', 'low' => 'badge-low', default => '' };
+                        $statusRing = match($c->status) { 'open' => 'ring-red-100', 'in-progress' => 'ring-amber-100', 'resolved' => 'ring-green-100', default => '' };
                         $replyCount = DB::table('complaint_replies')->where('complaint_id', $c->id)->count();
                         $hasFiles = DB::table('complaint_replies')->where('complaint_id', $c->id)->whereNotNull('file_path')->exists();
                     @endphp
                     <div wire:click="openDetail({{ $c->id }})"
                          class="bg-white border border-gray-100 rounded-xl p-4 cursor-pointer hover:border-[var(--brand)] hover:shadow-md transition-all duration-150">
                         <div class="flex items-start gap-3">
-                            <div class="w-2.5 h-2.5 rounded-full {{ $statusDot }} mt-2 flex-shrink-0 ring-4 {{ match($c->status) { 'open' => 'ring-red-100', 'in-progress' => 'ring-amber-100', 'resolved' => 'ring-green-100', default => '' } }}"></div>
+                            <div class="w-2.5 h-2.5 rounded-full {{ $statusDot }} mt-2 flex-shrink-0 ring-4 {{ $statusRing }}"></div>
                             <div class="flex-1 min-w-0">
                                 <div class="flex items-center gap-2 flex-wrap">
                                     <h3 class="font-bold text-sm text-gray-900">{{ $c->title }}</h3>
@@ -483,6 +484,9 @@ new #[Layout('components.layouts.app')] class extends Component
 
             {{-- ─── DETAIL MODAL ─────────────────────────────────── --}}
             @if($showDetail && $currentComplaint)
+                @php
+                    $detailStatusDot = match($currentComplaint->status) { 'open' => 'bg-red-500', 'in-progress' => 'bg-amber-500', 'resolved' => 'bg-green-500', default => '' };
+                @endphp
                 <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
                      wire:click.self="closeDetail"
                      x-on:keydown.escape.window="$wire.closeDetail()">
@@ -490,7 +494,7 @@ new #[Layout('components.layouts.app')] class extends Component
                         {{-- Header --}}
                         <div class="sticky top-0 bg-white border-b px-6 py-4 rounded-t-2xl flex items-center justify-between z-10">
                             <div class="flex items-center gap-3 min-w-0">
-                                <div class="w-3 h-3 rounded-full flex-shrink-0 {{ match($currentComplaint->status) { 'open' => 'bg-red-500', 'in-progress' => 'bg-amber-500', 'resolved' => 'bg-green-500', default => '' } }}"></div>
+                                <div class="w-3 h-3 rounded-full flex-shrink-0 {{ $detailStatusDot }}"></div>
                                 <h2 class="font-bold text-lg text-gray-900 truncate">{{ $currentComplaint->title }}</h2>
                                 <span class="badge badge-{{ $currentComplaint->priority }}">{{ ucfirst($currentComplaint->priority) }}</span>
                                 <span class="badge badge-{{ $currentComplaint->status }}">{{ ucfirst(str_replace('-', ' ', $currentComplaint->status)) }}</span>

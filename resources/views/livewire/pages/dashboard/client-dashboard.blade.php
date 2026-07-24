@@ -101,7 +101,7 @@ new #[Layout('components.layouts.app')] class extends Component {
     {
         $client = $this->getClient();
         if (! $client) return 0;
-        return Workflow::where('client_id', $client->id)->where('stage', '!=', 'published')->count();
+        return Workflow::where('client_id', $client->id)->whereNotIn('stage', ['published', 'ready-for-production'])->count();
     }
 
     public function getPendingApprovalsProperty(): int
@@ -135,6 +135,13 @@ new #[Layout('components.layouts.app')] class extends Component {
         $client = $this->getClient();
         if (! $client) return collect();
         return Workflow::where('client_id', $client->id)->with('stageInfo')->latest()->take(5)->get();
+    }
+
+    public function getMyContentProperty(): \Illuminate\Database\Eloquent\Collection
+    {
+        $client = $this->getClient();
+        if (! $client) return collect();
+        return Content::where('client_id', $client->id)->latest()->take(10)->get();
     }
 
     public function getPendingApprovalsListProperty(): \Illuminate\Database\Eloquent\Collection
@@ -223,6 +230,49 @@ new #[Layout('components.layouts.app')] class extends Component {
             </div>
         </div>
     </div>
+
+    {{-- My Content --}}
+    @php $myContent = $this->myContent; @endphp
+    @if ($myContent->count())
+        <div class="bg-white rounded-2xl border border-gray-100 p-5 mb-6">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-sm font-bold text-gray-900">My Content</h3>
+                <a href="{{ route('client.complaints') }}" class="text-xs text-[var(--brand)] hover:underline"
+                    >View All</a
+                >
+            </div>
+            <div class="space-y-2">
+                @foreach ($myContent as $c)
+                    @php
+                        $statusBadge = match($c->status) {
+                            'draft' => 'bg-gray-100 text-gray-700',
+                            'scripting' => 'bg-purple-100 text-purple-700',
+                            'in-review' => 'bg-amber-100 text-amber-700',
+                            'revision' => 'bg-orange-100 text-orange-700',
+                            'published' => 'bg-green-100 text-green-700',
+                            default => 'bg-gray-100 text-gray-700',
+                        };
+                        $platformIcon = match($c->platform) { 'instagram' => 'camera', 'facebook' => 'globe', 'tiktok' => 'music', 'youtube' => 'play', default => 'file' };
+                    @endphp
+                    <div class="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50">
+                        <div
+                            class="w-8 h-8 rounded-lg bg-{{ $c->platform }}-500/10 flex items-center justify-center flex-shrink-0"
+                        >
+                            <i class="fas fa-{{ $platformIcon }} text-{{ $c->platform }}-500 text-xs"></i>
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <p class="text-sm font-medium text-gray-900 truncate">{{ $c->title }}</p>
+                            <p class="text-xs text-gray-500">{{ ucfirst($c->platform) }} · {{ ucfirst($c->type) }} · {{ $c->date?->format('M d') }}</p>
+                        </div>
+                        <span
+                            class="text-[10px] font-semibold px-2 py-0.5 rounded {{ $statusBadge }}"
+                            >{{ str_replace('-', ' ', ucfirst($c->status)) }}</span
+                        >
+                    </div>
+                @endforeach
+            </div>
+        </div>
+    @endif
 
     {{-- Package Alerts --}}
     @if (!empty($packageAlerts))
@@ -395,6 +445,9 @@ new #[Layout('components.layouts.app')] class extends Component {
                     @else
                         <div class="space-y-3">
                             @foreach ($this->myProjects as $project)
+                                @php
+                                    $stageIcon = match($project->stage) { 'idea' => 'lightbulb', 'shooting' => 'camera', 'editing' => 'film', 'review' => 'eye', 'published' => 'check', default => 'circle' };
+                                @endphp
                                 <div
                                     class="flex items-center gap-4 rounded-xl border border-gray-100 p-4 hover:bg-gray-50 transition-colors"
                                 >
@@ -402,9 +455,7 @@ new #[Layout('components.layouts.app')] class extends Component {
                                         class="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg text-xs font-bold text-white"
                                         style="background-color: {{ $this->getStageColor($project->stage) }}"
                                     >
-                                        <i
-                                            class="fas fa-{{ match($project->stage) { 'idea' => 'lightbulb', 'shooting' => 'camera', 'editing' => 'film', 'review' => 'eye', 'published' => 'check', default => 'circle' } }}"
-                                        ></i>
+                                        <i class="fas fa-{{ $stageIcon }}"></i>
                                     </div>
                                     <div class="flex-1 min-w-0">
                                         <p class="text-sm font-semibold text-gray-900 truncate">{{ $project->title }}</p>

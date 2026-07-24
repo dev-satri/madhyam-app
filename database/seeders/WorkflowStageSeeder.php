@@ -9,18 +9,21 @@ class WorkflowStageSeeder extends Seeder
 {
     public function run(): void
     {
-        $rows = [
-            ['key' => 'idea',      'name' => 'Idea',      'color' => '#94a3b8', 'order' => 0],
-            ['key' => 'scripting', 'name' => 'Scripting', 'color' => '#3b82f6', 'order' => 1],
-            ['key' => 'shooting',  'name' => 'Shooting',  'color' => '#f59e0b', 'order' => 2],
-            ['key' => 'editing',   'name' => 'Editing',   'color' => '#a855f7', 'order' => 3],
-            ['key' => 'review',    'name' => 'Review',    'color' => '#06b6d4', 'order' => 4],
-            ['key' => 'published', 'name' => 'Published', 'color' => '#10b981', 'order' => 5],
+        $stages = [
+            ['key' => 'todo', 'name' => 'To Do', 'order' => 1, 'color' => '#6366f1'],
+            ['key' => 'in-progress', 'name' => 'In Progress', 'order' => 2, 'color' => '#f59e0b'],
+            ['key' => 'scripting', 'name' => 'Scripting', 'order' => 3, 'color' => '#8b5cf6'],
+            ['key' => 'review', 'name' => 'Review', 'order' => 4, 'color' => '#3b82f6'],
+            ['key' => 'revision', 'name' => 'Revision', 'order' => 5, 'color' => '#ef4444'],
+            ['key' => 'ready-for-production', 'name' => 'Ready for Production', 'order' => 6, 'color' => '#0ea5e9'],
+            ['key' => 'published', 'name' => 'Published', 'order' => 7, 'color' => '#22c55e'],
         ];
-        foreach ($rows as $r) {
-            DB::table('workflow_stages')->insert(array_merge($r, [
-                'created_at' => now(), 'updated_at' => now(),
-            ]));
+
+        foreach ($stages as $stage) {
+            DB::table('workflow_stages')->updateOrInsert(
+                ['key' => $stage['key']],
+                $stage + ['created_at' => now(), 'updated_at' => now()]
+            );
         }
     }
 }

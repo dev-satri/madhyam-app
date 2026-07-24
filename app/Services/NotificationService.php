@@ -112,6 +112,130 @@ class NotificationService
         return $note;
     }
 
+    // ── Content Workflow Notifications ──────────────────────────
+
+    public function notifyContentSubmittedForApproval(string $title, int $contentId): Notification
+    {
+        return $this->sendNotification(
+            text: "New content awaiting your approval: {$title}",
+            type: 'info',
+            link: route('approvals', absolute: false),
+            forRole: 'manager',
+        );
+    }
+
+    public function notifyContentApproved(string $title): Notification
+    {
+        return $this->sendNotification(
+            text: "Your content '{$title}' has been approved. Workflow started.",
+            type: 'success',
+            link: route('workflow', absolute: false),
+            forRole: 'all',
+        );
+    }
+
+    public function notifyContentRevision(string $title, ?string $reason = null): Notification
+    {
+        $text = "Content '{$title}' needs revision";
+        if ($reason) {
+            $text .= ": {$reason}";
+        }
+
+        return $this->sendNotification(
+            text: $text,
+            type: 'warning',
+            link: route('calendar', absolute: false),
+            forRole: 'all',
+        );
+    }
+
+    public function notifyContentRejected(string $title, ?string $reason = null): Notification
+    {
+        $text = "Content '{$title}' has been rejected";
+        if ($reason) {
+            $text .= ": {$reason}";
+        }
+
+        return $this->sendNotification(
+            text: $text,
+            type: 'error',
+            link: route('calendar', absolute: false),
+            forRole: 'all',
+        );
+    }
+
+    public function notifyWorkflowReadyForReview(string $title): Notification
+    {
+        return $this->sendNotification(
+            text: "'{$title}' is ready for final review",
+            type: 'info',
+            link: route('approvals', absolute: false),
+            forRole: 'manager',
+        );
+    }
+
+    public function notifyAdminApprovedFinal(string $title): Notification
+    {
+        return $this->sendNotification(
+            text: "Admin approved '{$title}' — now awaiting client approval",
+            type: 'success',
+            link: route('approvals', absolute: false),
+            forRole: 'all',
+        );
+    }
+
+    public function notifyAdminRejectedFinal(string $title, ?string $reason = null): Notification
+    {
+        $text = "Admin rejected '{$title}'";
+        if ($reason) {
+            $text .= ": {$reason}";
+        }
+        $text .= '. Sent back for revision.';
+
+        return $this->sendNotification(
+            text: $text,
+            type: 'error',
+            link: route('workflow', absolute: false),
+            forRole: 'all',
+        );
+    }
+
+    public function notifyClientApprovedFinal(string $title): Notification
+    {
+        return $this->sendNotification(
+            text: "Client approved '{$title}' for publishing",
+            type: 'success',
+            link: route('workflow', absolute: false),
+            forRole: 'manager',
+        );
+    }
+
+    public function notifyClientRejectedFinal(string $title, ?string $reason = null): Notification
+    {
+        $text = "Client rejected '{$title}'";
+        if ($reason) {
+            $text .= ": {$reason}";
+        }
+        $text .= '. Sent back for revision.';
+
+        return $this->sendNotification(
+            text: $text,
+            type: 'error',
+            link: route('workflow', absolute: false),
+            forRole: 'manager',
+        );
+    }
+
+    public function notifyContentPublished(string $title): Notification
+    {
+        return $this->sendNotification(
+            text: "'{$title}' has been published!",
+            type: 'success',
+            link: route('calendar', absolute: false),
+            forRole: 'all',
+        );
+    }
+
     protected function trim(): void
     {
         $count = Notification::count();

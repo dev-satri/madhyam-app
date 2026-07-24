@@ -44,7 +44,7 @@
 | **Dashboard** | Role-based stats, charts (Chart.js), activity feed, quick actions |
 | **Clients** | CRUD, package assignment, client portal accounts, usage tracking |
 | **Packages** | Tiered plans with limits (content, workflows, files, approvals), upgrade/downgrade |
-| **Content Planner** | Calendar view, content scheduling per client, status tracking |
+| **Content Planner** | Calendar view, content scheduling per client, status tracking, day detail modal |
 | **Workflow** | Kanban-style drag-and-drop board with custom stages, file attachments |
 | **Tasks & Shoots** | Task management with deadlines, shoot scheduling, auto-reminders, comments |
 | **Approvals** | Multi-step approval flow with client/staff commenting, approve/reject |
@@ -110,6 +110,81 @@
 - **Dual Auth Guards** — `web` guard for staff, `client` guard for client portal users
 - **Runtime RBAC** — Feature gates + data-access permissions checked at service/middleware level
 - **Service Layer** — Business logic extracted into dedicated service classes
+
+---
+
+## Content Production Flow
+
+The system implements a **linked content pipeline** connecting Content Planner, Workflow, and Approvals into a single production chain.
+
+### Pipeline Overview
+
+```
+Content Planner ──► Approval #1 (Admin) ──► Workflow (Kanban) ──► Approval #2 (Admin→Client) ──► Ready for Production ──► Published
+```
+
+### Stage-by-Stage Breakdown
+
+| Stage | Where | Who | What Happens |
+|-------|-------|-----|-------------|
+| **Draft** | Content Planner | Social Media / Manager | Content is created with platform, client, type, and date. No workflow or approval yet. |
+| **Scripting** | Content Planner | Social Media / Manager | Click "Script" to move content into scripting phase. Still no approval. |
+| **In Review** | Content Planner + Approvals | Admin | Click "Submit" → content status becomes `in-review`. **Approval #1 is auto-created** (admin-only). |
+| **Todo** | Workflow (Kanban) | Manager+ | Admin approves Approval #1 → workflow item auto-created in `todo` stage. Content is now in the production pipeline. |
+| **In Progress → Scripting → Review** | Workflow (Kanban) | Assigned staff | Drag cards through stages. Assign team members. Attach files. Add comments. |
+| **Revision** | Workflow (Kanban) | Assigned staff | Admin rejects Approval #2 → card moves back to `revision` stage with `revision_notes`. |
+| **Resubmit** | Content Planner + Approvals | Social Media / Manager | Click "Resubmit" on revision content → resets approval to `pending` for re-review. |
+| **Ready for Production** | Workflow (Kanban) | Admin | Client approves Approval #2 → moves to `ready-for-production`. **Near-terminal — admin clicks "Publish" to finalize.** |
+| **Published** | Workflow (Kanban) | Admin | Admin clicks "Publish" on ready-for-production items. **Terminal state — no edits, no moves.** |
+
+### Approval #2: Sequential Flow
+
+Approval #2 follows a **sequential two-step** approval:
+
+1. **Admin approves first** — Approval status changes from `admin-pending` → `client-pending`
+2. **Client approves second** — Approval status changes from `client-pending` → `approved`, workflow moves to `ready-for-production`
+3. **Admin publishes** — Admin clicks "Publish" on the ready-for-production card → workflow moves to `published`, content marked as published
+
+If the **admin rejects** at step 1, the client never sees it — the workflow item moves to `revision` with notes.
+
+### Content Statuses
+
+| Status | Description |
+|--------|-------------|
+| `draft` | Created, not yet submitted |
+| `scripting` | In scripting phase |
+| `in-review` | Submitted for admin approval (Approval #1 pending) |
+| `revision` | Rejected — needs rework |
+| `published` | Approved, published, and locked — **terminal, read-only** |
+
+### Workflow Stages
+
+| Stage | Description |
+|-------|-------------|
+| `todo` | Auto-created when Approval #1 passes |
+| `in-progress` | Being worked on |
+| `scripting` | Script/content being written |
+| `review` | Ready for admin review (triggers Approval #2) |
+| `revision` | Rejected — needs rework |
+| `ready-for-production` | Client approved — waiting for admin to publish |
+| `published` | Final — locked, no edits |
+
+### Linked Models
+
+```
+contents.content_id ──► workflows.content_id  (1:1)
+contents.content_id ──► approvals.content_id  (1:1)
+workflows.workflow_id ──► tasks.workflow_id   (1:many)
+```
+
+### Key Rules
+
+- Content in `in-review` or `published` status **cannot be deleted**
+- Published content **cannot be edited**
+- Tasks linked to a published workflow **cannot change status or be edited**
+- Client portal users see their content status but **not internal workflow stages**
+- Rejection always includes `rejection_reason` / `revision_notes` for context
+- All state changes trigger in-app notifications to relevant users
 
 ---
 

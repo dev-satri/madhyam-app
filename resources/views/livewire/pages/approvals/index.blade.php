@@ -17,8 +17,9 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public string $statusFilter = '';
     public string $clientFilter = '';
-    public string $search = '';
+    public string $stageFilter = '';
     public string $typeFilter = '';
+    public string $search = '';
     public bool $showForm = false;
     public int $editingId = 0;
     public string $formTitle = '';
@@ -52,6 +53,7 @@ new #[Layout('components.layouts.app')] class extends Component
     public function updatedTypeFilter(): void { $this->resetPage(); }
     public function updatedStatusFilter(): void { $this->resetPage(); }
     public function updatedClientFilter(): void { $this->resetPage(); }
+    public function updatedStageFilter(): void { $this->resetPage(); }
 
     public function toggleStatusFilter(string $status): void
     {
@@ -119,6 +121,7 @@ new #[Layout('components.layouts.app')] class extends Component
         if ($this->statusFilter) $q->where('approvals.status', $this->statusFilter);
         if ($this->clientFilter) $q->where('approvals.client_id', $this->clientFilter);
         if ($this->typeFilter) $q->where('approvals.type', $this->typeFilter);
+        if ($this->stageFilter) $q->where('approvals.approval_stage', $this->stageFilter);
         if ($this->search) {
             $q->where(function ($q) {
                 $q->where('approvals.title', 'like', "%{$this->search}%")
@@ -153,26 +156,78 @@ new #[Layout('components.layouts.app')] class extends Component
     public function updateStatus(int $id, string $status): void
     {
         $actor = Auth::user() ?? Auth::guard('client')->user();
-        if ($status === 'rejected' && $actor && ($actor->role ?? 'client') === 'client') {
+        $isClient = $actor && ($actor->role ?? 'client') === 'client';
+
+        $approval = DB::table('approvals')->where('id', $id)->first();
+        if (!$approval) return;
+
+        // Clients cannot reject
+        if ($status === 'rejected' && $isClient) {
             $this->dispatch('toast', message: 'Clients cannot reject approvals', type: 'error');
             return;
         }
-        $current = DB::table('approvals')->where('id', $id)->value('status');
-        // Allow: pending → any, revision → approved/rejected
+
+        // Sequential flow rules
+        if ($approval->approval_stage === 'admin-pending' && $isClient) {
+            $this->dispatch('toast', message: 'This approval is awaiting admin review', type: 'error');
+            return;
+        }
+
+        if ($approval->approval_stage === 'client-pending' && !$isClient) {
+            // Admin can still approve/reject at client-pending stage
+        }
+
+        if ($approval->approval_stage === 'first' && $isClient) {
+            $this->dispatch('toast', message: 'This is an admin-only approval', type: 'error');
+            return;
+        }
+
+        $current = $approval->status;
         $allowed = ($current === 'pending') || ($current === 'revision' && in_array($status, ['approved', 'rejected']));
         if (!$allowed) {
             $this->dispatch('toast', message: 'Cannot change this approval status', type: 'warning');
             return;
         }
+
         $this->applyStatus($id, $status);
         $this->dispatch('toast', message: "Approval {$status}", type: $status === 'approved' ? 'success' : 'info');
         $this->resetPage();
     }
 
+    /**
+     * Find the workflow linked to an approval.
+     * Tries content_id first, then falls back to title matching.
+     */
+    private function findLinkedWorkflow(object $approval): ?object
+    {
+        // Try by content_id first (most reliable)
+        if ($approval->content_id) {
+            $wf = DB::table('workflows')->where('content_id', $approval->content_id)->first();
+            if ($wf) return $wf;
+        }
+
+        // Fallback: match by title (strip parenthetical suffixes like " (Instagram / Reel)")
+        $baseTitle = preg_replace('/\s*\([^)]*\)\s*$/', '', $approval->title ?? '');
+        if ($baseTitle) {
+            $wf = DB::table('workflows')
+                ->where('title', $baseTitle)
+                ->orWhere('title', 'like', $baseTitle . '%')
+                ->first();
+            if ($wf) return $wf;
+        }
+
+        return null;
+    }
+
     private function applyStatus(int $id, string $status, ?string $reason = null, bool $suppressSideEffects = false): bool
     {
         $actor = Auth::user() ?? Auth::guard('client')->user();
-        $current = DB::table('approvals')->where('id', $id)->value('status');
+        $isClient = $actor && ($actor->role ?? 'client') === 'client';
+
+        $approval = DB::table('approvals')->where('id', $id)->first();
+        if (!$approval) return false;
+
+        $current = $approval->status;
         $allowed = ($current === 'pending') || ($current === 'revision' && in_array($status, ['approved', 'rejected']));
         if (!$allowed) return false;
 
@@ -191,8 +246,120 @@ new #[Layout('components.layouts.app')] class extends Component
 
         app(ActivityLogger::class)->record($actor, "Approval #{$id} → {$status}");
 
+        // ── SIDE EFFECTS based on approval_stage ──
+
+        if ($approval->approval_stage === 'first') {
+            // FIRST APPROVAL: Content submitted from planner
+            if ($status === 'approved') {
+                // Content stays as 'in-review' (it's now in the workflow pipeline)
+                // Create workflow item in first stage
+                $content = DB::table('contents')->where('id', $approval->content_id)->first();
+                if ($content) {
+                    $firstStage = DB::table('workflow_stages')->orderBy('order')->first();
+                    DB::table('workflows')->insert([
+                        'title' => $approval->title,
+                        'client_id' => $approval->client_id,
+                        'content_id' => $approval->content_id,
+                        'type' => $approval->type,
+                        'stage' => $firstStage->key ?? 'todo',
+                        'deadline' => $content->due_date,
+                        'submitted_by' => $actor?->id,
+                        'created_at' => now(),
+                        'updated_at' => now(),
+                    ]);
+                }
+
+                if (!$suppressSideEffects) {
+                    app(NotificationService::class)->notifyContentApproved($approval->title);
+                }
+            } elseif ($status === 'rejected') {
+                DB::table('contents')->where('id', $approval->content_id)->update([
+                    'status' => 'revision',
+                    'updated_at' => now(),
+                ]);
+                if (!$suppressSideEffects) {
+                    app(NotificationService::class)->notifyContentRejected($approval->title, $reason);
+                }
+            } elseif ($status === 'revision') {
+                DB::table('contents')->where('id', $approval->content_id)->update([
+                    'status' => 'revision',
+                    'updated_at' => now(),
+                ]);
+                if (!$suppressSideEffects) {
+                    app(NotificationService::class)->notifyContentRevision($approval->title, $reason);
+                }
+            }
+        } elseif ($approval->approval_stage === 'admin-pending') {
+            // ADMIN PENDING: Workflow review — admin approves first
+            if ($status === 'approved') {
+                // Move to client-pending
+                DB::table('approvals')->where('id', $id)->update([
+                    'approval_stage' => 'client-pending',
+                    'status' => 'pending',
+                    'updated_at' => now(),
+                ]);
+                if (!$suppressSideEffects) {
+                    app(NotificationService::class)->notifyAdminApprovedFinal($approval->title);
+                }
+            } else {
+                // Rejected/revision → workflow = revision
+                $workflow = $this->findLinkedWorkflow($approval);
+                if ($workflow) {
+                    DB::table('workflows')->where('id', $workflow->id)->update([
+                        'stage' => 'revision',
+                        'revision_notes' => $reason,
+                        'updated_at' => now(),
+                    ]);
+                }
+                DB::table('contents')->where('id', $approval->content_id)->update([
+                    'status' => 'revision',
+                    'updated_at' => now(),
+                ]);
+                if (!$suppressSideEffects) {
+                    app(NotificationService::class)->notifyAdminRejectedFinal($approval->title, $reason);
+                }
+            }
+        } elseif ($approval->approval_stage === 'client-pending') {
+            // CLIENT PENDING: Client approves — moves to ready-for-production
+            if ($status === 'approved') {
+                // Workflow → ready-for-production (not published yet — admin moves to published)
+                $workflow = $this->findLinkedWorkflow($approval);
+                if ($workflow) {
+                    DB::table('workflows')->where('id', $workflow->id)->update([
+                        'stage' => 'ready-for-production',
+                        'updated_at' => now(),
+                    ]);
+                } else {
+                    \Log::warning("Approval #{$id} client-pending approved but no linked workflow found", [
+                        'content_id' => $approval->content_id,
+                        'title' => $approval->title,
+                    ]);
+                }
+                if (!$suppressSideEffects) {
+                    app(NotificationService::class)->notifyClientApprovedFinal($approval->title);
+                }
+            } else {
+                // Rejected/revision → workflow = revision
+                $workflow = $this->findLinkedWorkflow($approval);
+                if ($workflow) {
+                    DB::table('workflows')->where('id', $workflow->id)->update([
+                        'stage' => 'revision',
+                        'revision_notes' => $reason,
+                        'updated_at' => now(),
+                    ]);
+                }
+                DB::table('contents')->where('id', $approval->content_id)->update([
+                    'status' => 'revision',
+                    'updated_at' => now(),
+                ]);
+                if (!$suppressSideEffects) {
+                    app(NotificationService::class)->notifyClientRejectedFinal($approval->title, $reason);
+                }
+            }
+        }
+
         if (!$suppressSideEffects) {
-            $isStaff = $actor && ($actor->role ?? 'client') !== 'client';
+            $isStaff = !$isClient;
             app(NotificationService::class)->sendNotification(
                 text: "Approval #{$id} {$status}",
                 type: $status === 'approved' ? 'success' : ($status === 'rejected' ? 'error' : 'info'),
@@ -469,6 +636,7 @@ new #[Layout('components.layouts.app')] class extends Component
                 </div>
                 <div><label class="form-label">Type</label><select wire:model.live="typeFilter" class="form-select w-auto"><option value="">All Types</option><option value="post">Post</option><option value="reel">Reel</option><option value="story">Story</option><option value="video">Video</option><option value="carousel">Carousel</option><option value="blog">Blog</option></select></div>
                 <div><label class="form-label">Status</label><select wire:model.live="statusFilter" class="form-select w-auto"><option value="">All Status</option><option value="pending">Pending</option><option value="approved">Approved</option><option value="revision">Revision</option><option value="rejected">Rejected</option></select></div>
+                <div><label class="form-label">Stage</label><select wire:model.live="stageFilter" class="form-select w-auto"><option value="">All Stages</option><option value="first">First Approval</option><option value="admin-pending">Admin Review</option><option value="client-pending">Client Review</option></select></div>
                 <div><label class="form-label">Client</label><select wire:model.live="clientFilter" class="form-select w-auto"><option value="">All Clients</option>@foreach($this->clients as $c)<option value="{{ $c->id }}">{{ $c->name }}</option>@endforeach</select></div>
                 @if($this->isManager && count($selectedItems) > 0)
                 <div class="flex gap-2">
@@ -495,6 +663,13 @@ new #[Layout('components.layouts.app')] class extends Component
                             <div class="flex items-center gap-2 mb-1">
                                 <h4 class="text-sm font-bold text-gray-900">{{ $a->title ?? 'Untitled' }}</h4>
                                 <span class="badge badge-{{ $a->status }}">{{ ucfirst($a->status) }}</span>
+                                @if($a->approval_stage === 'first')
+                                    <span class="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 font-medium">First Approval</span>
+                                @elseif($a->approval_stage === 'admin-pending')
+                                    <span class="text-[10px] px-1.5 py-0.5 rounded bg-amber-50 text-amber-600 font-medium">Admin Review</span>
+                                @elseif($a->approval_stage === 'client-pending')
+                                    <span class="text-[10px] px-1.5 py-0.5 rounded bg-purple-50 text-purple-600 font-medium">Client Review</span>
+                                @endif
                                 @if($a->type)<span class="badge badge-{{ $a->type }}">{{ ucfirst($a->type) }}</span>@endif
                             </div>
                             <p class="text-xs text-gray-500">Client: {{ $a->client_name ?? '—' }} · Submitted by: {{ $a->submitter_name ?? '—' }} · {{ $a->created_at ? \Carbon\Carbon::parse($a->created_at)->diffForHumans() : '' }}</p>
@@ -512,16 +687,28 @@ new #[Layout('components.layouts.app')] class extends Component
 
                             <div class="flex items-center gap-2 mt-3" x-on:click.stop>
                                 @if($a->status === 'pending')
-                                <button type="button" wire:click="$dispatch('open-confirm', { title: 'Approve this item?', message: 'This will mark the item as approved.', type: 'info', action: 'updateStatus', params: [{{ $a->id }}, 'approved'] })" class="btn btn-success btn-sm"><i class="fas fa-check text-xs"></i> Approve</button>
-                                <button type="button" wire:click="openReasonModal({{ $a->id }}, 'revision')" class="btn btn-secondary btn-sm"><i class="fas fa-pen text-xs"></i> Revision</button>
-                                @if($this->isManager)
-                                <button type="button" wire:click="openReasonModal({{ $a->id }}, 'rejected')" class="btn btn-danger btn-sm"><i class="fas fa-times text-xs"></i> Reject</button>
-                                @endif
+                                    {{-- First approval: admin only --}}
+                                    @if($a->approval_stage === 'first' && $this->isManager)
+                                        <button type="button" wire:click="$dispatch('open-confirm', { title: 'Approve this item?', message: 'Content will be approved and workflow started.', type: 'info', action: 'updateStatus', params: [{{ $a->id }}, 'approved'] })" class="btn btn-success btn-sm"><i class="fas fa-check text-xs"></i> Approve</button>
+                                        <button type="button" wire:click="openReasonModal({{ $a->id }}, 'revision')" class="btn btn-secondary btn-sm"><i class="fas fa-pen text-xs"></i> Revision</button>
+                                        <button type="button" wire:click="openReasonModal({{ $a->id }}, 'rejected')" class="btn btn-danger btn-sm"><i class="fas fa-times text-xs"></i> Reject</button>
+                                    @endif
+                                    {{-- Admin-pending: admin only --}}
+                                    @if($a->approval_stage === 'admin-pending' && $this->isManager)
+                                        <button type="button" wire:click="$dispatch('open-confirm', { title: 'Approve this item?', message: 'This will send it to client for final approval.', type: 'info', action: 'updateStatus', params: [{{ $a->id }}, 'approved'] })" class="btn btn-success btn-sm"><i class="fas fa-check text-xs"></i> Approve</button>
+                                        <button type="button" wire:click="openReasonModal({{ $a->id }}, 'revision')" class="btn btn-secondary btn-sm"><i class="fas fa-pen text-xs"></i> Revision</button>
+                                        <button type="button" wire:click="openReasonModal({{ $a->id }}, 'rejected')" class="btn btn-danger btn-sm"><i class="fas fa-times text-xs"></i> Reject</button>
+                                    @endif
+                                    {{-- Client-pending: client only --}}
+                                    @if($a->approval_stage === 'client-pending' && !$this->isManager)
+                                        <button type="button" wire:click="$dispatch('open-confirm', { title: 'Approve this item?', message: 'This will move the content to Ready for Production for final publishing.', type: 'info', action: 'updateStatus', params: [{{ $a->id }}, 'approved'] })" class="btn btn-success btn-sm"><i class="fas fa-check text-xs"></i> Approve</button>
+                                        <button type="button" wire:click="openReasonModal({{ $a->id }}, 'revision')" class="btn btn-secondary btn-sm"><i class="fas fa-pen text-xs"></i> Revision</button>
+                                    @endif
                                 @elseif($a->status === 'revision')
-                                <button type="button" wire:click="$dispatch('open-confirm', { title: 'Approve this item?', message: 'This will mark the item as approved.', type: 'info', action: 'updateStatus', params: [{{ $a->id }}, 'approved'] })" class="btn btn-success btn-sm"><i class="fas fa-check text-xs"></i> Approve</button>
-                                @if($this->isManager)
-                                <button type="button" wire:click="openReasonModal({{ $a->id }}, 'rejected')" class="btn btn-danger btn-sm"><i class="fas fa-times text-xs"></i> Reject</button>
-                                @endif
+                                    @if($a->approval_stage === 'first' && $this->isManager)
+                                        <button type="button" wire:click="$dispatch('open-confirm', { title: 'Approve this item?', message: 'This will mark the item as approved.', type: 'info', action: 'updateStatus', params: [{{ $a->id }}, 'approved'] })" class="btn btn-success btn-sm"><i class="fas fa-check text-xs"></i> Approve</button>
+                                        <button type="button" wire:click="openReasonModal({{ $a->id }}, 'rejected')" class="btn btn-danger btn-sm"><i class="fas fa-times text-xs"></i> Reject</button>
+                                    @endif
                                 @endif
                                 @php $cc = $this->commentCounts[$a->id] ?? 0; @endphp
                                 <button wire:click="openDetail({{ $a->id }})" class="btn btn-ghost btn-sm"><i class="fas fa-comments text-xs"></i> @if($cc > 0)<span class="badge badge-pending">{{ $cc }}</span> @endif</button>

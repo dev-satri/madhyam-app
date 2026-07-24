@@ -131,6 +131,16 @@ new #[Layout('components.layouts.app')] class extends Component
     {
         $task = DB::table('tasks')->where('id', $id)->first();
         if (!$task) return;
+
+        // Lock if linked workflow is published or ready-for-production
+        if ($task->workflow_id) {
+            $workflow = DB::table('workflows')->where('id', $task->workflow_id)->first();
+            if ($workflow && in_array($workflow->stage, ['published', 'ready-for-production'])) {
+                $this->dispatch('toast', message: 'Cannot update task — workflow is in a terminal state', type: 'error');
+                return;
+            }
+        }
+
         $next = match($task->status) {
             'todo' => 'in-progress',
             'in-progress' => 'completed',
@@ -170,6 +180,18 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function save(): void
     {
+        // Lock if linked workflow is published or ready-for-production
+        if ($this->editingId) {
+            $existingTask = DB::table('tasks')->where('id', $this->editingId)->first();
+            if ($existingTask && $existingTask->workflow_id) {
+                $workflow = DB::table('workflows')->where('id', $existingTask->workflow_id)->first();
+                if ($workflow && in_array($workflow->stage, ['published', 'ready-for-production'])) {
+                    $this->dispatch('toast', message: 'Cannot edit task — workflow is in a terminal state', type: 'error');
+                    return;
+                }
+            }
+        }
+
         $this->validate([
             'formTitle' => 'required|string|max:255',
             'formType' => 'required|in:task,shoot,editing',

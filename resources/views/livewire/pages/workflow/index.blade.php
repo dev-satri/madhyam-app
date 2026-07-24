@@ -13,6 +13,7 @@ use App\Services\NotificationService;
 use App\Services\PackageService;
 use App\Services\RbacService;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
 
 new #[Layout('components.layouts.app')] class extends Component
@@ -46,6 +47,15 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public bool $showDetail = false;
     public int $detailId = 0;
+
+    // Revision modal
+    public bool $showRevisionModal = false;
+    public int $revisionWorkflowId = 0;
+    public string $revisionNotes = '';
+
+    // Resubmit
+    public bool $showResubmitModal = false;
+    public int $resubmitWorkflowId = 0;
 
     public array $presetColors = [
         '#4f46e5', '#7c3aed', '#a855f7', '#db2777', '#ec4899',
@@ -136,27 +146,266 @@ new #[Layout('components.layouts.app')] class extends Component
         return $this->getFilteredItems()->filter(fn($item) => $item->stage === $stageKey);
     }
 
+    public function getApprovalStatus($workflow): array
+    {
+        $adminApproved = false;
+        $clientApproved = false;
+
+        if ($workflow->content_id) {
+            $adminApproved = DB::table('approvals')
+                ->where('content_id', $workflow->content_id)
+                ->where('approval_stage', 'admin-pending')
+                ->where('status', 'approved')
+                ->exists();
+            $clientApproved = DB::table('approvals')
+                ->where('content_id', $workflow->content_id)
+                ->where('approval_stage', 'client-pending')
+                ->where('status', 'approved')
+                ->exists();
+        } else {
+            $baseTitle = preg_replace('/\s*\([^)]*\)\s*$/', '', $workflow->title ?? '');
+            if ($baseTitle) {
+                $adminApproved = DB::table('approvals')
+                    ->where('approval_stage', 'admin-pending')
+                    ->where('status', 'approved')
+                    ->where(function ($q) use ($baseTitle) {
+                        $q->where('title', $baseTitle)
+                          ->orWhere('title', 'like', $baseTitle . '%');
+                    })
+                    ->exists();
+                $clientApproved = DB::table('approvals')
+                    ->where('approval_stage', 'client-pending')
+                    ->where('status', 'approved')
+                    ->where(function ($q) use ($baseTitle) {
+                        $q->where('title', $baseTitle)
+                          ->orWhere('title', 'like', $baseTitle . '%');
+                    })
+                    ->exists();
+            }
+        }
+
+        $isClient = !empty($workflow->client_id);
+        $ready = $isClient ? ($adminApproved && $clientApproved) : $adminApproved;
+
+        return [
+            'admin' => $adminApproved,
+            'client' => $clientApproved,
+            'ready' => $ready,
+            'is_client' => $isClient,
+        ];
+    }
+
     public function moveItem(int $itemId, string $newStage): void
     {
         $workflow = Workflow::find($itemId);
-        if ($workflow) {
-            $oldStage = $workflow->stage;
-            $workflow->update(['stage' => $newStage]);
+        if (!$workflow) return;
 
-            // Plan §4.5 requires logging old → new stage transitions.
-            app(ActivityLogger::class)->record(
-                Auth::user(),
-                "Moved workflow '{$workflow->title}' {$oldStage} → {$newStage}"
-            );
-            app(NotificationService::class)->sendNotification(
-                text: "Workflow '{$workflow->title}' moved {$oldStage} → {$newStage}",
-                type: 'info',
-                link: route('workflow', absolute: false),
-                forRole: 'all',
-            );
+        $oldStage = $workflow->stage;
 
-            $this->dispatch('toast', message: 'Item moved successfully', type: 'success');
+        // Terminal states: cannot be moved (except ready-for-production → published)
+        if ($oldStage === 'published') {
+            $this->dispatch('toast', message: 'Published items cannot be moved', type: 'error');
+            return;
         }
+        if ($oldStage === 'ready-for-production' && $newStage !== 'published') {
+            $this->dispatch('toast', message: 'Ready for Production items can only be Published', type: 'error');
+            return;
+        }
+
+        // Validate approvals required before moving to ready-for-production or published
+        if (in_array($newStage, ['ready-for-production', 'published'])) {
+            // Items without content_id cannot be moved to production stages
+            if (!$workflow->content_id) {
+                $this->dispatch('toast', message: 'Content must be approved before publishing', type: 'error');
+                return;
+            }
+
+            $hasClientApproval = DB::table('approvals')
+                ->where('content_id', $workflow->content_id)
+                ->where('approval_stage', 'client-pending')
+                ->where('status', 'approved')
+                ->exists();
+
+            $hasAdminApproval = DB::table('approvals')
+                ->where('content_id', $workflow->content_id)
+                ->where('approval_stage', 'admin-pending')
+                ->where('status', 'approved')
+                ->exists();
+
+            $isClientContent = !empty($workflow->client_id);
+
+            if ($isClientContent) {
+                // Client content requires BOTH admin + client approval
+                if (!$hasAdminApproval || !$hasClientApproval) {
+                    $missing = [];
+                    if (!$hasAdminApproval) $missing[] = 'Admin';
+                    if (!$hasClientApproval) $missing[] = 'Client';
+                    $this->dispatch('toast', message: 'Missing approval from: ' . implode(', ', $missing) . '. Both required for client content.', type: 'error');
+                    return;
+                }
+            } else {
+                // Internal content only requires admin approval
+                if (!$hasAdminApproval) {
+                    $this->dispatch('toast', message: 'Internal content requires Admin approval before publishing', type: 'error');
+                    return;
+                }
+            }
+        }
+
+        $updateData = ['stage' => $newStage];
+
+        // When moving to review → create Approval #2 (admin-pending)
+        if ($newStage === 'review' && $oldStage !== 'review') {
+            $existingPending = DB::table('approvals')
+                ->where(function ($q) use ($workflow) {
+                    if ($workflow->content_id) {
+                        $q->where('content_id', $workflow->content_id);
+                    } else {
+                        $baseTitle = preg_replace('/\s*\([^)]*\)\s*$/', '', $workflow->title ?? '');
+                        $q->where('title', $baseTitle)
+                          ->orWhere('title', 'like', $baseTitle . '%');
+                    }
+                })
+                ->where('approval_stage', 'admin-pending')
+                ->where('status', 'pending')
+                ->first();
+
+            if (!$existingPending) {
+                DB::table('approvals')->insert([
+                    'title' => $workflow->title,
+                    'client_id' => $workflow->client_id,
+                    'content_id' => $workflow->content_id,
+                    'type' => $workflow->type,
+                    'status' => 'pending',
+                    'approval_stage' => 'admin-pending',
+                    'submitted_by' => auth()->id(),
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+
+                app(NotificationService::class)->notifyWorkflowReadyForReview($workflow->title);
+            }
+        }
+
+        // When moving to revision → clear revision notes (will be set via modal)
+        if ($newStage === 'revision') {
+            $updateData['revision_notes'] = null;
+        }
+
+        // When moving to published → mark content as published too
+        if ($newStage === 'published' && $workflow->content_id) {
+            DB::table('contents')->where('id', $workflow->content_id)->update([
+                'status' => 'published',
+                'updated_at' => now(),
+            ]);
+            app(NotificationService::class)->notifyContentPublished($workflow->title);
+        }
+
+        $workflow->update($updateData);
+
+        app(ActivityLogger::class)->record(
+            Auth::user(),
+            "Moved workflow '{$workflow->title}' {$oldStage} → {$newStage}"
+        );
+        app(NotificationService::class)->sendNotification(
+            text: "Workflow '{$workflow->title}' moved {$oldStage} → {$newStage}",
+            type: 'info',
+            link: route('workflow', absolute: false),
+            forRole: 'all',
+        );
+
+        $this->dispatch('toast', message: $newStage === 'review' ? 'Moved to Review — Approval created in Approvals page' : 'Item moved successfully', type: 'success');
+    }
+
+    public function openRevisionModal(int $id): void
+    {
+        $this->revisionWorkflowId = $id;
+        $this->revisionNotes = '';
+        $this->showRevisionModal = true;
+    }
+
+    public function confirmRevision(): void
+    {
+        $workflow = Workflow::find($this->revisionWorkflowId);
+        if (!$workflow) return;
+
+        if (in_array($workflow->stage, ['published', 'ready-for-production'])) {
+            $this->dispatch('toast', message: 'Published and Ready for Production items cannot be revised', type: 'error');
+            return;
+        }
+
+        $workflow->update([
+            'stage' => 'revision',
+            'revision_notes' => $this->revisionNotes ?: null,
+        ]);
+
+        // Also update content status back to revision
+        if ($workflow->content_id) {
+            DB::table('contents')->where('id', $workflow->content_id)->update([
+                'status' => 'revision',
+                'updated_at' => now(),
+            ]);
+        }
+
+        app(NotificationService::class)->notifyContentRevision($workflow->title, $this->revisionNotes);
+
+        $this->showRevisionModal = false;
+        $this->dispatch('toast', message: 'Sent back for revision', type: 'success');
+    }
+
+    public function openResubmitModal(int $id): void
+    {
+        $this->resubmitWorkflowId = $id;
+        $this->showResubmitModal = true;
+    }
+
+    public function confirmResubmit(): void
+    {
+        $workflow = Workflow::find($this->resubmitWorkflowId);
+        if (!$workflow || $workflow->stage !== 'revision') return;
+
+        // Reset existing approval to pending (reuse, don't duplicate)
+        $existingApproval = DB::table('approvals')
+            ->where('content_id', $workflow->content_id)
+            ->where('approval_stage', 'admin-pending')
+            ->whereIn('status', ['rejected', 'revision'])
+            ->first();
+
+        if ($existingApproval) {
+            DB::table('approvals')->where('id', $existingApproval->id)->update([
+                'status' => 'pending',
+                'rejection_reason' => null,
+                'updated_at' => now(),
+            ]);
+        } else {
+            // Create new approval if none exists
+            DB::table('approvals')->insert([
+                'title' => $workflow->title,
+                'client_id' => $workflow->client_id,
+                'content_id' => $workflow->content_id,
+                'type' => $workflow->type,
+                'status' => 'pending',
+                'approval_stage' => 'admin-pending',
+                'submitted_by' => auth()->id(),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
+
+        $workflow->update(['stage' => 'review']);
+
+        // Update content status back to in-review
+        if ($workflow->content_id) {
+            DB::table('contents')->where('id', $workflow->content_id)->update([
+                'status' => 'in-review',
+                'updated_at' => now(),
+            ]);
+        }
+
+        app(NotificationService::class)->notifyWorkflowReadyForReview($workflow->title);
+
+        $this->showResubmitModal = false;
+        $this->dispatch('toast', message: 'Resubmitted for approval', type: 'success');
     }
 
     public function create(): void
@@ -556,7 +805,7 @@ new #[Layout('components.layouts.app')] class extends Component
                 >
                     @forelse ($stageItems as $item)
                         @php
-                            $isOverdue = $item->deadline && $item->deadline->isPast() && $item->stage !== 'published';
+                            $isOverdue = $item->deadline && $item->deadline->isPast() && !in_array($item->stage, ['published', 'ready-for-production']);
                         @endphp
                         <div
                             class="kanban-card {{ $isOverdue ? 'overdue' : '' }} bg-white rounded-xl border border-gray-100 p-3 {{ $this->canMoveWorkflow ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer' }} hover:shadow-md hover:border-gray-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand)]/40 focus-visible:border-[var(--brand)] transition-all duration-150"
@@ -678,7 +927,7 @@ new #[Layout('components.layouts.app')] class extends Component
                     'carousel' => 'bg-amber-100 text-amber-700',
                     'blog'     => 'bg-green-100 text-green-700',
                 ][$detail->type] ?? 'bg-gray-100 text-gray-600';
-                $isOverdueDetail = $detail->deadline && $detail->deadline->isPast() && $detail->stage !== 'published';
+                $isOverdueDetail = $detail->deadline && $detail->deadline->isPast() && !in_array($detail->stage, ['published', 'ready-for-production']);
             @endphp
             <div class="modal-overlay" x-data x-on:keydown.escape.window="$wire.set('showDetail', false)">
                 <div
@@ -1084,6 +1333,91 @@ new #[Layout('components.layouts.app')] class extends Component
                                                 >
                                             </label>
                                         </div>
+
+                                        {{-- Revision Notes --}}
+                                        @if ($item->stage === 'revision' && $item->revision_notes)
+                                            <div class="mt-2 bg-red-50 border border-red-200 rounded-lg px-2 py-1.5">
+                                                <p class="text-[10px] text-red-700 font-medium"><i class="fas fa-exclamation-circle mr-1"></i>Revision:</p>
+                                                <p class="text-[10px] text-red-600 line-clamp-2">{{ $item->revision_notes }}</p>
+                                            </div>
+                                        @endif
+
+                                        {{-- Approval Status --}}
+                                        @php $appr = $this->getApprovalStatus($item); @endphp
+                                        @if ($item->content_id && in_array($item->stage, ['review', 'revision']))
+                                            <div class="mt-2 bg-blue-50 border border-blue-200 rounded-lg px-2 py-1.5">
+                                                <p class="text-[10px] text-blue-700 font-medium mb-1"><i class="fas fa-clipboard-check mr-1"></i>Approval:</p>
+                                                <div class="flex items-center gap-2">
+                                                    <span
+                                                        class="text-[10px] {{ $appr['admin'] ? 'text-green-600' : 'text-gray-500' }}"
+                                                    >
+                                                        <i
+                                                            class="fas {{ $appr['admin'] ? 'fa-check-circle' : 'fa-clock' }} mr-1"
+                                                        ></i
+                                                        >Admin
+                                                    </span>
+                                                    @if ($appr['is_client'])
+                                                        <span
+                                                            class="text-[10px] {{ $appr['client'] ? 'text-green-600' : 'text-gray-500' }}"
+                                                        >
+                                                            <i
+                                                                class="fas {{ $appr['client'] ? 'fa-check-circle' : 'fa-clock' }} mr-1"
+                                                            ></i
+                                                            >Client
+                                                        </span>
+                                                    @endif
+                                                </div>
+                                            </div>
+                                        @endif
+
+                                        {{-- Action Buttons --}}
+                                        @if (!in_array($item->stage, ['published', 'ready-for-production']))
+                                            <div
+                                                class="flex items-center gap-1 mt-2 pt-2 border-t border-gray-100"
+                                                x-data
+                                            >
+                                                @if ($item->stage === 'review')
+                                                    <button
+                                                        wire:click.stop="openRevisionModal({{ $item->id }})"
+                                                        class="text-[10px] px-2 py-1 rounded bg-red-50 text-red-600 font-medium hover:bg-red-100"
+                                                        title="Send back for revision"
+                                                    >
+                                                        <i class="fas fa-undo mr-1"></i>Revise
+                                                    </button>
+                                                @endif
+                                                @if ($item->stage === 'revision')
+                                                    <button
+                                                        wire:click.stop="openResubmitModal({{ $item->id }})"
+                                                        class="text-[10px] px-2 py-1 rounded bg-[var(--brand)] text-white font-medium hover:opacity-80"
+                                                        title="Resubmit for approval"
+                                                    >
+                                                        <i class="fas fa-paper-plane mr-1"></i>Resubmit
+                                                    </button>
+                                                @endif
+                                            </div>
+                                        @else
+                                            <div class="mt-2 pt-2 border-t border-gray-100">
+                                                @if ($item->stage === 'ready-for-production')
+                                                    <div class="flex items-center gap-1">
+                                                        <span class="text-[10px] text-sky-600 font-medium"
+                                                            ><i class="fas fa-check-double mr-1"></i>Ready for
+                                                            Production</span
+                                                        >
+                                                        <button
+                                                            wire:click.stop="moveItem({{ $item->id }}, 'published')"
+                                                            class="text-[10px] px-2 py-0.5 rounded bg-green-50 text-green-600 font-medium hover:bg-green-100 ml-auto"
+                                                            title="Publish this item"
+                                                        >
+                                                            <i class="fas fa-rocket mr-1"></i>Publish
+                                                        </button>
+                                                    </div>
+                                                @else
+                                                    <span class="text-[10px] text-green-600 font-medium"
+                                                        ><i class="fas fa-lock mr-1"></i>Published</span
+                                                    >
+                                                @endif
+                                            </div>
+                                        @endif
                                     </div>
                                 </div>
 
@@ -1200,6 +1534,101 @@ new #[Layout('components.layouts.app')] class extends Component
                             <span class="text-xs text-red-500 mt-1 block">{{ $message }}</span>
                         @enderror
                     </div>
+                </div>
+            </div>
+        </div>
+    @endif
+
+    {{-- ─── REVISION MODAL ────────────────────────────── --}}
+    @if ($showRevisionModal)
+        <div
+            class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+            wire:click.self="$set('showRevisionModal', false)"
+            x-on:keydown.escape.window="$wire.set('showRevisionModal', false)"
+        >
+            <div class="modal-box w-full max-w-md mx-4">
+                <div class="sticky top-0 bg-white flex items-center justify-between p-4 border-b">
+                    <h3 class="font-bold text-lg">
+                        <i class="fas fa-undo text-red-500 mr-2"></i>Send Back for Revision
+                    </h3>
+                    <button wire:click="$set('showRevisionModal', false)" class="text-gray-400 hover:text-gray-600">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <div class="p-4 space-y-4">
+                    <p class="text-sm text-gray-600">This item will be moved to <strong>Revision</strong> stage. The staff will be notified.</p>
+                    <div>
+                        <label class="form-label">Revision Notes <span class="text-red-500">*</span></label>
+                        <textarea
+                            wire:model="revisionNotes"
+                            class="form-input"
+                            rows="3"
+                            placeholder="What needs to be changed?"
+                        ></textarea>
+                    </div>
+                </div>
+                <div class="sticky bottom-0 bg-white flex justify-end gap-2 p-4 border-t">
+                    <button wire:click="$set('showRevisionModal', false)" class="btn btn-secondary">Cancel</button>
+                    <button
+                        wire:click="confirmRevision"
+                        class="btn btn-danger"
+                        wire:loading.attr="disabled"
+                        wire:target="confirmRevision"
+                    >
+                        <span wire:loading.remove wire:target="confirmRevision"
+                            ><i class="fas fa-undo mr-1"></i> Send for Revision</span
+                        >
+                        <span wire:loading wire:target="confirmRevision" class="flex items-center gap-2">
+                            <svg class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                            Processing...
+                        </span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    @endif
+
+    {{-- ─── RESUBMIT MODAL ────────────────────────────── --}}
+    @if ($showResubmitModal)
+        <div
+            class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+            wire:click.self="$set('showResubmitModal', false)"
+            x-on:keydown.escape.window="$wire.set('showResubmitModal', false)"
+        >
+            <div class="modal-box w-full max-w-md mx-4">
+                <div class="sticky top-0 bg-white flex items-center justify-between p-4 border-b">
+                    <h3 class="font-bold text-lg">
+                        <i class="fas fa-paper-plane text-[var(--brand)] mr-2"></i>Resubmit for Approval
+                    </h3>
+                    <button wire:click="$set('showResubmitModal', false)" class="text-gray-400 hover:text-gray-600">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <div class="p-4 space-y-4">
+                    <p class="text-sm text-gray-600">This item will be moved to <strong>Review</strong> stage and sent for admin approval again.</p>
+                </div>
+                <div class="sticky bottom-0 bg-white flex justify-end gap-2 p-4 border-t">
+                    <button wire:click="$set('showResubmitModal', false)" class="btn btn-secondary">Cancel</button>
+                    <button
+                        wire:click="confirmResubmit"
+                        class="btn btn-primary"
+                        wire:loading.attr="disabled"
+                        wire:target="confirmResubmit"
+                    >
+                        <span wire:loading.remove wire:target="confirmResubmit"
+                            ><i class="fas fa-paper-plane mr-1"></i> Resubmit</span
+                        >
+                        <span wire:loading wire:target="confirmResubmit" class="flex items-center gap-2">
+                            <svg class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                            Processing...
+                        </span>
+                    </button>
                 </div>
             </div>
         </div>

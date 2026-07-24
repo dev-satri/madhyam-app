@@ -16,12 +16,14 @@ class Content extends Model
     protected $fillable = [
         'title', 'client_id', 'platform', 'type', 'date', 'due_date', 'status',
         'caption', 'hashtags', 'reference_file', 'needs_approval', 'created_by',
+        'submitted_for_approval_at',
     ];
 
     protected $casts = [
         'date' => 'date',
         'due_date' => 'date',
         'needs_approval' => 'boolean',
+        'submitted_for_approval_at' => 'datetime',
     ];
 
     public function client(): BelongsTo
