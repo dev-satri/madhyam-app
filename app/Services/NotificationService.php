@@ -45,6 +45,16 @@ class NotificationService
         Log::info('emailNotify (stub)', compact('to', 'subject', 'body'));
     }
 
+    public function notifyNewMember(string $name, string $email, string $role): Notification
+    {
+        return $this->sendNotification(
+            text: "New team member added: {$name} ({$email}) as " . ucfirst(str_replace('-', ' ', $role)),
+            type: 'success',
+            link: route('team', absolute: false),
+            forRole: 'manager',
+        );
+    }
+
     public function notifyTaskAssignment(Task $task): void
     {
         if (! $task->assigneeUser) {

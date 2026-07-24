@@ -7,6 +7,9 @@ use Livewire\Attributes\Computed;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Str;
+use App\Mail\MemberWelcomeMail;
 use App\Services\RbacService;
 use Livewire\WithPagination;
 
@@ -30,6 +33,7 @@ new #[Layout('components.layouts.app')] class extends Component
     public string $formRole = 'editor';
     public int $formDeptId = 0;
     public string $formPassword = '';
+    public string $generatedPassword = '';
     public string $formStatus = 'active';
     public string $formJoinDate = '';
     public float $formBaseSalary = 0;
@@ -109,6 +113,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function openMemberForm(?int $id = null): void
     {
+        $this->generatedPassword = '';
         if ($id) {
             $m = DB::table('users')->where('id', $id)->first();
             if ($m) {
@@ -144,87 +149,131 @@ new #[Layout('components.layouts.app')] class extends Component
         $this->showMemberForm = true;
     }
 
+    public function dismissGeneratedPassword(): void
+    {
+        $this->generatedPassword = '';
+    }
+
     public function saveMember(): void
     {
-        $rules = [
-            'formName' => 'required|string|max:255',
-            'formEmail' => 'required|email|max:255',
-            'formRole' => 'required|string',
-            'formStatus' => 'required|in:active,inactive',
-            'formBaseSalary' => 'required|numeric|min:0',
-        ];
-        if (!$this->editingMemberId) {
-            $rules['formPassword'] = 'required|string|min:8';
-        }
-        $this->validate($rules);
+        try {
+            $rules = [
+                'formName' => 'required|string|max:255',
+                'formEmail' => 'required|email|max:255',
+                'formRole' => 'required|string',
+                'formStatus' => 'required|in:active,inactive',
+                'formBaseSalary' => 'required|numeric|min:0',
+            ];
+            if (!$this->editingMemberId && !$this->formPassword) {
+                // Password is auto-generated for new members
+            } elseif ($this->editingMemberId && $this->formPassword) {
+                $rules['formPassword'] = 'required|string|min:8';
+            }
+            $this->validate($rules);
 
-        // Super-admin protection
-        if ($this->editingMemberId) {
-            $existing = DB::table('users')->where('id', $this->editingMemberId)->first();
-            if ($existing && $existing->role === 'super-admin' && !$this->isSuperAdmin()) {
-                $this->dispatch('toast', message: 'Cannot edit super-admin', type: 'error');
+            // Check duplicate email manually
+            $emailExists = DB::table('users')
+                ->where('email', $this->formEmail)
+                ->when($this->editingMemberId, fn($q) => $q->where('id', '!=', $this->editingMemberId))
+                ->exists();
+            if ($emailExists) {
+                $this->dispatch('toast', message: 'A member with this email already exists', type: 'error');
                 return;
             }
-        }
 
-        $data = [
-            'name' => $this->formName,
-            'email' => $this->formEmail,
-            'phone' => $this->formPhone ?: null,
-            'role' => $this->formRole,
-            'department_id' => $this->formDeptId ?: null,
-            'status' => $this->formStatus,
-            'join_date' => $this->formJoinDate ?: null,
-        ];
+            // Super-admin protection
+            if ($this->editingMemberId) {
+                $existing = DB::table('users')->where('id', $this->editingMemberId)->first();
+                if ($existing && $existing->role === 'super-admin' && !$this->isSuperAdmin()) {
+                    $this->dispatch('toast', message: 'Cannot edit super-admin', type: 'error');
+                    return;
+                }
+            }
 
-        if ($this->formPassword) {
-            $data['password'] = Hash::make($this->formPassword);
-        }
+            $data = [
+                'name' => $this->formName,
+                'email' => $this->formEmail,
+                'phone' => $this->formPhone ?: null,
+                'role' => $this->formRole,
+                'department_id' => $this->formDeptId ?: null,
+                'status' => $this->formStatus,
+                'join_date' => $this->formJoinDate ?: null,
+            ];
 
-        if ($this->editingMemberId) {
-            DB::table('users')->where('id', $this->editingMemberId)->update($data);
-            $memberId = $this->editingMemberId;
-        } else {
-            $data['created_at'] = now();
-            $data['updated_at'] = now();
-            $memberId = DB::table('users')->insertGetId($data);
-        }
+            // Auto-generate password for new members if not provided
+            $plainPassword = $this->formPassword ?: Str::password(12, true, true, true);
+            $data['password'] = Hash::make($plainPassword);
 
-        // Create or update salary record for current month
-        $month = (int) now()->month;
-        $year = (int) now()->year;
-        $salaryExists = DB::table('salaries')
-            ->where('member_id', $memberId)
-            ->where('month', $month)
-            ->where('year', $year)
-            ->exists();
+            if ($this->editingMemberId) {
+                DB::table('users')->where('id', $this->editingMemberId)->update($data);
+                $memberId = $this->editingMemberId;
+            } else {
+                $data['created_at'] = now();
+                $data['updated_at'] = now();
+                $memberId = DB::table('users')->insertGetId($data);
 
-        if ($salaryExists) {
-            DB::table('salaries')
+                // Send welcome email to new member
+                try {
+                    Mail::to($this->formEmail)->send(new MemberWelcomeMail(
+                        name: $this->formName,
+                        email: $this->formEmail,
+                        password: $plainPassword,
+                        role: $this->formRole,
+                    ));
+                } catch (\Exception $e) {
+                    \Illuminate\Support\Facades\Log::warning('Failed to send welcome email to ' . $this->formEmail . ': ' . $e->getMessage());
+                }
+
+                // Show the generated password to admin
+                $this->generatedPassword = $plainPassword;
+
+                // In-app notification
+                app(\App\Services\NotificationService::class)->notifyNewMember(
+                    $this->formName,
+                    $this->formEmail,
+                    $this->formRole,
+                );
+            }
+
+            // Create or update salary record for current month
+            $month = (int) now()->month;
+            $year = (int) now()->year;
+            $salaryExists = DB::table('salaries')
                 ->where('member_id', $memberId)
                 ->where('month', $month)
                 ->where('year', $year)
-                ->update(['base_salary' => $this->formBaseSalary, 'updated_at' => now()]);
-        } else {
-            DB::table('salaries')->insert([
-                'member_id' => $memberId,
-                'month' => $month,
-                'year' => $year,
-                'base_salary' => $this->formBaseSalary,
-                'status' => 'pending',
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]);
-        }
+                ->exists();
 
-        // Recalculate salary if calculator exists
-        $salaryModel = \App\Models\Salary::where('member_id', $memberId)->where('month', $month)->where('year', $year)->first();
-        if ($salaryModel) {
-            app(\App\Services\SalaryCalculator::class)->recalc($salaryModel);
-        }
+            if ($salaryExists) {
+                DB::table('salaries')
+                    ->where('member_id', $memberId)
+                    ->where('month', $month)
+                    ->where('year', $year)
+                    ->update(['base_salary' => $this->formBaseSalary, 'updated_at' => now()]);
+            } else {
+                DB::table('salaries')->insert([
+                    'member_id' => $memberId,
+                    'month' => $month,
+                    'year' => $year,
+                    'base_salary' => $this->formBaseSalary,
+                    'status' => 'pending',
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+            }
 
-        $this->showMemberForm = false;
-        $this->dispatch('toast', message: 'Member saved', type: 'success');
+            // Recalculate salary if calculator exists
+            $salaryModel = \App\Models\Salary::where('member_id', $memberId)->where('month', $month)->where('year', $year)->first();
+            if ($salaryModel) {
+                app(\App\Services\SalaryCalculator::class)->recalc($salaryModel);
+            }
+
+            $this->showMemberForm = false;
+            $this->dispatch('toast', message: 'Member saved successfully. Welcome email sent.', type: 'success');
+        } catch (\Exception $e) {
+            $this->dispatch('toast', message: 'Error: ' . $e->getMessage(), type: 'error');
+            \Illuminate\Support\Facades\Log::error('saveMember failed: ' . $e->getMessage());
+        }
     }
 
     public function deleteMember(int $id): void
@@ -415,7 +464,10 @@ new #[Layout('components.layouts.app')] class extends Component
     #[Computed]
     public function allRoles(): array
     {
-        $builtins = RbacService::BUILT_IN_ROLES;
+        $builtins = [];
+        foreach (RbacService::BUILT_IN_ROLES as $key) {
+            $builtins[$key] = roleName($key);
+        }
         $custom = DB::table('custom_roles')->pluck('name', 'role_key')->toArray();
         return array_merge($builtins, $custom);
     }
@@ -517,7 +569,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                     <td class="text-sm">{{ $m->join_date ? fmtDate($m->join_date) : '-' }}</td>
                                     <td>
                                         @if($m->id !== Auth::id() && $m->role !== 'super-admin')
-                                            <button wire:click="toggleStatus({{ $m->id }})" class="badge {{ $m->status === 'active' ? 'badge-active' : 'badge-inactive' }} cursor-pointer hover:opacity-80">
+                                            <button type="button" wire:click="$dispatch('open-confirm', { title: 'Change Status?', message: 'This will toggle the active status for this member.', type: 'warning', action: 'toggleStatus', params: [{{ $m->id }}], confirmLabel: 'Yes, Change' })" class="badge {{ $m->status === 'active' ? 'badge-active' : 'badge-inactive' }} cursor-pointer hover:opacity-80">
                                                 {{ ucfirst($m->status ?? 'active') }}
                                             </button>
                                         @else
@@ -673,6 +725,21 @@ new #[Layout('components.layouts.app')] class extends Component
                             <button wire:click="$set('showMemberForm', false)" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
                         </div>
                         <div class="p-4 space-y-4">
+                            @if($generatedPassword)
+                                <div class="bg-green-50 border border-green-200 rounded-lg p-3">
+                                    <div class="flex items-start gap-2">
+                                        <i class="fas fa-check-circle text-green-500 mt-0.5"></i>
+                                        <div class="flex-1">
+                                            <p class="text-sm font-semibold text-green-800">Member created! Welcome email sent.</p>
+                                            <p class="text-xs text-green-700 mt-1">Auto-generated password (share this with the member):</p>
+                                            <div class="mt-2 flex items-center gap-2">
+                                                <code class="bg-white border border-green-200 rounded px-2 py-1 text-sm font-mono text-gray-900">{{ $generatedPassword }}</code>
+                                                <button type="button" wire:click="dismissGeneratedPassword" class="text-xs text-green-600 hover:text-green-800 underline">Dismiss</button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            @endif
                             @if($editingMemberId)
                                 <div class="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-700"><i class="fas fa-shield-alt mr-1"></i> Password left blank to keep current.</div>
                             @endif
@@ -712,8 +779,16 @@ new #[Layout('components.layouts.app')] class extends Component
                                     </select>
                                 </div>
                                 <div>
-                                    <label class="form-label">Password {{ $editingMemberId ? '(optional)' : '' }}</label>
-                                    <input type="password" wire:model="formPassword" class="form-input" placeholder="{{ $editingMemberId ? 'Leave blank to keep' : 'Min 8 chars' }}">
+                                    @if($editingMemberId)
+                                        <label class="form-label">Password <span class="text-gray-400 text-xs">(optional)</span></label>
+                                        <input type="password" wire:model="formPassword" class="form-input" placeholder="Leave blank to keep current">
+                                    @else
+                                        <label class="form-label">Password</label>
+                                        <div class="form-input bg-gray-50 text-gray-500 text-sm cursor-not-allowed">
+                                            <i class="fas fa-lock mr-1"></i> Auto-generated & emailed
+                                        </div>
+                                        <p class="text-[11px] text-gray-400 mt-1">A secure password will be created and sent via email</p>
+                                    @endif
                                     <span wire:error="formPassword" class="text-red-500 text-xs mt-1 block"></span>
                                 </div>
                             </div>
