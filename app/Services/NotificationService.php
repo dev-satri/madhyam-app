@@ -154,7 +154,7 @@ class NotificationService
         return $this->sendNotification(
             text: $text,
             type: 'warning',
-            link: route('calendar', absolute: false),
+            link: route('content-planner', absolute: false),
             forRole: 'all',
         );
     }
@@ -169,7 +169,7 @@ class NotificationService
         return $this->sendNotification(
             text: $text,
             type: 'error',
-            link: route('calendar', absolute: false),
+            link: route('content-planner', absolute: false),
             forRole: 'all',
         );
     }
@@ -241,7 +241,7 @@ class NotificationService
         return $this->sendNotification(
             text: "'{$title}' has been published!",
             type: 'success',
-            link: route('calendar', absolute: false),
+            link: route('content-planner', absolute: false),
             forRole: 'all',
         );
     }
