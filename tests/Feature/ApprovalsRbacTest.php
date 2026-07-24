@@ -33,9 +33,10 @@ class ApprovalsRbacTest extends TestCase
         $this->admin = User::where('role', 'super-admin')->first();
         $this->staff = User::where('role', 'editor')->first();
         $this->client = ClientAccount::first();
-        $this->approvalId = DB::table('approvals')->first()->id ?? DB::table('approvals')->insertGetId([
+        $this->approvalId = DB::table('approvals')->insertGetId([
             'title' => 'Test Approval', 'client_id' => 1, 'type' => 'post',
-            'status' => 'pending', 'submitted_by' => $this->staff->id,
+            'approval_stage' => 'client-pending', 'status' => 'pending',
+            'submitted_by' => $this->staff->id,
             'created_at' => now(), 'updated_at' => now(),
         ]);
     }

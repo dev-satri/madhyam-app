@@ -233,14 +233,15 @@ new #[Layout('components.layouts.app')] class extends Component
 
         DB::table('approvals')->where('id', $id)->update(['status' => $status, 'updated_at' => now()]);
 
+        $commentUserId = $actor instanceof \App\Models\User ? $actor?->id : null;
         if ($reason) {
             DB::table('approval_comments')->insert([
-                'approval_id' => $id, 'user_id' => $actor?->id, 'user_name' => $actor?->name ?? 'Unknown',
+                'approval_id' => $id, 'user_id' => $commentUserId, 'user_name' => $actor?->name ?? 'Unknown',
                 'text' => $reason, 'is_system' => false, 'created_at' => now(), 'updated_at' => now(),
             ]);
         }
         DB::table('approval_comments')->insert([
-            'approval_id' => $id, 'user_id' => $actor?->id, 'user_name' => $actor?->name ?? 'System',
+            'approval_id' => $id, 'user_id' => $commentUserId, 'user_name' => $actor?->name ?? 'System',
             'text' => "Status changed to {$status}", 'is_system' => true, 'created_at' => now(), 'updated_at' => now(),
         ]);
 
@@ -585,9 +586,10 @@ new #[Layout('components.layouts.app')] class extends Component
     {
         if (!$this->commentText || !$this->detailId) return;
         $actor = Auth::user() ?? Auth::guard('client')->user();
+        $commentUserId = $actor instanceof \App\Models\User ? $actor?->id : null;
         DB::table('approval_comments')->insert([
             'approval_id' => $this->detailId,
-            'user_id'     => $actor?->id,
+            'user_id'     => $commentUserId,
             'user_name'   => $actor?->name ?? 'Unknown',
             'text'        => $this->commentText,
             'is_system'   => false,
