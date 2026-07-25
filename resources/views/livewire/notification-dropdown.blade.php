@@ -17,20 +17,28 @@ new class extends Component
 
     public function loadNotifications(): void
     {
-        $user = Auth::user();
-        if (!$user) {
-            $user = Auth::guard('client')->user();
-        }
+        $user = Auth::user() ?? Auth::guard('client')->user();
         if (!$user) {
             $this->notifications = [];
             $this->unreadCount = 0;
             return;
         }
 
+        $isClient = Auth::guard('client')->check();
+        $clientId = $isClient ? ($user->client_id ?? null) : null;
+
         try {
             $all = DB::table('notifications')
-                ->where('for_role', $user->role)
-                ->orWhere('for_role', 'all')
+                ->where(function ($q) use ($user) {
+                    $q->where('for_role', $user->role)
+                      ->orWhere('for_role', 'all');
+                })
+                ->where(function ($q) use ($isClient, $clientId) {
+                    if ($isClient && $clientId) {
+                        $q->whereNull('client_id')
+                          ->orWhere('client_id', $clientId);
+                    }
+                })
                 ->latest()
                 ->limit(20)
                 ->get();
@@ -62,15 +70,22 @@ new class extends Component
 
     public function markAllRead(): void
     {
-        $user = Auth::user();
-        if (!$user) {
-            $user = Auth::guard('client')->user();
-        }
+        $user = Auth::user() ?? Auth::guard('client')->user();
         if (!$user) return;
+
+        $isClient = Auth::guard('client')->check();
+        $clientId = $isClient ? ($user->client_id ?? null) : null;
 
         DB::table('notifications')
             ->where(function ($q) use ($user) {
-                $q->where('for_role', $user->role)->orWhere('for_role', 'all');
+                $q->where('for_role', $user->role)
+                  ->orWhere('for_role', 'all');
+            })
+            ->where(function ($q) use ($isClient, $clientId) {
+                if ($isClient && $clientId) {
+                    $q->whereNull('client_id')
+                      ->orWhere('client_id', $clientId);
+                }
             })
             ->where('read', false)
             ->update(['read' => true]);

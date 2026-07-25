@@ -12,6 +12,7 @@ enum Role: string
     case Designer = 'designer';
     case Copywriter = 'copywriter';
     case SocialMedia = 'social-media';
+    case Client = 'client';
 
     public function label(): string
     {
@@ -24,6 +25,7 @@ enum Role: string
             self::Designer => 'Designer',
             self::Copywriter => 'Copywriter',
             self::SocialMedia => 'Social Media',
+            self::Client => 'Client',
         };
     }
 

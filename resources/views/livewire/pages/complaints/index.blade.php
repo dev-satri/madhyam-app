@@ -65,7 +65,9 @@ new #[Layout('components.layouts.app')] class extends Component
     {
         $q = DB::table('complaints');
         if ($this->isClient()) {
-            $q->where('client_id', Auth::guard('client')->id());
+            // Auth::guard('client')->id() returns the client_accounts.id PK,
+            // NOT the clients.id FK stored on complaints.client_id. Use ->user()->client_id.
+            $q->where('client_id', Auth::guard('client')->user()->client_id);
         }
 
         return [
@@ -83,7 +85,8 @@ new #[Layout('components.layouts.app')] class extends Component
             ->leftJoin('users', 'complaints.assigned_to', '=', 'users.id');
 
         if ($this->isClient()) {
-            $q->where('complaints.client_id', Auth::guard('client')->id());
+            // client_accounts.id !== clients.id. complaints.client_id references clients.id.
+            $q->where('complaints.client_id', Auth::guard('client')->user()->client_id);
         }
 
         if ($this->tabFilter !== 'all') {
@@ -179,7 +182,7 @@ new #[Layout('components.layouts.app')] class extends Component
             $this->editingId = 0;
             $this->formTitle = '';
             $this->formDescription = '';
-            $this->formClientId = $this->isClient() ? Auth::guard('client')->id() : 0;
+            $this->formClientId = $this->isClient() ? Auth::guard('client')->user()->client_id : 0;
             $this->formAssignedTo = 0;
             $this->formPriority = 'medium';
         }
@@ -196,7 +199,7 @@ new #[Layout('components.layouts.app')] class extends Component
         $data = [
             'title' => $this->formTitle,
             'description' => $this->formDescription,
-            'client_id' => $this->formClientId ?: ($this->isClient() ? Auth::guard('client')->id() : null),
+            'client_id' => $this->formClientId ?: ($this->isClient() ? Auth::guard('client')->user()->client_id : null),
             'assigned_to' => $this->formAssignedTo ?: null,
             'priority' => $this->formPriority,
         ];
@@ -541,7 +544,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                     @forelse($replies as $r)
                                         @php
                                             $initials = strtoupper(substr($r->user_name ?? 'U', 0, 2));
-                                            $isMe = (Auth::id() && $r->user_id == Auth::id()) || (Auth::guard('client')->check() && $r->user_id == Auth::guard('client')->id());
+                                            $isMe = (Auth::id() && $r->user_id == Auth::id()) || (Auth::guard('client')->check() && $r->user_id == Auth::guard('client')->user()->id);
                                         @endphp
                                         <div class="flex gap-3">
                                             <div class="w-9 h-9 rounded-full {{ $isMe ? 'bg-[var(--brand)] text-white' : 'bg-gray-200 text-gray-600' }} flex items-center justify-center text-xs font-bold flex-shrink-0">{{ $initials }}</div>

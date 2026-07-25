@@ -12,13 +12,14 @@ class NotificationService
 {
     protected const CAP = 50;
 
-    public function sendNotification(string $text, string $type = 'info', ?string $link = null, string $forRole = 'all'): Notification
+    public function sendNotification(string $text, string $type = 'info', ?string $link = null, string $forRole = 'all', ?int $clientId = null): Notification
     {
         $note = Notification::create([
             'text' => $text,
             'type' => $type,
             'link' => $link,
             'for_role' => $forRole,
+            'client_id' => $clientId,
             'read' => false,
         ]);
         $this->trim();
@@ -31,12 +32,22 @@ class NotificationService
         Notification::whereKey($id)->update(['read' => true]);
     }
 
-    public function markAllRead(?string $role = null): void
+    public function markAllRead(?string $role = null, ?int $clientId = null): void
     {
         $q = Notification::query()->where('read', false);
+
         if ($role) {
-            $q->whereIn('for_role', [$role, 'all']);
+            $q->where(function ($q) use ($role) {
+                $q->where('for_role', $role)->orWhere('for_role', 'all');
+            });
         }
+
+        if ($clientId) {
+            $q->where(function ($q) use ($clientId) {
+                $q->whereNull('client_id')->orWhere('client_id', $clientId);
+            });
+        }
+
         $q->update(['read' => true]);
     }
 
@@ -79,6 +90,7 @@ class NotificationService
             type: $type,
             link: route('clients', absolute: false),
             forRole: 'manager',
+            clientId: $client->id,
         );
 
         // Also email the client contact if available
@@ -105,6 +117,7 @@ class NotificationService
             type: 'error',
             link: route('clients', absolute: false),
             forRole: 'manager',
+            clientId: $client->id,
         );
 
         // Email escalation to manager

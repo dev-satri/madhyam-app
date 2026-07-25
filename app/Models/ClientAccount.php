@@ -10,6 +10,14 @@ class ClientAccount extends Authenticatable
 {
     use Notifiable;
 
+    /**
+     * Virtual role for the notification and RBAC system.
+     * ClientAccounts are not stored with a role column; this accessor
+     * lets the notification dropdown and role-based guards treat them
+     * as a first-class "client" role without a schema change on this table.
+     */
+    public string $role = 'client';
+
     protected $fillable = [
         'client_id',
         'email',

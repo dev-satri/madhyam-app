@@ -3,6 +3,7 @@
 use Livewire\Volt\Component;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\On;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 use App\Services\PackageService;
@@ -44,7 +45,11 @@ new #[Layout('components.layouts.app')] class extends Component
     {
         $this->currentMonth = (int) now()->month;
         $this->currentYear = (int) now()->year;
-        $this->clients = DB::table('clients')->where('status', 'active')->orderBy('name')->get()->toArray();
+        // Client filter list is a staff-only affordance — never expose the full
+        // client roster to a client-portal session.
+        $this->clients = Auth::guard('client')->check()
+            ? []
+            : DB::table('clients')->where('status', 'active')->orderBy('name')->get()->toArray();
         $this->loadMonthContent();
     }
 
@@ -86,6 +91,12 @@ new #[Layout('components.layouts.app')] class extends Component
             ->leftJoin('clients', 'contents.client_id', '=', 'clients.id')
             ->whereBetween('contents.date', [$start->format('Y-m-d'), $end->format('Y-m-d')])
             ->select('contents.*', 'clients.name as client_name');
+
+        // Tenant isolation for client portal — same view serves /client/content-planner.
+        // Raw DB::table bypasses Content::ScopesToClientAccount, so scope manually.
+        if ($account = Auth::guard('client')->user()) {
+            $query->where('contents.client_id', $account->client_id);
+        }
 
         if ($this->search) {
             $query->where(function ($q) {
@@ -317,6 +328,11 @@ new #[Layout('components.layouts.app')] class extends Component
     public function getStats(): array
     {
         $query = DB::table('contents');
+
+        // Tenant isolation — clients see stats for their own content only.
+        if ($account = Auth::guard('client')->user()) {
+            $query->where('client_id', $account->client_id);
+        }
 
         if ($this->search) {
             $query->where(function ($q) {

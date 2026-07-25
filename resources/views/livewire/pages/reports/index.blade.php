@@ -57,16 +57,33 @@ new #[Layout('components.layouts.app')] class extends Component
         return Auth::guard('client')->check();
     }
 
+    /**
+     * Scope a query builder to the current client's rows when the client
+     * guard is active. No-op for staff (web guard) so admin totals stay global.
+     * Applied to every raw invoices/payments read to prevent cross-tenant leaks.
+     */
+    private function scopeToClient($query, string $column = 'invoices.client_id')
+    {
+        $account = Auth::guard('client')->user();
+        if ($account) {
+            $query->where($column, $account->client_id);
+        }
+        return $query;
+    }
+
     public function getStats(): array
     {
-        $invoices = DB::table('invoices');
+        $invoices = $this->scopeToClient(DB::table('invoices'));
         $totalRevenue = (clone $invoices)->sum('amount');
         $paid = (clone $invoices)->where('status', 'paid')->sum('amount');
         $pending = (clone $invoices)->where('status', 'pending')->sum('amount');
         $overdue = (clone $invoices)->where('status', 'overdue')->sum('amount');
         // Non-payroll expenses only. Payroll is summed separately from
         // `salaries` (or future `payslips`) to avoid double counting Net Profit.
-        $expenses = DB::table('expenses')->where('category', '!=', 'salary')->sum('amount');
+        // Agency-level metric — never exposed to clients.
+        $expenses = $this->isClientPortal()
+            ? 0
+            : DB::table('expenses')->where('category', '!=', 'salary')->sum('amount');
         $discounts = (clone $invoices)->sum('discount_amount');
         $installmentDue = (clone $invoices)->where('payment_status', 'installment')->sum('amount');
 
@@ -76,7 +93,7 @@ new #[Layout('components.layouts.app')] class extends Component
             'pending' => $pending,
             'overdue' => $overdue,
             'expenses' => $expenses,
-            'net_profit' => $totalRevenue - $expenses,
+            'net_profit' => $this->isClientPortal() ? 0 : ($totalRevenue - $expenses),
             'discount' => $discounts,
             'installment_due' => $installmentDue,
         ];
@@ -85,6 +102,7 @@ new #[Layout('components.layouts.app')] class extends Component
     public function getInvoices()
     {
         $q = DB::table('invoices')->leftJoin('clients', 'invoices.client_id', '=', 'clients.id');
+        $this->scopeToClient($q);
 
         if ($this->search) {
             $q->where(function ($q) {
@@ -122,6 +140,13 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function getPayments(int $invoiceId)
     {
+        // Ownership gate: a client may only see payments for their own invoices.
+        // invoice_payments has no client_id, so we scope transitively via invoices.
+        $owned = $this->scopeToClient(DB::table('invoices'))
+            ->where('id', $invoiceId)
+            ->exists();
+        if (!$owned) return collect();
+
         return DB::table('invoice_payments')
             ->where('invoice_id', $invoiceId)
             ->orderBy('date', 'desc')
@@ -130,6 +155,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function openInvoiceForm(?int $id = null): void
     {
+        abort_if($this->isClientPortal(), 403);
         if ($id) {
             $inv = DB::table('invoices')->where('id', $id)->first();
             if ($inv) {
@@ -166,6 +192,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function saveInvoice(): void
     {
+        abort_if($this->isClientPortal(), 403);
         $this->validate([
             'formClientId' => 'required|integer',
             'formAmount' => 'required|numeric|min:0',
@@ -216,6 +243,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function openRecordPayment(int $invoiceId): void
     {
+        abort_if($this->isClientPortal(), 403);
         $this->paymentInvoiceId = $invoiceId;
         $inv = DB::table('invoices')->where('id', $invoiceId)->first();
         if ($inv) {
@@ -234,6 +262,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function savePayment(): void
     {
+        abort_if($this->isClientPortal(), 403);
         $this->validate([
             'payAmount' => 'required|numeric|min:0.01',
             'payDate' => 'required|date',
@@ -284,15 +313,19 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function getDetailInvoice()
     {
-        return DB::table('invoices')
-            ->leftJoin('clients', 'invoices.client_id', '=', 'clients.id')
-            ->where('invoices.id', $this->detailId)
+        // Client-scoped: a client requesting another tenant's invoice id returns null.
+        $q = DB::table('invoices')
+            ->leftJoin('clients', 'invoices.client_id', '=', 'clients.id');
+        $this->scopeToClient($q);
+
+        return $q->where('invoices.id', $this->detailId)
             ->select('invoices.*', 'clients.name as client_name')
             ->first();
     }
 
     public function deleteInvoice(int $id): void
     {
+        abort_if($this->isClientPortal(), 403);
         DB::table('invoice_payments')->where('invoice_id', $id)->delete();
         DB::table('invoices')->where('id', $id)->delete();
         app(ActivityLogger::class)->record(Auth::user(), "Deleted invoice #{$id}");
@@ -436,6 +469,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function verifyPayment(int $paymentId): void
     {
+        abort_if($this->isClientPortal(), 403);
         DB::table('invoice_payments')->where('id', $paymentId)->update([
             'verified' => true,
             'verified_by' => Auth::user()->name,
@@ -447,11 +481,16 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function getProofUrl(int $paymentId): ?string
     {
+        // Verify the payment's parent invoice is visible to the current viewer.
         $payment = DB::table('invoice_payments')->where('id', $paymentId)->first();
-        if ($payment && $payment->proof_path) {
-            return Storage::url($payment->proof_path);
-        }
-        return null;
+        if (!$payment) return null;
+
+        $owned = $this->scopeToClient(DB::table('invoices'))
+            ->where('id', $payment->invoice_id)
+            ->exists();
+        if (!$owned) return null;
+
+        return $payment->proof_path ? Storage::url($payment->proof_path) : null;
     }
 
     #[Computed]

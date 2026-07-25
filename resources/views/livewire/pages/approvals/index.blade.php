@@ -144,7 +144,21 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function getStats(): array
     {
+        // Stats must mirror the visibility rules of getFilteredApprovals() —
+        // clients only see counts for their own client_id; non-manager staff
+        // only see their own submissions. Previously this leaked global
+        // agency-wide totals into the client portal.
         $q = DB::table('approvals');
+
+        if ($account = Auth::guard('client')->user()) {
+            $q->where('client_id', $account->client_id);
+        } else {
+            $user = Auth::user();
+            if ($user && !in_array($user->role ?? '', ['super-admin', 'admin', 'manager'])) {
+                $q->where('submitted_by', $user->id);
+            }
+        }
+
         return [
             'pending' => (clone $q)->where('status', 'pending')->count(),
             'approved' => (clone $q)->where('status', 'approved')->count(),

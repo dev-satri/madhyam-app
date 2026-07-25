@@ -71,9 +71,22 @@
                     $role = $user->role ?? '';
                     $isClient = $user instanceof \App\Models\ClientAccount;
                     $rbac = app(\App\Services\RbacService::class);
+                    // Scoped pending-approval count for the sidebar badge.
+                    // Clients: only pending on their own client_id (was leaking agency-wide count).
+                    // Managers/admins: full pending queue (things they can act on).
+                    // Other staff: no badge — nothing actionable at this level.
                     $pendingApprovals = 0;
                     try {
-                        $pendingApprovals = \Illuminate\Support\Facades\DB::table('approvals')->where('status', 'pending')->count();
+                        if ($isClient) {
+                            $pendingApprovals = \Illuminate\Support\Facades\DB::table('approvals')
+                                ->where('status', 'pending')
+                                ->where('client_id', $user->client_id)
+                                ->count();
+                        } elseif ($user && in_array($role, ['super-admin', 'admin', 'manager'])) {
+                            $pendingApprovals = \Illuminate\Support\Facades\DB::table('approvals')
+                                ->where('status', 'pending')
+                                ->count();
+                        }
                     } catch (\Exception $e) {}
 
                     $sidebarItems = [
