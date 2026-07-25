@@ -5,7 +5,14 @@ use Livewire\Attributes\Layout;
 use Livewire\Attributes\Computed;
 use Livewire\WithPagination;
 use App\Models\Client;
+use App\Models\ClientAccount;
 use App\Models\Package;
+use App\Mail\ClientWelcomeMail;
+use App\Mail\ClientCredentialsMail;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Str;
 
 new #[Layout('components.layouts.app')] class extends Component
 {
@@ -40,6 +47,11 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public bool $showDeleteConfirm = false;
     public int $deleteId = 0;
+
+    // Generated credentials shown after client creation
+    public bool $showCredentialsModal = false;
+    public string $generatedEmail = '';
+    public string $generatedPassword = '';
 
     // Status toggle
     public bool $showStatusConfirm = false;
@@ -173,13 +185,73 @@ new #[Layout('components.layouts.app')] class extends Component
             Client::findOrFail($this->selectedClientId)->update($data);
             $this->dispatch('toast', message: 'Client updated successfully', type: 'success');
         } else {
-            Client::create($data);
+            $client = Client::create($data);
+
+            $this->provisionClientAccount($client);
+
             $this->dispatch('toast', message: 'Client created successfully', type: 'success');
         }
 
         $this->showForm = false;
         $this->resetForm();
         $this->dispatch('refreshClients');
+    }
+
+    protected function provisionClientAccount(Client $client): void
+    {
+        if (! $client->email) {
+            return;
+        }
+
+        $plainPassword = Str::password(12, true, true, true);
+        $accountEmail = $client->email;
+
+        $existingAccount = ClientAccount::where('email', $accountEmail)->first();
+        if ($existingAccount) {
+            $accountEmail = $client->email . '+' . Str::random(4) . '@' . substr(strrchr($client->email, '@'), 1);
+        }
+
+        ClientAccount::create([
+            'client_id' => $client->id,
+            'email'     => $accountEmail,
+            'password'  => Hash::make($plainPassword),
+            'name'      => $client->contact ?? $client->name,
+            'status'    => 'active',
+        ]);
+
+        $packageName = $client->linkedPackage?->name ?? ucfirst($client->package);
+
+        try {
+            Mail::to($client->email)->queue(new ClientWelcomeMail(
+                client: $client,
+                packageName: $packageName,
+            ));
+        } catch (\Exception $e) {
+            Log::warning('Failed to queue client welcome email to ' . $client->email . ': ' . $e->getMessage());
+        }
+
+        try {
+            Mail::to($accountEmail)->queue(new ClientCredentialsMail(
+                name: $client->contact ?? $client->name,
+                email: $accountEmail,
+                password: $plainPassword,
+            ));
+        } catch (\Exception $e) {
+            Log::warning('Failed to queue client credentials email to ' . $accountEmail . ': ' . $e->getMessage());
+        }
+
+        $this->generatedEmail = $accountEmail;
+        $this->generatedPassword = $plainPassword;
+        $this->showCredentialsModal = true;
+
+        try {
+            app(\App\Services\NotificationService::class)->notifyNewClient(
+                $client->name,
+                $accountEmail,
+            );
+        } catch (\Exception $e) {
+            Log::warning('Failed to create client notification: ' . $e->getMessage());
+        }
     }
 
     public function view(int $id): void
@@ -268,6 +340,8 @@ new #[Layout('components.layouts.app')] class extends Component
         $this->notes = '';
         $this->status = 'active';
         $this->selectedClientId = 0;
+        $this->generatedEmail = '';
+        $this->generatedPassword = '';
     }
 
     public function getClientStats(Client $client): array
@@ -666,12 +740,27 @@ new #[Layout('components.layouts.app')] class extends Component
                         </div>
 
                         <div class="mt-6 flex items-center justify-end gap-3 border-t border-gray-100 pt-5">
-                            <button type="button" wire:click="$set('showForm', false)" class="btn btn-secondary">
+                            <button
+                                type="button"
+                                wire:click="$set('showForm', false)"
+                                class="btn btn-secondary"
+                                wire:loading.attr="disabled"
+                            >
                                 Cancel
                             </button>
-                            <button type="submit" class="btn btn-primary">
-                                <i class="fas fa-save text-xs"></i>
-                                {{ $formMode === 'edit' ? 'Update Client' : 'Create Client' }}
+                            <button
+                                type="submit"
+                                class="btn btn-primary"
+                                wire:loading.attr="disabled"
+                                wire:target="save"
+                            >
+                                <span wire:loading.remove wire:target="save"
+                                    ><i class="fas fa-save text-xs"></i>
+                                    {{ $formMode === 'edit' ? 'Update Client' : 'Create Client' }}</span
+                                >
+                                <span wire:loading wire:target="save"
+                                    ><i class="fas fa-spinner fa-spin text-xs"></i> Saving...</span
+                                >
                             </button>
                         </div>
                     </form>
@@ -1123,6 +1212,44 @@ new #[Layout('components.layouts.app')] class extends Component
                         <i class="fas fa-trash text-xs mr-1"></i> Delete
                     </button>
                 </div>
+            </div>
+        </div>
+    @endif
+
+    {{-- ========== CLIENT CREDENTIALS MODAL ========== --}}
+    @if ($showCredentialsModal)
+        <div class="confirm-overlay" x-data x-on:keydown.escape.window="$wire.set('showCredentialsModal', false)">
+            <div class="confirm-box max-w-md">
+                <div class="confirm-icon bg-green-100 text-green-600">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+                    </svg>
+                </div>
+                <h3 class="mb-2 text-lg font-bold text-gray-900">Client Portal Credentials</h3>
+                <p class="mb-4 text-sm text-gray-500">A client portal account has been created and login credentials have been sent to the client's email.</p>
+
+                <div class="rounded-xl border border-amber-200 bg-amber-50 p-4 mb-4">
+                    <p class="text-xs font-semibold text-amber-700 uppercase tracking-wider mb-2">
+                        <i class="fas fa-exclamation-triangle mr-1"></i> Save These Credentials
+                    </p>
+                    <div class="space-y-2">
+                        <div>
+                            <p class="text-[11px] font-medium text-gray-500">Login Email</p>
+                            <p class="text-sm font-mono font-semibold text-gray-900 select-all">{{ $generatedEmail }}</p>
+                        </div>
+                        <div>
+                            <p class="text-[11px] font-medium text-gray-500">Password</p>
+                            <p class="text-sm font-mono font-semibold text-gray-900 select-all">{{ $generatedPassword }}</p>
+                        </div>
+                    </div>
+                </div>
+
+                <button
+                    wire:click="$set('showCredentialsModal', false)"
+                    class="w-full rounded-xl bg-[var(--brand)] px-4 py-2.5 text-sm font-semibold text-white hover:opacity-90 transition-colors"
+                >
+                    Got it
+                </button>
             </div>
         </div>
     @endif

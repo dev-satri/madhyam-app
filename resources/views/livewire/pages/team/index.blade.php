@@ -214,7 +214,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
                 // Send welcome email to new member
                 try {
-                    Mail::to($this->formEmail)->send(new MemberWelcomeMail(
+                    Mail::to($this->formEmail)->queue(new MemberWelcomeMail(
                         name: $this->formName,
                         email: $this->formEmail,
                         password: $plainPassword,

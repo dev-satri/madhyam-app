@@ -66,6 +66,16 @@ class NotificationService
         );
     }
 
+    public function notifyNewClient(string $clientName, string $accountEmail): Notification
+    {
+        return $this->sendNotification(
+            text: "New client onboarded: {$clientName} — portal account created ({$accountEmail})",
+            type: 'success',
+            link: route('clients', absolute: false),
+            forRole: 'manager',
+        );
+    }
+
     public function notifyTaskAssignment(Task $task): void
     {
         if (! $task->assigneeUser) {
