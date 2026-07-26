@@ -2,9 +2,11 @@
 
 namespace App\Models;
 
+use App\Mail\PasswordResetMail;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Facades\Mail;
 
 class ClientAccount extends Authenticatable
 {
@@ -52,5 +54,25 @@ class ClientAccount extends Authenticatable
         }
 
         return mb_strtoupper($initials ?: '?');
+    }
+
+    /**
+     * Same override as User::sendPasswordResetNotification, but the URL is
+     * tagged with `mode=client` so the reset-password page dispatches to
+     * the `client_accounts` broker (separate token table, separate provider).
+     */
+    public function sendPasswordResetNotification($token): void
+    {
+        $url = route('password.reset', [
+            'token' => $token,
+            'email' => $this->email,
+            'mode' => 'client',
+        ]);
+
+        Mail::to($this->email)->queue(new PasswordResetMail(
+            name: $this->name,
+            email: $this->email,
+            resetUrl: $url,
+        ));
     }
 }

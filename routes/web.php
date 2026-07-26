@@ -30,11 +30,18 @@ Route::get('/', function () {
 | Guest Auth Routes
 |--------------------------------------------------------------------------
 | Combined staff/client login (single Volt view with tab toggle).
-| Spec explicitly defers self-serve registration + password reset.
+| Self-serve password reset is now included (token flow); self-serve
+| registration is still deferred per spec.
 */
 Route::middleware('guest:web,client')->group(function () {
     Volt::route('login', 'pages.auth.login')->name('login');
     Volt::route('client/login', 'pages.auth.login')->name('client.login');
+
+    // Password reset — a `mode` query param (staff|client) picks the broker.
+    // Two token tables (password_reset_tokens, client_password_reset_tokens)
+    // keep the two guards isolated even when an email exists in both.
+    Volt::route('forgot-password', 'pages.auth.forgot-password')->name('password.request');
+    Volt::route('reset-password/{token}', 'pages.auth.reset-password')->name('password.reset');
 });
 
 /*

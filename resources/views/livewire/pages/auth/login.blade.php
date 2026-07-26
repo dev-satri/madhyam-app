@@ -139,527 +139,286 @@ new #[Layout('components.layouts.guest')] class extends Component
     }
 }; ?>
 
-<div
-    x-data="{ showSpin: @entangle('loading') }"
-    style="
-        background: linear-gradient(135deg, #312e81 0%, #4f46e5 50%, #6366f1 100%);
-        min-height: 100vh;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        padding: 16px;
-        font-family: 'Inter', system-ui, sans-serif;
-        position: relative;
-    "
->
-    {{-- Grid background pattern --}}
+<div class="relative min-h-screen bg-gray-50 flex items-center justify-center p-4 font-sans">
+    {{-- Subtle grid background --}}
     <div
-        style="
-            position: absolute;
-            inset: 0;
-            background-image: radial-gradient(circle at 1px 1px, rgba(255, 255, 255, 0.06) 1px, transparent 0);
-            background-size: 40px 40px;
-            pointer-events: none;
-        "
+        aria-hidden="true"
+        class="pointer-events-none absolute inset-0"
+        style="background-image: radial-gradient(circle at 1px 1px, rgba(15, 23, 42, 0.05) 1px, transparent 0); background-size: 32px 32px;"
     ></div>
 
-    <div style="width: 100%; max-width: 420px; position: relative; z-index: 1">
-        {{-- Logo --}}
-        <div style="text-align: center; margin-bottom: 32px">
-            <div
-                class="floating"
-                style="
-                    display: inline-flex;
-                    align-items: center;
-                    justify-content: center;
-                    width: 64px;
-                    height: 64px;
-                    background: rgba(255, 255, 255, 0.2);
-                    border-radius: 16px;
-                    margin-bottom: 16px;
-                "
-            >
-                <i class="fas fa-layer-group" style="font-size: 28px; color: #fff"></i>
+    <div class="relative z-10 w-full max-w-md">
+        {{-- Logo / brand --}}
+        <div class="text-center mb-6">
+            <div class="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-600 text-white shadow-lg shadow-brand-600/25 mb-3">
+                <i class="fas fa-layer-group text-2xl"></i>
             </div>
-            <h1 style="font-size: 30px; font-weight: 800; color: #fff; letter-spacing: -0.02em; margin: 0">Madhyam</h1>
-            <p style="color: rgba(255, 255, 255, 0.6); font-size: 13px; margin-top: 4px">Agency Management System</p>
+            <h1 class="text-2xl font-bold text-gray-900 tracking-tight">Madhyam</h1>
+            <p class="text-sm text-gray-500 mt-1">Agency Management System</p>
         </div>
 
-        {{-- Login Card --}}
-        <div
-            style="
-                backdrop-filter: blur(20px);
-                background: rgba(255, 255, 255, 0.95);
-                border-radius: 16px;
-                box-shadow: 0 25px 60px rgba(0, 0, 0, 0.2);
-                overflow: hidden;
-            "
-        >
-            {{-- Tabs --}}
-            <div style="display: flex; padding: 16px 16px 0; gap: 4px">
+        {{-- Login card --}}
+        <div class="relative overflow-hidden rounded-2xl bg-white shadow-xl shadow-gray-200/60 ring-1 ring-gray-100">
+            {{-- Top progress bar (only during login submit) --}}
+            <div
+                class="pointer-events-none absolute inset-x-0 top-0 z-20 h-0.5 overflow-hidden opacity-0 transition-opacity duration-150"
+                wire:loading.class="opacity-100"
+                wire:target="login"
+                aria-hidden="true"
+            >
+                <div class="h-full w-1/3 bg-brand-600 login-progress-bar"></div>
+            </div>
+
+            {{-- Tabs (underline style) --}}
+            <div class="grid grid-cols-2 border-b border-gray-100" role="tablist">
                 <button
+                    type="button"
+                    role="tab"
+                    aria-selected="{{ $loginMode === 'staff' ? 'true' : 'false' }}"
                     wire:click="switchMode('staff')"
-                    @if ($loginMode === 'staff')
-                        style="
-                            padding: 10px 24px;
-                            border-radius: 10px 10px 0 0;
-                            font-size: 13px;
-                            font-weight: 600;
-                            cursor: pointer;
-                            transition: all 0.2s;
-                            border: none;
-                            outline: none;
-                            background: #4f46e5;
-                            color: #fff;
-                        "
-                    @else
-                        style="
-                            padding: 10px 24px;
-                            border-radius: 10px 10px 0 0;
-                            font-size: 13px;
-                            font-weight: 600;
-                            cursor: pointer;
-                            transition: all 0.2s;
-                            border: none;
-                            outline: none;
-                            background: #f1f5f9;
-                            color: #475569;
-                        "
-                    @endif
+                    class="relative px-4 py-3.5 text-sm font-semibold transition-colors {{ $loginMode === 'staff' ? 'text-brand-600' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50' }}"
                 >
-                    <i class="fas fa-user-tie" style="margin-right: 4px"></i> Staff Login
+                    <i class="fas fa-user-tie mr-1.5"></i>Staff Login
+                    @if ($loginMode === 'staff')
+                        <span class="absolute inset-x-6 bottom-0 h-0.5 bg-brand-600 rounded-t"></span>
+                    @endif
                 </button>
                 <button
+                    type="button"
+                    role="tab"
+                    aria-selected="{{ $loginMode === 'client' ? 'true' : 'false' }}"
                     wire:click="switchMode('client')"
-                    @if ($loginMode === 'client')
-                        style="
-                            padding: 10px 24px;
-                            border-radius: 10px 10px 0 0;
-                            font-size: 13px;
-                            font-weight: 600;
-                            cursor: pointer;
-                            transition: all 0.2s;
-                            border: none;
-                            outline: none;
-                            background: #4f46e5;
-                            color: #fff;
-                        "
-                    @else
-                        style="
-                            padding: 10px 24px;
-                            border-radius: 10px 10px 0 0;
-                            font-size: 13px;
-                            font-weight: 600;
-                            cursor: pointer;
-                            transition: all 0.2s;
-                            border: none;
-                            outline: none;
-                            background: #f1f5f9;
-                            color: #475569;
-                        "
-                    @endif
+                    class="relative px-4 py-3.5 text-sm font-semibold transition-colors {{ $loginMode === 'client' ? 'text-brand-600' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50' }}"
                 >
-                    <i class="fas fa-building" style="margin-right: 4px"></i> Client Portal
+                    <i class="fas fa-building mr-1.5"></i>Client Portal
+                    @if ($loginMode === 'client')
+                        <span class="absolute inset-x-6 bottom-0 h-0.5 bg-brand-600 rounded-t"></span>
+                    @endif
                 </button>
             </div>
 
-            <div style="padding: 32px">
-                <h2 style="font-size: 20px; font-weight: 700; color: #111827; margin-bottom: 4px">
+            {{-- Card body: dims and blocks input while the login request is in flight --}}
+            <div
+                class="p-6 sm:p-8 transition-opacity duration-150"
+                wire:loading.class="opacity-60 pointer-events-none"
+                wire:target="login"
+            >
+                <h2 class="text-xl font-bold text-gray-900">
                     {{ $loginMode === 'client' ? 'Client Portal' : 'Welcome back' }}
                 </h2>
-                <p style="font-size: 13px; color: #6b7280; margin-bottom: 24px">
+                <p class="text-sm text-gray-500 mt-1 mb-6">
                     {{ $loginMode === 'client' ? 'Sign in to view your projects & approvals' : 'Sign in to your staff account' }}
                 </p>
 
-                {{-- Inline error --}}
+                {{-- Flash success (e.g. after password reset) --}}
+                @if (session('status'))
+                    <div
+                        role="status"
+                        class="mb-4 flex items-start gap-2.5 rounded-xl border border-green-200 bg-green-50 px-3.5 py-3 text-sm text-green-700"
+                    >
+                        <i class="fas fa-check-circle mt-0.5"></i>
+                        <span>{{ session('status') }}</span>
+                    </div>
+                @endif
+
+                {{-- Server error (bad creds / lockout) --}}
                 @if ($errorMessage)
                     <div
-                        style="
-                            margin-bottom: 16px;
-                            padding: 12px 14px;
-                            background: #fef2f2;
-                            border: 1px solid #fecaca;
-                            border-radius: 12px;
-                            font-size: 13px;
-                            color: #dc2626;
-                            display: flex;
-                            align-items: center;
-                            gap: 8px;
-                        "
+                        role="alert"
+                        class="mb-4 flex items-start gap-2.5 rounded-xl border border-red-200 bg-red-50 px-3.5 py-3 text-sm text-red-700"
                     >
-                        <i class="fas fa-exclamation-circle"></i>
+                        <i class="fas fa-exclamation-circle mt-0.5"></i>
                         <span>{{ $errorMessage }}</span>
                     </div>
                 @endif
 
-                {{-- Validation errors --}}
-                @error ('email')
-                    <div
-                        style="
-                            margin-bottom: 16px;
-                            padding: 12px 14px;
-                            background: #fef2f2;
-                            border: 1px solid #fecaca;
-                            border-radius: 12px;
-                            font-size: 13px;
-                            color: #dc2626;
-                            display: flex;
-                            align-items: center;
-                            gap: 8px;
-                        "
-                    >
-                        <i class="fas fa-exclamation-circle"></i>
-                        <span>{{ $message }}</span>
-                    </div>
-                @enderror
-
-                <form wire:submit="login">
+                <form wire:submit="login" class="space-y-4">
                     {{-- Email --}}
-                    <div style="margin-bottom: 16px">
-                        <label
-                            style="
-                                display: block;
-                                font-size: 13px;
-                                font-weight: 500;
-                                color: #374151;
-                                margin-bottom: 6px;
-                            "
-                            >Email Address</label
-                        >
-                        <div style="position: relative">
+                    <div>
+                        <label for="login-email" class="block text-sm font-medium text-gray-700 mb-1.5">Email Address</label>
+                        <div class="relative">
+                            <span class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5 text-gray-400">
+                                <i class="fas fa-envelope text-sm"></i>
+                            </span>
                             <input
+                                id="login-email"
                                 type="email"
                                 wire:model="email"
                                 required
-                                placeholder="Enter your email"
-                                class="form-input"
-                                style="
-                                    width: 100%;
-                                    padding: 12px 14px 12px 44px;
-                                    border: 1px solid #e5e7eb;
-                                    border-radius: 12px;
-                                    font-size: 14px;
-                                    transition: all 0.2s;
-                                    background: #f9fafb;
-                                    outline: none;
-                                    font-family: inherit;
-                                "
-                                onfocus="
-                                    this.style.background = '#fff';
-                                    this.style.borderColor = '#818cf8';
-                                    this.style.boxShadow = '0 0 0 3px rgba(99,102,241,0.1)';
-                                "
-                                onblur="
-                                    this.style.background = '#f9fafb';
-                                    this.style.borderColor = '#e5e7eb';
-                                    this.style.boxShadow = 'none';
-                                "
+                                autocomplete="username"
+                                autofocus
+                                placeholder="you@example.com"
+                                class="block w-full rounded-xl border-gray-200 bg-gray-50 py-2.5 pl-10 pr-3.5 text-sm text-gray-900 placeholder:text-gray-400 shadow-sm transition-colors focus:border-brand-500 focus:bg-white focus:ring-2 focus:ring-brand-500/20 @error('email') border-red-300 focus:border-red-500 focus:ring-red-500/20 @enderror"
                             />
-                            <i
-                                class="fas fa-envelope"
-                                style="
-                                    position: absolute;
-                                    left: 14px;
-                                    top: 50%;
-                                    transform: translateY(-50%);
-                                    color: #94a3b8;
-                                    font-size: 14px;
-                                    pointer-events: none;
-                                "
-                            ></i>
                         </div>
+                        @error('email')
+                            <p class="mt-1.5 flex items-center gap-1.5 text-xs text-red-600">
+                                <i class="fas fa-exclamation-circle"></i>{{ $message }}
+                            </p>
+                        @enderror
                     </div>
 
                     {{-- Password --}}
-                    <div style="margin-bottom: 16px">
-                        <label
-                            style="
-                                display: block;
-                                font-size: 13px;
-                                font-weight: 500;
-                                color: #374151;
-                                margin-bottom: 6px;
-                            "
-                            >Password</label
-                        >
-                        <div style="position: relative">
+                    <div>
+                        <label for="login-password" class="block text-sm font-medium text-gray-700 mb-1.5">Password</label>
+                        <div class="relative">
+                            <span class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5 text-gray-400">
+                                <i class="fas fa-lock text-sm"></i>
+                            </span>
                             <input
+                                id="login-password"
                                 type="{{ $showPassword ? 'text' : 'password' }}"
                                 wire:model="password"
                                 required
+                                autocomplete="current-password"
                                 placeholder="Enter your password"
-                                style="
-                                    width: 100%;
-                                    padding: 12px 44px 12px 44px;
-                                    border: 1px solid #e5e7eb;
-                                    border-radius: 12px;
-                                    font-size: 14px;
-                                    transition: all 0.2s;
-                                    background: #f9fafb;
-                                    outline: none;
-                                    font-family: inherit;
-                                "
-                                onfocus="
-                                    this.style.background = '#fff';
-                                    this.style.borderColor = '#818cf8';
-                                    this.style.boxShadow = '0 0 0 3px rgba(99,102,241,0.1)';
-                                "
-                                onblur="
-                                    this.style.background = '#f9fafb';
-                                    this.style.borderColor = '#e5e7eb';
-                                    this.style.boxShadow = 'none';
-                                "
+                                class="block w-full rounded-xl border-gray-200 bg-gray-50 py-2.5 pl-10 pr-11 text-sm text-gray-900 placeholder:text-gray-400 shadow-sm transition-colors focus:border-brand-500 focus:bg-white focus:ring-2 focus:ring-brand-500/20 @error('password') border-red-300 focus:border-red-500 focus:ring-red-500/20 @enderror"
                             />
-                            <i
-                                class="fas fa-lock"
-                                style="
-                                    position: absolute;
-                                    left: 14px;
-                                    top: 50%;
-                                    transform: translateY(-50%);
-                                    color: #94a3b8;
-                                    font-size: 14px;
-                                    pointer-events: none;
-                                "
-                            ></i>
                             <button
                                 type="button"
                                 wire:click="$toggle('showPassword')"
-                                style="
-                                    position: absolute;
-                                    right: 12px;
-                                    top: 50%;
-                                    transform: translateY(-50%);
-                                    color: #9ca3af;
-                                    cursor: pointer;
-                                    background: none;
-                                    border: none;
-                                    font-size: 14px;
-                                    padding: 4px;
-                                "
+                                aria-label="{{ $showPassword ? 'Hide password' : 'Show password' }}"
+                                class="absolute inset-y-0 right-0 flex items-center px-3 text-gray-400 hover:text-gray-600 transition-colors"
                             >
-                                <i class="fas fa-{{ $showPassword ? 'eye-slash' : 'eye' }}"></i>
+                                <i class="fas fa-{{ $showPassword ? 'eye-slash' : 'eye' }} text-sm"></i>
                             </button>
                         </div>
+                        @error('password')
+                            <p class="mt-1.5 flex items-center gap-1.5 text-xs text-red-600">
+                                <i class="fas fa-exclamation-circle"></i>{{ $message }}
+                            </p>
+                        @enderror
                     </div>
 
-                    {{-- Remember me --}}
-                    <div
-                        style="margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between"
-                    >
-                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer">
+                    {{-- Remember me + Forgot password --}}
+                    <div class="flex items-center justify-between">
+                        <label class="inline-flex items-center gap-2 cursor-pointer select-none">
                             <input
                                 type="checkbox"
                                 wire:model="remember"
-                                style="
-                                    border-radius: 4px;
-                                    border: 1px solid #d1d5db;
-                                    color: #4f46e5;
-                                    width: 16px;
-                                    height: 16px;
-                                "
+                                class="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500 focus:ring-offset-0"
                             />
-                            <span style="font-size: 13px; color: #4b5563">Remember me</span>
+                            <span class="text-sm text-gray-600">Remember me</span>
                         </label>
+                        <a
+                            href="{{ route('password.request', ['mode' => $loginMode === 'client' ? 'client' : 'staff']) }}"
+                            wire:navigate
+                            class="text-sm font-medium text-brand-600 hover:text-brand-700 hover:underline underline-offset-2 transition-colors"
+                        >
+                            Forgot password?
+                        </a>
                     </div>
 
-                    {{-- Submit --}}
+                    {{-- Submit: scale-down on press + inline spinner while loading --}}
                     <button
                         type="submit"
-                        @if ($loading) disabled @endif
-                        style="width:100%;padding:12px 16px;background:#4f46e5;color:#fff;border-radius:12px;font-size:14px;font-weight:600;border:none;cursor:{{ $loading ? 'not-allowed' : 'pointer' }};opacity:{{ $loading ? '0.8' : '1' }};display:flex;align-items:center;justify-content:center;gap:8px;box-shadow:0 4px 14px rgba(79,70,229,0.25);transition:all 0.2s;font-family:inherit"
+                        wire:loading.attr="disabled"
+                        wire:target="login"
+                        class="group flex w-full items-center justify-center gap-2 rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-brand-600/25 transition-all hover:bg-brand-700 active:scale-[0.98] active:shadow-md focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-80"
                     >
-                        <span>{{ $loading ? 'Signing in...' : 'Sign In' }}</span>
-                        @if ($loading)
-                            <div
-                                style="
-                                    width: 18px;
-                                    height: 18px;
-                                    border: 2px solid rgba(255, 255, 255, 0.3);
-                                    border-top-color: #fff;
-                                    border-radius: 50%;
-                                    animation: spin 0.6s linear infinite;
-                                    flex-shrink: 0;
-                                "
-                            ></div>
-                        @endif
+                        <span wire:loading.remove wire:target="login" class="flex items-center gap-2">
+                            Sign In
+                            <i class="fas fa-arrow-right text-xs transition-transform group-hover:translate-x-0.5"></i>
+                        </span>
+                        <span wire:loading wire:target="login" class="flex items-center gap-2" style="display: none;">
+                            <svg class="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24" aria-hidden="true">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+                            </svg>
+                            Signing in…
+                        </span>
                     </button>
                 </form>
 
-                {{-- Staff demo accounts --}}
-                @if ($loginMode === 'staff')
-                    <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid #f3f4f6">
-                        <p
-                            style="font-size: 11px; color: #9ca3af; text-align: center; margin-bottom: 12px"
-                        >Demo Accounts</p>
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px">
-                            <button
-                                wire:click="fillDemo('super@madhyam.com', 'admin123')"
-                                style="
-                                    padding: 8px 12px;
-                                    background: #f9fafb;
-                                    border: 1px solid #f3f4f6;
-                                    border-radius: 8px;
-                                    text-align: left;
-                                    cursor: pointer;
-                                    transition: background 0.15s;
-                                    font-family: inherit;
-                                "
-                                onmouseover="this.style.background = '#f1f5f9'"
-                                onmouseout="this.style.background = '#f9fafb'"
-                            >
-                                <p style="font-size: 11px; font-weight: 600; color: #374151; margin: 0">Super Admin</p>
-                                <p style="font-size: 10px; color: #9ca3af; margin: 0">super@madhyam.com</p>
-                            </button>
-                            <button
-                                wire:click="fillDemo('rajesh@madhyam.com', 'pass123')"
-                                style="
-                                    padding: 8px 12px;
-                                    background: #f9fafb;
-                                    border: 1px solid #f3f4f6;
-                                    border-radius: 8px;
-                                    text-align: left;
-                                    cursor: pointer;
-                                    transition: background 0.15s;
-                                    font-family: inherit;
-                                "
-                                onmouseover="this.style.background = '#f1f5f9'"
-                                onmouseout="this.style.background = '#f9fafb'"
-                            >
-                                <p style="font-size: 11px; font-weight: 600; color: #374151; margin: 0">Manager</p>
-                                <p style="font-size: 10px; color: #9ca3af; margin: 0">rajesh@madhyam.com</p>
-                            </button>
-                            <button
-                                wire:click="fillDemo('anil@madhyam.com', 'pass123')"
-                                style="
-                                    padding: 8px 12px;
-                                    background: #f9fafb;
-                                    border: 1px solid #f3f4f6;
-                                    border-radius: 8px;
-                                    text-align: left;
-                                    cursor: pointer;
-                                    transition: background 0.15s;
-                                    font-family: inherit;
-                                "
-                                onmouseover="this.style.background = '#f1f5f9'"
-                                onmouseout="this.style.background = '#f9fafb'"
-                            >
-                                <p style="font-size: 11px; font-weight: 600; color: #374151; margin: 0">Editor</p>
-                                <p style="font-size: 10px; color: #9ca3af; margin: 0">anil@madhyam.com</p>
-                            </button>
-                            <button
-                                wire:click="fillDemo('sita@madhyam.com', 'pass123')"
-                                style="
-                                    padding: 8px 12px;
-                                    background: #f9fafb;
-                                    border: 1px solid #f3f4f6;
-                                    border-radius: 8px;
-                                    text-align: left;
-                                    cursor: pointer;
-                                    transition: background 0.15s;
-                                    font-family: inherit;
-                                "
-                                onmouseover="this.style.background = '#f1f5f9'"
-                                onmouseout="this.style.background = '#f9fafb'"
-                            >
-                                <p style="font-size: 11px; font-weight: 600; color: #374151; margin: 0">Videographer</p>
-                                <p style="font-size: 10px; color: #9ca3af; margin: 0">sita@madhyam.com</p>
-                            </button>
-                        </div>
-                    </div>
-                @endif
+                {{-- Collapsible demo accounts --}}
+                <div class="mt-6 border-t border-gray-100 pt-4" x-data="{ open: false }">
+                    <button
+                        type="button"
+                        @click="open = !open"
+                        :aria-expanded="open"
+                        class="flex w-full items-center justify-between text-xs font-medium text-gray-500 hover:text-gray-700 transition-colors"
+                    >
+                        <span class="inline-flex items-center gap-1.5">
+                            <i class="fas fa-flask text-[10px]"></i>
+                            Try a demo account
+                        </span>
+                        <i class="fas fa-chevron-down text-[10px] transition-transform" :class="open && 'rotate-180'"></i>
+                    </button>
 
-                {{-- Client demo accounts --}}
-                @if ($loginMode === 'client')
-                    <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid #f3f4f6">
-                        <p
-                            style="font-size: 11px; color: #9ca3af; text-align: center; margin-bottom: 12px"
-                        >Demo Client Accounts</p>
-                        <div style="display: grid; gap: 8px">
-                            <button
-                                wire:click="fillDemo('ram@himalayancoffee.com', 'client123')"
-                                style="
-                                    padding: 8px 12px;
-                                    background: #f9fafb;
-                                    border: 1px solid #f3f4f6;
-                                    border-radius: 8px;
-                                    text-align: left;
-                                    cursor: pointer;
-                                    transition: background 0.15s;
-                                    font-family: inherit;
-                                "
-                                onmouseover="this.style.background = '#f1f5f9'"
-                                onmouseout="this.style.background = '#f9fafb'"
-                            >
-                                <p
-                                    style="font-size: 11px; font-weight: 600; color: #374151; margin: 0"
-                                >Himalayan Coffee</p>
-                                <p style="font-size: 10px; color: #9ca3af; margin: 0">ram@himalayancoffee.com</p>
-                            </button>
-                            <button
-                                wire:click="fillDemo('maya@treknepal.com', 'client123')"
-                                style="
-                                    padding: 8px 12px;
-                                    background: #f9fafb;
-                                    border: 1px solid #f3f4f6;
-                                    border-radius: 8px;
-                                    text-align: left;
-                                    cursor: pointer;
-                                    transition: background 0.15s;
-                                    font-family: inherit;
-                                "
-                                onmouseover="this.style.background = '#f1f5f9'"
-                                onmouseout="this.style.background = '#f9fafb'"
-                            >
-                                <p style="font-size: 11px; font-weight: 600; color: #374151; margin: 0">Trek Nepal</p>
-                                <p style="font-size: 10px; color: #9ca3af; margin: 0">maya@treknepal.com</p>
-                            </button>
-                            <button
-                                wire:click="fillDemo('devi@greenleaf.com', 'client123')"
-                                style="
-                                    padding: 8px 12px;
-                                    background: #f9fafb;
-                                    border: 1px solid #f3f4f6;
-                                    border-radius: 8px;
-                                    text-align: left;
-                                    cursor: pointer;
-                                    transition: background 0.15s;
-                                    font-family: inherit;
-                                "
-                                onmouseover="this.style.background = '#f1f5f9'"
-                                onmouseout="this.style.background = '#f9fafb'"
-                            >
-                                <p style="font-size: 11px; font-weight: 600; color: #374151; margin: 0">Green Leaf</p>
-                                <p style="font-size: 10px; color: #9ca3af; margin: 0">devi@greenleaf.com</p>
-                            </button>
-                        </div>
+                    <div
+                        x-show="open"
+                        x-transition:enter="transition ease-out duration-150"
+                        x-transition:enter-start="opacity-0 -translate-y-1"
+                        x-transition:enter-end="opacity-100 translate-y-0"
+                        x-transition:leave="transition ease-in duration-100"
+                        x-transition:leave-start="opacity-100"
+                        x-transition:leave-end="opacity-0"
+                        class="mt-3"
+                        style="display: none;"
+                    >
+                        @if ($loginMode === 'staff')
+                            <div class="grid grid-cols-2 gap-2">
+                                @foreach ([
+                                    ['label' => 'Super Admin', 'email' => 'super@madhyam.com', 'password' => 'admin123'],
+                                    ['label' => 'Manager', 'email' => 'rajesh@madhyam.com', 'password' => 'pass123'],
+                                    ['label' => 'Editor', 'email' => 'anil@madhyam.com', 'password' => 'pass123'],
+                                    ['label' => 'Videographer', 'email' => 'sita@madhyam.com', 'password' => 'pass123'],
+                                ] as $account)
+                                    <button
+                                        type="button"
+                                        wire:click="fillDemo('{{ $account['email'] }}', '{{ $account['password'] }}')"
+                                        class="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 text-left transition-colors hover:border-brand-200 hover:bg-brand-50"
+                                    >
+                                        <p class="text-xs font-semibold text-gray-700">{{ $account['label'] }}</p>
+                                        <p class="text-[10px] text-gray-500 truncate">{{ $account['email'] }}</p>
+                                    </button>
+                                @endforeach
+                            </div>
+                        @else
+                            <div class="space-y-2">
+                                @foreach ([
+                                    ['label' => 'Himalayan Coffee', 'email' => 'ram@himalayancoffee.com'],
+                                    ['label' => 'Trek Nepal', 'email' => 'maya@treknepal.com'],
+                                    ['label' => 'Green Leaf', 'email' => 'devi@greenleaf.com'],
+                                ] as $account)
+                                    <button
+                                        type="button"
+                                        wire:click="fillDemo('{{ $account['email'] }}', 'client123')"
+                                        class="w-full rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 text-left transition-colors hover:border-brand-200 hover:bg-brand-50"
+                                    >
+                                        <p class="text-xs font-semibold text-gray-700">{{ $account['label'] }}</p>
+                                        <p class="text-[10px] text-gray-500 truncate">{{ $account['email'] }}</p>
+                                    </button>
+                                @endforeach
+                            </div>
+                        @endif
                     </div>
-                @endif
+                </div>
             </div>
         </div>
 
         {{-- Footer --}}
-        <p
-            style="text-align: center; color: rgba(255, 255, 255, 0.4); font-size: 11px; margin-top: 24px"
-        >&copy; 2026 Madhyam Agency. All rights reserved.</p>
-        <p style="text-align: center; color: rgba(255, 255, 255, 0.3); font-size: 10px; margin-top: 8px">
-            <span
-                role="button"
-                tabindex="0"
-                style="cursor: pointer"
+        <div class="mt-6 text-center space-y-3">
+            <p class="text-xs text-gray-400">&copy; 2026 Madhyam Agency. All rights reserved.</p>
+            <button
+                type="button"
                 wire:click="$dispatch('open-confirm', { title: 'Reset Demo Data?', message: 'This will re-seed the database and wipe all current data. Continue?', type: 'warning', action: 'resetDemoData', confirmLabel: 'Reset' })"
+                class="inline-flex items-center gap-1.5 rounded-md border border-red-200 bg-white px-2.5 py-1 text-xs font-medium text-red-600 shadow-sm transition-colors hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
             >
+                <i class="fas fa-rotate-right text-[10px]"></i>
                 Reset Demo Data
-            </span>
-        </p>
+            </button>
+        </div>
     </div>
 
-    {{-- Spin animation (must be inside root element) --}}
+    {{-- Indeterminate progress-bar animation (scoped to the login card via .login-progress-bar) --}}
     <style>
-        @keyframes spin {
-            to {
-                transform: rotate(360deg);
-            }
+        @keyframes login-progress-slide {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(400%); }
+        }
+        .login-progress-bar {
+            animation: login-progress-slide 1.1s ease-in-out infinite;
         }
     </style>
 </div>
