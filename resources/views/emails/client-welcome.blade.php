@@ -1,42 +1,35 @@
-@component('mail::message')
-# Welcome to {{ config('app.name', 'Madhyam') }}, {{ $client->contact ?? $client->name }}!
+@component ('mail::message')
+    # Welcome to {{ config('app.name', 'Madhyam') }}, {{ $client->contact ?? $client->name }}!
 
 Thank you for choosing **{{ config('app.name', 'Madhyam') }}** as your creative partner. We're excited to work with you and bring your vision to life.
 
 ## Your Partnership Summary
-
-@component('mail::panel')
-**Client Name**
-{{ $client->name }}
-@if ($packageName)
-
-**Package**
-{{ $packageName }}
-@endif
-@if ($client->amount)
-
-**Monthly Investment**
+    @component ('mail::panel')
+        **Client Name**
+        {{ $client->name }}
+        @if ($packageName)
+            **Package**
+            {{ $packageName }}
+        @endif
+        @if ($client->amount)
+            **Monthly Investment**
 NPR {{ number_format($client->amount, 2) }}
-@endif
-@if ($client->contract_start)
+        @endif
+        @if ($client->contract_start)
+            **Contract Start**
+            {{ $client->contract_start->format('M d, Y') }}
+        @endif
+        @if ($client->contract_end)
+            **Contract End**
+            {{ $client->contract_end->format('M d, Y') }}
+        @endif
+    @endcomponent
 
-**Contract Start**
-{{ $client->contract_start->format('M d, Y') }}
-@endif
-@if ($client->contract_end)
-
-**Contract End**
-{{ $client->contract_end->format('M d, Y') }}
-@endif
-@endcomponent
-
-@if ($client->deliverables)
-## What's Included
-
-{{ $client->deliverables }}
-@endif
-
-## Your Client Portal
+    @if ($client->deliverables)
+        ## What's Included
+        {{ $client->deliverables }}
+    @endif
+    ## Your Client Portal
 
 You have access to our **Client Portal** where you can:
 
@@ -55,5 +48,5 @@ If you have any questions, feel free to reach out to your account manager or con
 We look forward to a successful partnership!
 
 Thanks,
-{{ config('app.name', 'Madhyam') }} Team
+    {{ config('app.name', 'Madhyam') }} Team
 @endcomponent

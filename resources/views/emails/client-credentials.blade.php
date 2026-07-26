@@ -1,23 +1,20 @@
-@component('mail::message')
-# Your Client Portal Access
+@component ('mail::message')
+    # Your Client Portal Access
 
 Hi {{ $name }},
 
 Your client portal account has been created. Here are your login credentials:
+    @component ('mail::panel')
+        **Login Email**
+        {{ $email }}
+        **Password**
+        {{ $password }}
+    @endcomponent
 
-@component('mail::panel')
-**Login Email**
-{{ $email }}
-
-**Password**
-{{ $password }}
-@endcomponent
-
-@component('mail::button', ['url' => config('app.url', 'http://localhost'), 'color' => 'primary'])
-Login to Portal
-@endcomponent
-
-## What You Can Do
+    @component ('mail::button', ['url' => config('app.url', 'http://localhost'), 'color' => 'primary'])
+        Login to Portal
+    @endcomponent
+    ## What You Can Do
 
 - **Content Calendar** — View and track all your scheduled content
 - **Approvals** — Review and approve content before it goes live
@@ -32,5 +29,5 @@ For your security, we recommend changing your password after your first login. Y
 Welcome aboard!
 
 Thanks,
-{{ config('app.name', 'Madhyam') }} Team
+    {{ config('app.name', 'Madhyam') }} Team
 @endcomponent

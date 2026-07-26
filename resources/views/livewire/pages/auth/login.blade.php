@@ -144,13 +144,18 @@ new #[Layout('components.layouts.guest')] class extends Component
     <div
         aria-hidden="true"
         class="pointer-events-none absolute inset-0"
-        style="background-image: radial-gradient(circle at 1px 1px, rgba(15, 23, 42, 0.05) 1px, transparent 0); background-size: 32px 32px;"
+        style="
+            background-image: radial-gradient(circle at 1px 1px, rgba(15, 23, 42, 0.05) 1px, transparent 0);
+            background-size: 32px 32px;
+        "
     ></div>
 
     <div class="relative z-10 w-full max-w-md">
         {{-- Logo / brand --}}
         <div class="text-center mb-6">
-            <div class="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-600 text-white shadow-lg shadow-brand-600/25 mb-3">
+            <div
+                class="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-600 text-white shadow-lg shadow-brand-600/25 mb-3"
+            >
                 <i class="fas fa-layer-group text-2xl"></i>
             </div>
             <h1 class="text-2xl font-bold text-gray-900 tracking-tight">Madhyam</h1>
@@ -235,9 +240,13 @@ new #[Layout('components.layouts.guest')] class extends Component
                 <form wire:submit="login" class="space-y-4">
                     {{-- Email --}}
                     <div>
-                        <label for="login-email" class="block text-sm font-medium text-gray-700 mb-1.5">Email Address</label>
+                        <label for="login-email" class="block text-sm font-medium text-gray-700 mb-1.5"
+                            >Email Address</label
+                        >
                         <div class="relative">
-                            <span class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5 text-gray-400">
+                            <span
+                                class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5 text-gray-400"
+                            >
                                 <i class="fas fa-envelope text-sm"></i>
                             </span>
                             <input
@@ -251,7 +260,7 @@ new #[Layout('components.layouts.guest')] class extends Component
                                 class="block w-full rounded-xl border-gray-200 bg-gray-50 py-2.5 pl-10 pr-3.5 text-sm text-gray-900 placeholder:text-gray-400 shadow-sm transition-colors focus:border-brand-500 focus:bg-white focus:ring-2 focus:ring-brand-500/20 @error('email') border-red-300 focus:border-red-500 focus:ring-red-500/20 @enderror"
                             />
                         </div>
-                        @error('email')
+                        @error ('email')
                             <p class="mt-1.5 flex items-center gap-1.5 text-xs text-red-600">
                                 <i class="fas fa-exclamation-circle"></i>{{ $message }}
                             </p>
@@ -260,9 +269,13 @@ new #[Layout('components.layouts.guest')] class extends Component
 
                     {{-- Password --}}
                     <div>
-                        <label for="login-password" class="block text-sm font-medium text-gray-700 mb-1.5">Password</label>
+                        <label for="login-password" class="block text-sm font-medium text-gray-700 mb-1.5"
+                            >Password</label
+                        >
                         <div class="relative">
-                            <span class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5 text-gray-400">
+                            <span
+                                class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5 text-gray-400"
+                            >
                                 <i class="fas fa-lock text-sm"></i>
                             </span>
                             <input
@@ -283,7 +296,7 @@ new #[Layout('components.layouts.guest')] class extends Component
                                 <i class="fas fa-{{ $showPassword ? 'eye-slash' : 'eye' }} text-sm"></i>
                             </button>
                         </div>
-                        @error('password')
+                        @error ('password')
                             <p class="mt-1.5 flex items-center gap-1.5 text-xs text-red-600">
                                 <i class="fas fa-exclamation-circle"></i>{{ $message }}
                             </p>
@@ -320,7 +333,7 @@ new #[Layout('components.layouts.guest')] class extends Component
                             Sign In
                             <i class="fas fa-arrow-right text-xs transition-transform group-hover:translate-x-0.5"></i>
                         </span>
-                        <span wire:loading wire:target="login" class="flex items-center gap-2" style="display: none;">
+                        <span wire:loading wire:target="login" class="flex items-center gap-2" style="display: none">
                             <svg class="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24" aria-hidden="true">
                                 <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                                 <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
@@ -342,7 +355,10 @@ new #[Layout('components.layouts.guest')] class extends Component
                             <i class="fas fa-flask text-[10px]"></i>
                             Try a demo account
                         </span>
-                        <i class="fas fa-chevron-down text-[10px] transition-transform" :class="open && 'rotate-180'"></i>
+                        <i
+                            class="fas fa-chevron-down text-[10px] transition-transform"
+                            :class="open && 'rotate-180'"
+                        ></i>
                     </button>
 
                     <div
@@ -354,7 +370,7 @@ new #[Layout('components.layouts.guest')] class extends Component
                         x-transition:leave-start="opacity-100"
                         x-transition:leave-end="opacity-0"
                         class="mt-3"
-                        style="display: none;"
+                        style="display: none"
                     >
                         @if ($loginMode === 'staff')
                             <div class="grid grid-cols-2 gap-2">
@@ -414,8 +430,12 @@ new #[Layout('components.layouts.guest')] class extends Component
     {{-- Indeterminate progress-bar animation (scoped to the login card via .login-progress-bar) --}}
     <style>
         @keyframes login-progress-slide {
-            0% { transform: translateX(-100%); }
-            100% { transform: translateX(400%); }
+            0% {
+                transform: translateX(-100%);
+            }
+            100% {
+                transform: translateX(400%);
+            }
         }
         .login-progress-bar {
             animation: login-progress-slide 1.1s ease-in-out infinite;

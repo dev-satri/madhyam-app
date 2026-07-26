@@ -78,13 +78,18 @@ new #[Layout('components.layouts.guest')] class extends Component
     <div
         aria-hidden="true"
         class="pointer-events-none absolute inset-0"
-        style="background-image: radial-gradient(circle at 1px 1px, rgba(15, 23, 42, 0.05) 1px, transparent 0); background-size: 32px 32px;"
+        style="
+            background-image: radial-gradient(circle at 1px 1px, rgba(15, 23, 42, 0.05) 1px, transparent 0);
+            background-size: 32px 32px;
+        "
     ></div>
 
     <div class="relative z-10 w-full max-w-md">
         {{-- Logo --}}
         <div class="text-center mb-6">
-            <div class="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-600 text-white shadow-lg shadow-brand-600/25 mb-3">
+            <div
+                class="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-600 text-white shadow-lg shadow-brand-600/25 mb-3"
+            >
                 <i class="fas fa-key text-2xl"></i>
             </div>
             <h1 class="text-2xl font-bold text-gray-900 tracking-tight">Reset your password</h1>
@@ -112,22 +117,14 @@ new #[Layout('components.layouts.guest')] class extends Component
                 @if ($sent)
                     {{-- Generic success — same message regardless of whether email matched. --}}
                     <div class="flex flex-col items-center text-center">
-                        <div class="inline-flex h-12 w-12 items-center justify-center rounded-full bg-green-100 text-green-600 mb-3">
+                        <div
+                            class="inline-flex h-12 w-12 items-center justify-center rounded-full bg-green-100 text-green-600 mb-3"
+                        >
                             <i class="fas fa-envelope-circle-check text-xl"></i>
                         </div>
                         <h2 class="text-lg font-bold text-gray-900">Check your inbox</h2>
-                        <p class="text-sm text-gray-600 mt-2 leading-relaxed">
-                            If an account exists for <span class="font-semibold text-gray-800">{{ $email }}</span>,
-                            we've sent a password reset link. It expires in 60 minutes.
-                        </p>
-                        <p class="text-xs text-gray-400 mt-4">
-                            Didn't get it? Check spam, or
-                            <button
-                                type="button"
-                                wire:click="$set('sent', false)"
-                                class="text-brand-600 font-medium hover:underline underline-offset-2"
-                            >try again</button>.
-                        </p>
+                        <p class="text-sm text-gray-600 mt-2 leading-relaxed">If an account exists for <span class="font-semibold text-gray-800">{{ $email }}</span>, we've sent a password reset link. It expires in 60 minutes.</p>
+                        <p class="text-xs text-gray-400 mt-4">Didn't get it? Check spam, or <button type="button" wire:click="$set('sent', false)" class="text-brand-600 font-medium hover:underline underline-offset-2">try again</button>.</p>
                         <a
                             href="{{ route('login') }}"
                             wire:navigate
@@ -139,9 +136,7 @@ new #[Layout('components.layouts.guest')] class extends Component
                     </div>
                 @else
                     <h2 class="text-xl font-bold text-gray-900">Forgot your password?</h2>
-                    <p class="text-sm text-gray-500 mt-1 mb-6">
-                        Enter the email tied to your account and we'll send you a link to set a new one.
-                    </p>
+                    <p class="text-sm text-gray-500 mt-1 mb-6">Enter the email tied to your account and we'll send you a link to set a new one.</p>
 
                     @if ($errorMessage)
                         <div
@@ -155,9 +150,13 @@ new #[Layout('components.layouts.guest')] class extends Component
 
                     <form wire:submit="sendResetLink" class="space-y-4">
                         <div>
-                            <label for="forgot-email" class="block text-sm font-medium text-gray-700 mb-1.5">Email Address</label>
+                            <label for="forgot-email" class="block text-sm font-medium text-gray-700 mb-1.5"
+                                >Email Address</label
+                            >
                             <div class="relative">
-                                <span class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5 text-gray-400">
+                                <span
+                                    class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5 text-gray-400"
+                                >
                                     <i class="fas fa-envelope text-sm"></i>
                                 </span>
                                 <input
@@ -171,7 +170,7 @@ new #[Layout('components.layouts.guest')] class extends Component
                                     class="block w-full rounded-xl border-gray-200 bg-gray-50 py-2.5 pl-10 pr-3.5 text-sm text-gray-900 placeholder:text-gray-400 shadow-sm transition-colors focus:border-brand-500 focus:bg-white focus:ring-2 focus:ring-brand-500/20 @error('email') border-red-300 focus:border-red-500 focus:ring-red-500/20 @enderror"
                                 />
                             </div>
-                            @error('email')
+                            @error ('email')
                                 <p class="mt-1.5 flex items-center gap-1.5 text-xs text-red-600">
                                     <i class="fas fa-exclamation-circle"></i>{{ $message }}
                                 </p>
@@ -186,9 +185,16 @@ new #[Layout('components.layouts.guest')] class extends Component
                         >
                             <span wire:loading.remove wire:target="sendResetLink" class="flex items-center gap-2">
                                 Send reset link
-                                <i class="fas fa-paper-plane text-xs transition-transform group-hover:translate-x-0.5"></i>
+                                <i
+                                    class="fas fa-paper-plane text-xs transition-transform group-hover:translate-x-0.5"
+                                ></i>
                             </span>
-                            <span wire:loading wire:target="sendResetLink" class="flex items-center gap-2" style="display: none;">
+                            <span
+                                wire:loading
+                                wire:target="sendResetLink"
+                                class="flex items-center gap-2"
+                                style="display: none"
+                            >
                                 <svg class="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24" aria-hidden="true">
                                     <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                                     <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
@@ -212,15 +218,17 @@ new #[Layout('components.layouts.guest')] class extends Component
             </div>
         </div>
 
-        <p class="text-center text-xs text-gray-400 mt-6">
-            &copy; 2026 Madhyam Agency. All rights reserved.
-        </p>
+        <p class="text-center text-xs text-gray-400 mt-6">&copy; 2026 Madhyam Agency. All rights reserved.</p>
     </div>
 
     <style>
         @keyframes login-progress-slide {
-            0% { transform: translateX(-100%); }
-            100% { transform: translateX(400%); }
+            0% {
+                transform: translateX(-100%);
+            }
+            100% {
+                transform: translateX(400%);
+            }
         }
         .login-progress-bar {
             animation: login-progress-slide 1.1s ease-in-out infinite;
