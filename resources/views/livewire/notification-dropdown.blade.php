@@ -29,9 +29,15 @@ new class extends Component
 
         try {
             $all = DB::table('notifications')
-                ->where(function ($q) use ($user) {
+                ->where(function ($q) use ($user, $isClient) {
                     $q->where('for_role', $user->role)
                       ->orWhere('for_role', 'all');
+                    // Staff-guarded: also include rows targeted at this specific
+                    // user via the new user_id column (Laravel Notification
+                    // pattern: assignment, deadline, comment mentions).
+                    if (!$isClient) {
+                        $q->orWhere('user_id', $user->id);
+                    }
                 })
                 ->where(function ($q) use ($isClient, $clientId) {
                     if ($isClient && $clientId) {
@@ -77,9 +83,12 @@ new class extends Component
         $clientId = $isClient ? ($user->client_id ?? null) : null;
 
         DB::table('notifications')
-            ->where(function ($q) use ($user) {
+            ->where(function ($q) use ($user, $isClient) {
                 $q->where('for_role', $user->role)
                   ->orWhere('for_role', 'all');
+                if (!$isClient) {
+                    $q->orWhere('user_id', $user->id);
+                }
             })
             ->where(function ($q) use ($isClient, $clientId) {
                 if ($isClient && $clientId) {

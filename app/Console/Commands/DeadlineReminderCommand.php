@@ -5,8 +5,11 @@ namespace App\Console\Commands;
 use App\Models\NotificationRule;
 use App\Models\Task;
 use App\Models\Workflow;
+use App\Notifications\TaskDeadlineNotification;
+use App\Notifications\TaskOverdueNotification;
 use App\Services\NotificationService;
 use Illuminate\Console\Command;
+use Illuminate\Support\Carbon;
 
 class DeadlineReminderCommand extends Command
 {
@@ -27,22 +30,50 @@ class DeadlineReminderCommand extends Command
         $targetDate = now()->addDays($days);
         $count = 0;
 
-        // Task deadlines
-        $tasks = Task::whereNotNull('due_date')
+        $today = Carbon::today();
+        $tomorrow = Carbon::tomorrow();
+
+        // Task deadlines — today and tomorrow get per-assignee mail + in-app.
+        // Anything further out than tomorrow but within the rule window still
+        // goes through as a "tomorrow"-style heads-up so the rule.days knob
+        // isn't silently ignored.
+        $upcomingTasks = Task::whereNotNull('due_date')
             ->whereNotIn('status', ['completed'])
             ->whereDate('due_date', '<=', $targetDate)
-            ->whereDate('due_date', '>=', now())
+            ->whereDate('due_date', '>=', $today)
             ->with('assigneeUser')
             ->get();
 
-        foreach ($tasks as $task) {
-            $daysUntil = now()->diffInDays($task->due_date, false);
-            app(NotificationService::class)->sendNotification(
-                text: "Task '{$task->title}' is due in {$daysUntil} day(s) ({$task->due_date->format('M d, Y')})",
-                type: 'warning',
-                link: route('tasks', absolute: false),
-                forRole: $task->assigneeUser ? $task->assigneeUser->role : 'all',
-            );
+        foreach ($upcomingTasks as $task) {
+            if (! $task->assigneeUser) {
+                continue;
+            }
+
+            $when = $task->due_date->isSameDay($today) ? 'today' : 'tomorrow';
+            $task->assigneeUser->notify(new TaskDeadlineNotification($task, $when));
+            $count++;
+        }
+
+        // Overdue tasks — daily nag until the assignee closes them out.
+        $overdueTasks = Task::whereNotNull('due_date')
+            ->whereNotIn('status', ['completed'])
+            ->whereDate('due_date', '<', $today)
+            ->with('assigneeUser')
+            ->get();
+
+        foreach ($overdueTasks as $task) {
+            if (! $task->assigneeUser) {
+                continue;
+            }
+
+            // Carbon 3's diffInDays is signed — force absolute so a past date
+            // reads as a positive integer (team memory: signed diff bug).
+            $daysOverdue = (int) $today->diffInDays($task->due_date, absolute: true);
+            if ($daysOverdue < 1) {
+                $daysOverdue = 1;
+            }
+
+            $task->assigneeUser->notify(new TaskOverdueNotification($task, $daysOverdue));
             $count++;
         }
 

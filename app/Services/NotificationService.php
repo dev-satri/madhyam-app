@@ -278,4 +278,13 @@ class NotificationService
             Notification::whereIn('id', $ids)->delete();
         }
     }
+
+    /**
+     * Public trim entry point for the InAppDatabaseChannel — mirrors the
+     * private cap logic without giving the channel raw access to the model.
+     */
+    public function trimForUser(?int $userId = null, ?string $role = null): void
+    {
+        $this->trim();
+    }
 }

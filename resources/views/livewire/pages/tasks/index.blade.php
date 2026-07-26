@@ -7,7 +7,13 @@ use Livewire\Attributes\Computed;
 use Livewire\WithPagination;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Notification;
 use App\Models\Task;
+use App\Models\TaskComment;
+use App\Models\User;
+use App\Notifications\TaskAssignedNotification;
+use App\Notifications\TaskCommentNotification;
+use App\Notifications\TaskCompletedNotification;
 use App\Services\ActivityLogger;
 use App\Services\NotificationService;
 use App\Services\RbacService;
@@ -147,6 +153,16 @@ new #[Layout('components.layouts.app')] class extends Component
             default => 'todo',
         };
         DB::table('tasks')->where('id', $id)->update(['status' => $next]);
+
+        // Notify managers when a task transitions to completed. Uses SkipsSelfActor
+        // so a manager who completed their own task isn't notified back.
+        if ($next === 'completed' && $model = Task::find($id)) {
+            $managers = User::where('role', 'manager')->where('status', 'active')->get();
+            if ($managers->isNotEmpty()) {
+                Notification::send($managers, new TaskCompletedNotification($model, Auth::user()));
+            }
+        }
+
         $this->dispatch('toast', message: "Status changed to $next", type: 'success');
     }
 
@@ -233,9 +249,12 @@ new #[Layout('components.layouts.app')] class extends Component
         app(ActivityLogger::class)->record(Auth::user(), "Task '{$this->formTitle}' {$verb}");
 
         // Notify assignee if this is a new task or the assignee changed.
+        // SkipsSelfActor drops the send when the assigner assigned to themself.
         if ($data['assignee'] && $data['assignee'] != $priorAssignee) {
-            if ($task = Task::find($taskId)) {
-                app(NotificationService::class)->notifyTaskAssignment($task);
+            $model = Task::find($taskId);
+            $assignee = User::find($data['assignee']);
+            if ($model && $assignee) {
+                $assignee->notify(new TaskAssignedNotification($model, Auth::user()));
             }
         }
 
@@ -269,7 +288,7 @@ new #[Layout('components.layouts.app')] class extends Component
     public function addComment(): void
     {
         if (!$this->commentText || !$this->detailId) return;
-        DB::table('task_comments')->insert([
+        $commentId = DB::table('task_comments')->insertGetId([
             'task_id'    => $this->detailId,
             'user_id'    => Auth::id(),
             'text'       => $this->commentText,
@@ -277,6 +296,32 @@ new #[Layout('components.layouts.app')] class extends Component
             'updated_at' => now(),
         ]);
         app(ActivityLogger::class)->record(Auth::user(), "Commented on task #{$this->detailId}");
+
+        // Notify the assignee + every distinct prior commenter, excluding the author.
+        // SkipsSelfActor also protects against the assignee commenting on their own task.
+        $comment = TaskComment::find($commentId);
+        $task = $comment?->task;
+        if ($comment && $task) {
+            $recipientIds = collect([$task->assignee])
+                ->merge(
+                    DB::table('task_comments')
+                        ->where('task_id', $this->detailId)
+                        ->where('id', '!=', $commentId)
+                        ->pluck('user_id')
+                )
+                ->filter()
+                ->reject(fn ($id) => (int) $id === (int) Auth::id())
+                ->unique()
+                ->values();
+
+            if ($recipientIds->isNotEmpty()) {
+                $recipients = User::whereIn('id', $recipientIds)->where('status', 'active')->get();
+                if ($recipients->isNotEmpty()) {
+                    Notification::send($recipients, new TaskCommentNotification($comment, Auth::user()));
+                }
+            }
+        }
+
         $this->commentText = '';
         $this->dispatch('toast', message: 'Comment added', type: 'success');
     }
