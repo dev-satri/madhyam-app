@@ -4,6 +4,8 @@ namespace App\Console\Commands;
 
 use App\Models\Client;
 use App\Models\NotificationRule;
+use App\Notifications\ContractExpiredClientNotification;
+use App\Notifications\ContractExpiryClientNotification;
 use App\Services\NotificationService;
 use Illuminate\Console\Command;
 
@@ -55,6 +57,20 @@ class ContractExpiryCommand extends Command
                 daysUntil: $daysUntil,
                 type: $type,
             );
+
+            // Notify the client directly via mail + in-app
+            $client->accounts->each(function ($account) use ($client, $daysUntil) {
+                $account->notify(new ContractExpiryClientNotification($client, $daysUntil));
+            });
+
+            $notificationService->sendNotification(
+                text: "Your contract expires in {$daysUntil} day(s). Please contact us to renew.",
+                type: $type,
+                link: route('client.billing', absolute: false),
+                forRole: 'client',
+                clientId: $client->id,
+            );
+
             $count++;
         }
 
@@ -71,6 +87,21 @@ class ContractExpiryCommand extends Command
                 client: $client,
                 daysPast: $daysPast,
             );
+
+            // Notify the client directly via mail + in-app
+            $client->accounts->each(function ($account) use ($client, $daysPast) {
+                $account->notify(new ContractExpiredClientNotification($client, $daysPast));
+            });
+
+            $dayWord = $daysPast === 1 ? 'day' : 'days';
+            $notificationService->sendNotification(
+                text: "Your contract expired {$daysPast} {$dayWord} ago. Please contact us to renew.",
+                type: 'error',
+                link: route('client.billing', absolute: false),
+                forRole: 'client',
+                clientId: $client->id,
+            );
+
             $count++;
         }
 

@@ -2,6 +2,9 @@
 
 namespace App\Services;
 
+use App\Models\Client;
+use App\Notifications\PackageUsageLimitReachedNotification;
+use App\Notifications\PackageUsageWarningNotification;
 use Illuminate\Support\Facades\DB;
 
 class PackageService
@@ -248,6 +251,8 @@ class PackageService
                 'updated_at' => now(),
             ]
         );
+
+        self::fireUsageAlertIfNeeded($clientId, 'content');
     }
 
     public static function recordWorkflow(int $clientId): void
@@ -263,6 +268,8 @@ class PackageService
                 'updated_at' => now(),
             ]
         );
+
+        self::fireUsageAlertIfNeeded($clientId, 'workflow');
     }
 
     public static function recordFile(int $clientId, int $sizeBytes): void
@@ -279,6 +286,8 @@ class PackageService
                 'updated_at' => now(),
             ]
         );
+
+        self::fireUsageAlertIfNeeded($clientId, 'storage');
     }
 
     public static function recordApproval(int $clientId): void
@@ -303,6 +312,83 @@ class PackageService
         }
 
         return min(100, (int) round(($used / $limit) * 100));
+    }
+
+    protected static function fireUsageAlertIfNeeded(int $clientId, string $category): void
+    {
+        $status = self::getUsageWithStatus($clientId);
+
+        if (empty($status['limits'])) {
+            return;
+        }
+
+        $client = Client::with('accounts')->find($clientId);
+        if (! $client) {
+            return;
+        }
+
+        $percentMap = [
+            'content' => $status['content_pct'] ?? 0,
+            'workflow' => $status['workflow_pct'] ?? 0,
+            'storage' => $status['storage_pct'] ?? 0,
+        ];
+
+        $percent = $percentMap[$category] ?? 0;
+
+        $dataMap = [
+            'content' => [
+                'used' => $status['usage']['content_created'] ?? 0,
+                'limit' => $status['limits']['content_limit'],
+            ],
+            'workflow' => [
+                'used' => $status['usage']['workflow_items'] ?? 0,
+                'limit' => $status['limits']['workflow_limit'],
+            ],
+            'storage' => [
+                'used' => (int) round(($status['usage']['storage_used_bytes'] ?? 0) / 1048576),
+                'limit' => $status['limits']['storage_limit_mb'],
+            ],
+        ];
+
+        $data = $dataMap[$category];
+        $categoryLabel = ucfirst($category);
+        $notificationService = app(NotificationService::class);
+
+        if ($percent >= 100) {
+            $client->accounts->each(function ($account) use ($client, $category, $data, $percent) {
+                $account->notify(new PackageUsageLimitReachedNotification($client, [
+                    'category' => $category,
+                    'used' => $data['used'],
+                    'limit' => $data['limit'],
+                    'percent' => $percent,
+                ]));
+            });
+
+            $notificationService->sendNotification(
+                text: "{$categoryLabel} limit reached! You've used {$data['used']}/{$data['limit']}. Upgrade your package to continue.",
+                type: 'error',
+                link: route('client.dashboard', absolute: false),
+                forRole: 'client',
+                clientId: $clientId,
+            );
+        } elseif ($percent >= 80) {
+            $client->accounts->each(function ($account) use ($client, $category, $data, $percent) {
+                $account->notify(new PackageUsageWarningNotification($client, [
+                    'category' => $category,
+                    'used' => $data['used'],
+                    'limit' => $data['limit'],
+                    'percent' => $percent,
+                ]));
+            });
+
+            $notificationService->sendNotification(
+                text: "{$categoryLabel} usage at {$percent}% ({$data['used']}/{$data['limit']}). Consider upgrading your package.",
+                type: 'warning',
+                link: route('client.dashboard', absolute: false),
+                forRole: 'client',
+                clientId: $clientId,
+            );
+        }
     }
 
     public static function isNearLimit(int $used, int $limit, float $threshold = 0.8): bool
