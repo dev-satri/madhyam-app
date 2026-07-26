@@ -13,7 +13,7 @@ class PackageUsageWarningNotification extends Notification implements ShouldQueu
     use Queueable;
 
     /**
-     * @param  array{category: string, used: int, limit: int, percent: int}  $usage
+     * @param  array{category: string, used: int, limit: int, percent: int, deliverables?: array<int,array{type:string,used:int,limit:int,percent:int,over:bool}>}  $usage
      */
     public function __construct(
         public Client $client,
@@ -42,6 +42,7 @@ class PackageUsageWarningNotification extends Notification implements ShouldQueu
                 'used' => $this->usage['used'],
                 'limit' => $this->usage['limit'],
                 'percent' => $percent,
+                'deliverables' => $this->usage['deliverables'] ?? [],
                 'url' => route('client.dashboard'),
             ]);
     }

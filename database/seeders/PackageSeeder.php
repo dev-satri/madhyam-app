@@ -12,7 +12,9 @@ class PackageSeeder extends Seeder
         $rows = [
             [
                 'slug' => 'basic', 'name' => 'Basic', 'monthly_amount' => 15000,
-                'deliverables' => '4 posts per month',
+                'deliverable_limits' => json_encode([
+                    ['type' => 'post', 'limit' => 4],
+                ]),
                 'features' => json_encode(['4 posts per month', 'Basic analytics', 'Email support']),
                 'content_limit' => 8, 'workflow_limit' => 5, 'storage_limit_mb' => 512,
                 'revision_limit' => 2, 'priority_support' => false,
@@ -21,7 +23,10 @@ class PackageSeeder extends Seeder
             ],
             [
                 'slug' => 'standard', 'name' => 'Standard', 'monthly_amount' => 30000,
-                'deliverables' => '8 reels + 4 posts per month',
+                'deliverable_limits' => json_encode([
+                    ['type' => 'reel', 'limit' => 8],
+                    ['type' => 'post', 'limit' => 4],
+                ]),
                 'features' => json_encode(['8 reels + 4 posts per month', 'Story content', 'Analytics dashboard', 'Priority support']),
                 'content_limit' => 20, 'workflow_limit' => 12, 'storage_limit_mb' => 2048,
                 'revision_limit' => 4, 'priority_support' => true,
@@ -30,7 +35,11 @@ class PackageSeeder extends Seeder
             ],
             [
                 'slug' => 'premium', 'name' => 'Premium', 'monthly_amount' => 45000,
-                'deliverables' => '12 reels + 8 posts + 4 stories',
+                'deliverable_limits' => json_encode([
+                    ['type' => 'reel', 'limit' => 12],
+                    ['type' => 'post', 'limit' => 8],
+                    ['type' => 'story', 'limit' => 4],
+                ]),
                 'features' => json_encode(['12 reels + 8 posts + 4 stories', 'Video editing', 'Full analytics', 'Dedicated manager']),
                 'content_limit' => 35, 'workflow_limit' => 25, 'storage_limit_mb' => 5120,
                 'revision_limit' => 6, 'priority_support' => true,
@@ -39,7 +48,12 @@ class PackageSeeder extends Seeder
             ],
             [
                 'slug' => 'enterprise', 'name' => 'Enterprise', 'monthly_amount' => 75000,
-                'deliverables' => '16 reels + 12 posts + 8 stories + 2 videos',
+                'deliverable_limits' => json_encode([
+                    ['type' => 'reel', 'limit' => 16],
+                    ['type' => 'post', 'limit' => 12],
+                    ['type' => 'story', 'limit' => 8],
+                    ['type' => 'video', 'limit' => 2],
+                ]),
                 'features' => json_encode(['16 reels + 12 posts + 8 stories + 2 videos', 'Full production', 'Strategy meetings', '24/7 support', 'Custom reporting']),
                 'content_limit' => 60, 'workflow_limit' => 40, 'storage_limit_mb' => 10240,
                 'revision_limit' => 999, 'priority_support' => true,

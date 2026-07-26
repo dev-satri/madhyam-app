@@ -302,7 +302,11 @@ new #[Layout('components.layouts.app')] class extends Component
 
                         $count++;
                         if ($this->formClientId) {
-                            PackageService::recordContent($this->formClientId, $this->formStatus === 'published' ? 'published' : 'created');
+                            PackageService::recordContent(
+                                $this->formClientId,
+                                $this->formStatus === 'published' ? 'published' : 'created',
+                                $type,
+                            );
                         }
                     }
                 }

@@ -11,7 +11,7 @@ class Package extends Model
         'slug',
         'name',
         'monthly_amount',
-        'deliverables',
+        'deliverable_limits',
         'features',
         'status',
         'content_limit',
@@ -25,7 +25,7 @@ class Package extends Model
     protected $casts = [
         'features' => 'array',
         'included_platforms' => 'array',
-        'deliverables' => 'array',
+        'deliverable_limits' => 'array',
         'monthly_amount' => 'decimal:2',
         'priority_support' => 'boolean',
     ];

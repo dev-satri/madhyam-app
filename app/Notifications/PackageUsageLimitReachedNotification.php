@@ -13,7 +13,7 @@ class PackageUsageLimitReachedNotification extends Notification implements Shoul
     use Queueable;
 
     /**
-     * @param  array{category: string, used: int, limit: int, percent: int}  $usage
+     * @param  array{category: string, used: int, limit: int, percent: int, deliverables?: array<int,array{type:string,used:int,limit:int,percent:int,over:bool}>}  $usage
      */
     public function __construct(
         public Client $client,
@@ -40,6 +40,7 @@ class PackageUsageLimitReachedNotification extends Notification implements Shoul
                 'category' => $category,
                 'used' => $this->usage['used'],
                 'limit' => $this->usage['limit'],
+                'deliverables' => $this->usage['deliverables'] ?? [],
                 'url' => route('client.dashboard'),
             ]);
     }

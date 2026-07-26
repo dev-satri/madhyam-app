@@ -18,6 +18,8 @@ new #[Layout('components.layouts.app')] class extends Component {
     public array $packageLimits = [];
     public array $packageUsage = [];
     public array $packageAlerts = [];
+    // Per-deliverable-type breakdown: [{type, used, limit, percent, over}, ...].
+    public array $packageDeliverables = [];
     public array $upgradeOptions = [];
     public bool $showUpgradeModal = false;
     public string $selectedUpgrade = '';
@@ -37,6 +39,7 @@ new #[Layout('components.layouts.app')] class extends Component {
         $this->packageLimits = $data['limits'];
         $this->packageUsage = $data['usage'];
         $this->packageAlerts = $data['alerts'] ?? [];
+        $this->packageDeliverables = $data['deliverables'] ?? [];
     }
 
     public function openUpgradeModal(): void
@@ -408,6 +411,35 @@ new #[Layout('components.layouts.app')] class extends Component {
                     <p class="text-[10px] text-white/50 mt-3">items submitted for review</p>
                 </div>
             </div>
+
+            @if (!empty($packageDeliverables))
+                <div class="mt-5 pt-5 border-t border-white/15">
+                    <p class="text-xs font-semibold text-white/70 uppercase tracking-wider mb-3">
+                        <i class="fas fa-box-open mr-1"></i>Deliverables this month
+                    </p>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                        @foreach ($packageDeliverables as $d)
+                            @php
+                                $pct = $d['percent'];
+                                $barCls = $pct >= 100 ? 'bg-red-400' : ($pct >= 80 ? 'bg-amber-400' : 'bg-white');
+                                $pctCls = $pct >= 100 ? 'text-red-300' : ($pct >= 80 ? 'text-amber-200' : 'text-white');
+                                $remaining = max(0, $d['limit'] - $d['used']);
+                            @endphp
+                            <div class="bg-white/10 rounded-xl p-3">
+                                <div class="flex items-center justify-between mb-1">
+                                    <span class="text-xs font-medium text-white/70">{{ ucfirst($d['type']) }}</span>
+                                    <span class="text-xs font-bold {{ $pctCls }}">{{ $pct }}%</span>
+                                </div>
+                                <p class="text-lg font-extrabold">{{ $d['used'] }}<span class="text-xs font-normal text-white/60">/{{ $d['limit'] }}</span></p>
+                                <div class="mt-1.5 h-1.5 bg-white/20 rounded-full overflow-hidden">
+                                    <div class="h-full rounded-full {{ $barCls }}" style="width: {{ $pct }}%"></div>
+                                </div>
+                                <p class="text-[10px] text-white/50 mt-1">{{ $remaining }} left</p>
+                            </div>
+                        @endforeach
+                    </div>
+                </div>
+            @endif
 
             @if (!empty($packageLimits['included_platforms']))
                 <div class="mt-4 flex flex-wrap items-center gap-2">

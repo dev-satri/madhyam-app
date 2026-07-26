@@ -35,10 +35,64 @@ class PackageService
                 'approvals_used' => 0,
                 'files_uploaded' => 0,
                 'storage_used_bytes' => 0,
+                'deliverable_counts' => null,
             ];
         }
 
-        return (array) $usage;
+        $usage = (array) $usage;
+        $usage['deliverable_counts'] = self::decodeDeliverableCounts($usage['deliverable_counts'] ?? null);
+
+        return $usage;
+    }
+
+    /**
+     * Decode the per-type counts JSON blob into an associative array of
+     * type => count. Handles the null/legacy-string cases.
+     *
+     * @return array<string,int>
+     */
+    private static function decodeDeliverableCounts(mixed $raw): array
+    {
+        if (is_array($raw)) {
+            return array_map('intval', $raw);
+        }
+        if (is_string($raw) && $raw !== '') {
+            $decoded = json_decode($raw, true);
+            if (is_array($decoded)) {
+                return array_map('intval', $decoded);
+            }
+        }
+
+        return [];
+    }
+
+    /**
+     * Decode the packages.deliverable_limits JSON blob into a normalized
+     * list of ['type' => string, 'limit' => int] rows. Filters out empty
+     * types / zero-limit rows.
+     *
+     * @return array<int,array{type:string,limit:int}>
+     */
+    private static function decodeDeliverableLimits(mixed $raw): array
+    {
+        $rows = [];
+        if (is_string($raw) && $raw !== '') {
+            $rows = json_decode($raw, true) ?? [];
+        } elseif (is_array($raw)) {
+            $rows = $raw;
+        }
+
+        $out = [];
+        foreach ($rows as $row) {
+            $type = trim((string) ($row['type'] ?? ''));
+            $limit = (int) ($row['limit'] ?? 0);
+            if ($type === '' || $limit <= 0) {
+                continue;
+            }
+            $out[] = ['type' => $type, 'limit' => $limit];
+        }
+
+        return $out;
     }
 
     public static function getLimits(int $clientId): array
@@ -65,7 +119,7 @@ class PackageService
             'priority_support' => (bool) $pkg->priority_support,
             'included_platforms' => json_decode($pkg->included_platforms ?? '[]', true),
             'features' => json_decode($pkg->features ?? '[]', true),
-            'deliverables' => $pkg->deliverables,
+            'deliverable_limits' => self::decodeDeliverableLimits($pkg->deliverable_limits ?? null),
         ];
     }
 
@@ -105,6 +159,25 @@ class PackageService
             $alerts[] = ['type' => 'warning', 'message' => 'Storage usage at ' . $storagePct . '%. Consider upgrading.'];
         }
 
+        // Per-deliverable breakdown (reels, posts, stories, …).
+        $deliverables = self::buildDeliverableBreakdown(
+            $limits['deliverable_limits'] ?? [],
+            $usage['deliverable_counts'] ?? []
+        );
+        foreach ($deliverables as $d) {
+            if ($d['percent'] >= 100) {
+                $alerts[] = [
+                    'type' => 'danger',
+                    'message' => ucfirst($d['type']) . " limit reached! Used {$d['used']}/{$d['limit']}.",
+                ];
+            } elseif ($d['percent'] >= 80) {
+                $alerts[] = [
+                    'type' => 'warning',
+                    'message' => ucfirst($d['type']) . " usage at {$d['percent']}% ({$d['used']}/{$d['limit']}).",
+                ];
+            }
+        }
+
         return [
             'usage' => $usage,
             'limits' => $limits,
@@ -112,7 +185,35 @@ class PackageService
             'content_pct' => $contentPct,
             'workflow_pct' => $workflowPct,
             'storage_pct' => $storagePct,
+            'deliverables' => $deliverables,
         ];
+    }
+
+    /**
+     * Merge a package's per-type limits with the current month's counts into
+     * a display-ready list of rows: [type, used, limit, percent, over].
+     *
+     * @param  array<int,array{type:string,limit:int}>  $limits
+     * @param  array<string,int>  $counts
+     * @return array<int,array{type:string,used:int,limit:int,percent:int,over:bool}>
+     */
+    public static function buildDeliverableBreakdown(array $limits, array $counts): array
+    {
+        $rows = [];
+        foreach ($limits as $lim) {
+            $type = $lim['type'];
+            $limit = $lim['limit'];
+            $used = (int) ($counts[$type] ?? 0);
+            $rows[] = [
+                'type' => $type,
+                'used' => $used,
+                'limit' => $limit,
+                'percent' => self::getUsagePercent($used, $limit),
+                'over' => $used >= $limit,
+            ];
+        }
+
+        return $rows;
     }
 
     public static function getUpgradeOptions(int $clientId): array
@@ -145,7 +246,7 @@ class PackageService
                 'priority_support' => (bool) $pkg->priority_support,
                 'included_platforms' => json_decode($pkg->included_platforms ?? '[]', true),
                 'features' => json_decode($pkg->features ?? '[]', true),
-                'deliverables' => $pkg->deliverables,
+                'deliverable_limits' => self::decodeDeliverableLimits($pkg->deliverable_limits ?? null),
             ];
         }
 
@@ -208,6 +309,18 @@ class PackageService
 
             $maxPct = max($contentPct, $workflowPct, $storagePct);
 
+            $deliverables = self::buildDeliverableBreakdown(
+                $limits['deliverable_limits'] ?? [],
+                $usage['deliverable_counts'] ?? []
+            );
+            $deliverablesMaxPct = 0;
+            foreach ($deliverables as $d) {
+                if ($d['percent'] > $deliverablesMaxPct) {
+                    $deliverablesMaxPct = $d['percent'];
+                }
+            }
+            $maxPct = max($maxPct, $deliverablesMaxPct);
+
             $result[] = [
                 'client_id' => $client->id,
                 'client_name' => $client->name,
@@ -224,6 +337,7 @@ class PackageService
                 'storage_pct' => $storagePct,
                 'approvals_used' => $usage['approvals_used'] ?? 0,
                 'files_uploaded' => $usage['files_uploaded'] ?? 0,
+                'deliverables' => $deliverables,
                 'max_pct' => $maxPct,
                 'needs_attention' => $maxPct >= 80,
                 'is_over_limit' => $maxPct >= 100,
@@ -236,23 +350,38 @@ class PackageService
         return $result;
     }
 
-    public static function recordContent(int $clientId, string $type = 'created'): void
+    /**
+     * Record a content-created / content-published event and (optionally)
+     * bump the per-deliverable-type counter.
+     *
+     * @param  string  $status  'created' or 'published' — which aggregate column to bump.
+     * @param  string|null  $deliverableType  content type (reel, post, story, …) whose
+     *                                        per-type counter should also be bumped.
+     */
+    public static function recordContent(int $clientId, string $status = 'created', ?string $deliverableType = null): void
     {
         $month = (int) now()->format('m');
         $year = (int) now()->format('Y');
-        $column = $type === 'published' ? 'content_published' : 'content_created';
+        $column = $status === 'published' ? 'content_published' : 'content_created';
 
         $usage = self::getUsage($clientId, $month, $year);
+
+        $counts = $usage['deliverable_counts'] ?? [];
+        $typeKey = $deliverableType !== null ? trim($deliverableType) : null;
+        if ($typeKey !== null && $typeKey !== '') {
+            $counts[$typeKey] = ((int) ($counts[$typeKey] ?? 0)) + 1;
+        }
 
         DB::table('package_usage')->updateOrInsert(
             ['client_id' => $clientId, 'month' => $month, 'year' => $year],
             [
                 $column => ($usage[$column] ?? 0) + 1,
+                'deliverable_counts' => json_encode($counts),
                 'updated_at' => now(),
             ]
         );
 
-        self::fireUsageAlertIfNeeded($clientId, 'content');
+        self::fireUsageAlertIfNeeded($clientId, 'content', $typeKey);
     }
 
     public static function recordWorkflow(int $clientId): void
@@ -314,7 +443,13 @@ class PackageService
         return min(100, (int) round(($used / $limit) * 100));
     }
 
-    protected static function fireUsageAlertIfNeeded(int $clientId, string $category): void
+    /**
+     * Evaluate the client's current usage and fire warning/limit notifications
+     * as needed. Fires for the aggregate `content`/`workflow`/`storage` bucket
+     * that just moved, and — if $deliverableType was also provided — for that
+     * specific deliverable type when it just crossed 80% or 100%.
+     */
+    protected static function fireUsageAlertIfNeeded(int $clientId, string $category, ?string $deliverableType = null): void
     {
         $status = self::getUsageWithStatus($clientId);
 
@@ -327,6 +462,11 @@ class PackageService
             return;
         }
 
+        $breakdown = $status['deliverables'] ?? [];
+
+        // 1) Aggregate bucket alert (content/workflow/storage) — kept for
+        // backward compatibility; the aggregate meters still exist alongside
+        // the per-deliverable ones.
         $percentMap = [
             'content' => $status['content_pct'] ?? 0,
             'workflow' => $status['workflow_pct'] ?? 0,
@@ -351,38 +491,88 @@ class PackageService
         ];
 
         $data = $dataMap[$category];
-        $categoryLabel = ucfirst($category);
+        self::dispatchThresholdNotifications(
+            $client,
+            $clientId,
+            category: $category,
+            categoryLabel: ucfirst($category),
+            used: $data['used'],
+            limit: $data['limit'],
+            percent: $percent,
+            breakdown: $breakdown,
+        );
+
+        // 2) Per-deliverable-type alert — only fire when a specific type
+        // was bumped. Match it in the breakdown by name.
+        if ($deliverableType !== null && $deliverableType !== '') {
+            foreach ($breakdown as $row) {
+                if ($row['type'] !== $deliverableType) {
+                    continue;
+                }
+                self::dispatchThresholdNotifications(
+                    $client,
+                    $clientId,
+                    category: $row['type'],
+                    categoryLabel: ucfirst($row['type']),
+                    used: $row['used'],
+                    limit: $row['limit'],
+                    percent: $row['percent'],
+                    breakdown: $breakdown,
+                );
+                break;
+            }
+        }
+    }
+
+    /**
+     * Fire the warning/limit notification pair for a single (category, used,
+     * limit, percent) tuple. Extracted so aggregate and per-deliverable
+     * checks share the same dispatch logic.
+     *
+     * @param  array<int,array{type:string,used:int,limit:int,percent:int,over:bool}>  $breakdown
+     */
+    private static function dispatchThresholdNotifications(
+        Client $client,
+        int $clientId,
+        string $category,
+        string $categoryLabel,
+        int $used,
+        int $limit,
+        int $percent,
+        array $breakdown,
+    ): void {
+        if ($limit <= 0) {
+            return;
+        }
+
         $notificationService = app(NotificationService::class);
+        $payload = [
+            'category' => $category,
+            'used' => $used,
+            'limit' => $limit,
+            'percent' => $percent,
+            'deliverables' => $breakdown,
+        ];
 
         if ($percent >= 100) {
-            $client->accounts->each(function ($account) use ($client, $category, $data, $percent) {
-                $account->notify(new PackageUsageLimitReachedNotification($client, [
-                    'category' => $category,
-                    'used' => $data['used'],
-                    'limit' => $data['limit'],
-                    'percent' => $percent,
-                ]));
+            $client->accounts->each(function ($account) use ($client, $payload) {
+                $account->notify(new PackageUsageLimitReachedNotification($client, $payload));
             });
 
             $notificationService->sendNotification(
-                text: "{$categoryLabel} limit reached! You've used {$data['used']}/{$data['limit']}. Upgrade your package to continue.",
+                text: "{$categoryLabel} limit reached! You've used {$used}/{$limit}. Upgrade your package to continue.",
                 type: 'error',
                 link: route('client.dashboard', absolute: false),
                 forRole: 'client',
                 clientId: $clientId,
             );
         } elseif ($percent >= 80) {
-            $client->accounts->each(function ($account) use ($client, $category, $data, $percent) {
-                $account->notify(new PackageUsageWarningNotification($client, [
-                    'category' => $category,
-                    'used' => $data['used'],
-                    'limit' => $data['limit'],
-                    'percent' => $percent,
-                ]));
+            $client->accounts->each(function ($account) use ($client, $payload) {
+                $account->notify(new PackageUsageWarningNotification($client, $payload));
             });
 
             $notificationService->sendNotification(
-                text: "{$categoryLabel} usage at {$percent}% ({$data['used']}/{$data['limit']}). Consider upgrading your package.",
+                text: "{$categoryLabel} usage at {$percent}% ({$used}/{$limit}). Consider upgrading your package.",
                 type: 'warning',
                 link: route('client.dashboard', absolute: false),
                 forRole: 'client',
@@ -436,7 +626,7 @@ class PackageService
                 'priority_support' => (bool) $pkg->priority_support,
                 'included_platforms' => json_decode($pkg->included_platforms ?? '[]', true),
                 'features' => json_decode($pkg->features ?? '[]', true),
-                'deliverables' => $pkg->deliverables,
+                'deliverable_limits' => self::decodeDeliverableLimits($pkg->deliverable_limits ?? null),
             ];
         }
 

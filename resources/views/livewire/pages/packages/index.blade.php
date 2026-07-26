@@ -19,7 +19,8 @@ new #[Layout('components.layouts.app')] class extends Component
     public string $pkgName = '';
     public string $pkgSlug = '';
     public float $pkgAmount = 0;
-    public string $pkgDeliverables = '';
+    // Structured deliverable limits: each row is ['type' => string, 'limit' => int].
+    public array $pkgDeliverableLimits = [];
     public string $pkgFeatures = '';
     public string $pkgStatus = 'active';
     public int $pkgContentLimit = 30;
@@ -81,7 +82,13 @@ new #[Layout('components.layouts.app')] class extends Component
             $this->pkgName = $pkg->name;
             $this->pkgSlug = $pkg->slug;
             $this->pkgAmount = (float) $pkg->monthly_amount;
-            $this->pkgDeliverables = $pkg->deliverables ?? '';
+            $decodedLimits = json_decode($pkg->deliverable_limits ?? '[]', true);
+            $this->pkgDeliverableLimits = is_array($decodedLimits)
+                ? array_values(array_map(fn ($r) => [
+                    'type' => (string) ($r['type'] ?? ''),
+                    'limit' => (int) ($r['limit'] ?? 0),
+                ], $decodedLimits))
+                : [];
             $this->pkgFeatures = is_array(json_decode($pkg->features ?? '[]', true)) ? implode("\n", json_decode($pkg->features ?? '[]', true)) : '';
             $this->pkgStatus = $pkg->status ?? 'active';
             $this->pkgContentLimit = (int) $pkg->content_limit;
@@ -95,7 +102,7 @@ new #[Layout('components.layouts.app')] class extends Component
             $this->pkgName = '';
             $this->pkgSlug = '';
             $this->pkgAmount = 0;
-            $this->pkgDeliverables = '';
+            $this->pkgDeliverableLimits = [];
             $this->pkgFeatures = '';
             $this->pkgStatus = 'active';
             $this->pkgContentLimit = 30;
@@ -106,6 +113,18 @@ new #[Layout('components.layouts.app')] class extends Component
             $this->pkgPlatforms = '';
         }
         $this->showPkgForm = true;
+    }
+
+    public function addDeliverableRow(): void
+    {
+        $this->pkgDeliverableLimits[] = ['type' => '', 'limit' => 0];
+    }
+
+    public function removeDeliverableRow(int $index): void
+    {
+        if (isset($this->pkgDeliverableLimits[$index])) {
+            array_splice($this->pkgDeliverableLimits, $index, 1);
+        }
     }
 
     public function savePkg(): void
@@ -119,11 +138,22 @@ new #[Layout('components.layouts.app')] class extends Component
         $features = array_filter(array_map('trim', explode("\n", $this->pkgFeatures)));
         $platforms = array_filter(array_map('trim', explode(',', $this->pkgPlatforms)));
 
+        // Normalize deliverable rows: drop empty types / zero limits, coerce int.
+        $deliverableLimits = [];
+        foreach ($this->pkgDeliverableLimits as $row) {
+            $type = trim((string) ($row['type'] ?? ''));
+            $limit = (int) ($row['limit'] ?? 0);
+            if ($type === '' || $limit <= 0) {
+                continue;
+            }
+            $deliverableLimits[] = ['type' => $type, 'limit' => $limit];
+        }
+
         $data = [
             'name' => $this->pkgName,
             'slug' => $this->pkgSlug,
             'monthly_amount' => $this->pkgAmount,
-            'deliverables' => $this->pkgDeliverables,
+            'deliverable_limits' => json_encode($deliverableLimits),
             'features' => json_encode($features),
             'status' => $this->pkgStatus,
             'content_limit' => $this->pkgContentLimit,
@@ -187,7 +217,9 @@ new #[Layout('components.layouts.app')] class extends Component
             'priority_support' => (bool) $pkg->priority_support,
             'included_platforms' => json_decode($pkg->included_platforms ?? '[]', true),
             'features' => json_decode($pkg->features ?? '[]', true),
-            'deliverables' => $pkg->deliverables,
+            'deliverable_limits' => is_array(json_decode($pkg->deliverable_limits ?? '[]', true))
+                ? json_decode($pkg->deliverable_limits ?? '[]', true)
+                : [],
         ];
 
         $clients = DB::table('clients')
@@ -202,6 +234,8 @@ new #[Layout('components.layouts.app')] class extends Component
         $daysPassed = $now->day;
         $daysRemaining = $daysInMonth - $daysPassed;
 
+        $pkgDeliverableLimits = $this->detailPackage['deliverable_limits'] ?? [];
+
         $this->detailClients = [];
         foreach ($clients as $client) {
             $usage = PackageService::getUsage($client->id, $month, $year);
@@ -212,6 +246,11 @@ new #[Layout('components.layouts.app')] class extends Component
 
             $contentOnTrack = $daysPassed > 0 ? ($usage['content_created'] ?? 0) / $daysPassed * $daysRemaining : 0;
             $workflowOnTrack = $daysPassed > 0 ? ($usage['workflow_items'] ?? 0) / $daysPassed * $daysRemaining : 0;
+
+            $deliverables = PackageService::buildDeliverableBreakdown(
+                $pkgDeliverableLimits,
+                $usage['deliverable_counts'] ?? []
+            );
 
             $this->detailClients[] = [
                 'client_id' => $client->id,
@@ -238,6 +277,7 @@ new #[Layout('components.layouts.app')] class extends Component
                 'content_status' => $contentPct >= 100 ? 'over' : ($contentPct >= 80 ? 'warning' : 'ok'),
                 'workflow_status' => $workflowPct >= 100 ? 'over' : ($workflowPct >= 80 ? 'warning' : 'ok'),
                 'storage_status' => $storagePct >= 100 ? 'over' : ($storagePct >= 80 ? 'warning' : 'ok'),
+                'deliverables' => $deliverables,
             ];
         }
 
@@ -351,6 +391,14 @@ new #[Layout('components.layouts.app')] class extends Component
         $storageUsedMb = round(($usage['storage_used_bytes'] ?? 0) / 1048576, 1);
         $storagePct = $pkg ? PackageService::getUsagePercent($storageUsedMb, (int) $pkg->storage_limit_mb) : 0;
 
+        $pkgDeliverableLimits = $pkg
+            ? (json_decode($pkg->deliverable_limits ?? '[]', true) ?: [])
+            : [];
+        $deliverableBreakdown = PackageService::buildDeliverableBreakdown(
+            $pkgDeliverableLimits,
+            $usage['deliverable_counts'] ?? []
+        );
+
         $this->clientDetail = [
             'id' => $client->id,
             'name' => $client->name,
@@ -384,6 +432,7 @@ new #[Layout('components.layouts.app')] class extends Component
             'month_progress' => round(($daysPassed / $daysInMonth) * 100),
             'content_projected' => $daysPassed > 0 ? (int) ceil(($usage['content_created'] ?? 0) / $daysPassed * $daysRemaining) : 0,
             'workflow_projected' => $daysPassed > 0 ? (int) ceil(($usage['workflow_items'] ?? 0) / $daysPassed * $daysRemaining) : 0,
+            'deliverables' => $deliverableBreakdown,
         ];
 
         $this->showClientModal = true;
@@ -1099,13 +1148,55 @@ new #[Layout('components.layouts.app')] class extends Component
                         </div>
                     </div>
                     <div>
-                        <label class="block text-xs font-semibold text-gray-600 mb-1">Deliverables</label>
-                        <input
-                            type="text"
-                            wire:model="pkgDeliverables"
-                            class="form-input w-full text-sm"
-                            placeholder="e.g. 8 reels + 4 posts per month"
-                        />
+                        <div class="flex items-center justify-between mb-1">
+                            <label class="block text-xs font-semibold text-gray-600"
+                                >Deliverable Limits (per month)</label
+                            >
+                            <button
+                                type="button"
+                                wire:click="addDeliverableRow"
+                                class="text-xs font-semibold text-[var(--brand)] hover:underline"
+                            >
+                                <i class="fas fa-plus mr-1"></i>Add type
+                            </button>
+                        </div>
+                        <p class="text-xs text-gray-500 mb-2">e.g. type=<code class="bg-gray-100 px-1 rounded">reel</code>, limit=<code class="bg-gray-100 px-1 rounded">8</code>. Type must match the content type used on the calendar (post, reel, story, video, …).</p>
+                        @if (empty($pkgDeliverableLimits))
+                            <div
+                                class="text-xs text-gray-400 italic border border-dashed border-gray-200 rounded-md px-3 py-4 text-center"
+                            >
+                                No deliverable limits set yet — click "Add type" to define per-type quotas (reel, post,
+                                story, …).
+                            </div>
+                        @else
+                            <div class="space-y-2">
+                                @foreach ($pkgDeliverableLimits as $idx => $row)
+                                    <div class="flex items-center gap-2" wire:key="pkg-deliverable-{{ $idx }}">
+                                        <input
+                                            type="text"
+                                            wire:model.defer="pkgDeliverableLimits.{{ $idx }}.type"
+                                            class="form-input flex-1 text-sm"
+                                            placeholder="Type (e.g. reel, post, story)"
+                                        />
+                                        <input
+                                            type="number"
+                                            wire:model.defer="pkgDeliverableLimits.{{ $idx }}.limit"
+                                            class="form-input w-24 text-sm"
+                                            min="0"
+                                            placeholder="Limit"
+                                        />
+                                        <button
+                                            type="button"
+                                            wire:click="removeDeliverableRow({{ $idx }})"
+                                            class="text-gray-400 hover:text-red-500 p-1"
+                                            aria-label="Remove row"
+                                        >
+                                            <i class="fas fa-times"></i>
+                                        </button>
+                                    </div>
+                                @endforeach
+                            </div>
+                        @endif
                     </div>
                     <div>
                         <label class="block text-xs font-semibold text-gray-600 mb-1">Features (one per line)</label>
@@ -1624,6 +1715,40 @@ new #[Layout('components.layouts.app')] class extends Component
                             </div>
                         </div>
                     </div>
+
+                    {{-- Per-deliverable breakdown --}}
+                    @if (!empty($clientDetail['deliverables']))
+                        <div>
+                            <h4 class="text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">
+                                <i class="fas fa-box-open mr-1 text-[var(--brand)]"></i>Deliverables this month
+                            </h4>
+                            <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                                @foreach ($clientDetail['deliverables'] as $d)
+                                    @php
+                                        $pct = $d['percent'];
+                                        $barCls = $pct >= 100 ? 'bg-red-500' : ($pct >= 80 ? 'bg-amber-500' : 'bg-green-500');
+                                        $pctCls = $pct >= 100 ? 'text-red-600' : ($pct >= 80 ? 'text-amber-600' : 'text-gray-900');
+                                    @endphp
+                                    <div class="rounded-xl border border-gray-100 p-3">
+                                        <div class="flex items-center justify-between mb-1">
+                                            <span
+                                                class="text-xs font-bold text-gray-700"
+                                                >{{ ucfirst($d['type']) }}</span
+                                            >
+                                            <span class="text-xs font-extrabold {{ $pctCls }}">{{ $pct }}%</span>
+                                        </div>
+                                        <p class="text-lg font-extrabold text-gray-900">{{ $d['used'] }}<span class="text-xs font-normal text-gray-400">/{{ $d['limit'] }}</span></p>
+                                        <div class="mt-1.5 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                                            <div
+                                                class="h-full rounded-full {{ $barCls }}"
+                                                style="width: {{ $pct }}%"
+                                            ></div>
+                                        </div>
+                                    </div>
+                                @endforeach
+                            </div>
+                        </div>
+                    @endif
 
                     {{-- Platforms --}}
                     @if (!empty($clientDetail['included_platforms']))

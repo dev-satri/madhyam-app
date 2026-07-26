@@ -4,3 +4,4 @@ public/build
 storage
 *.min.js
 *.min.css
+resources/views/emails/*.blade.php
