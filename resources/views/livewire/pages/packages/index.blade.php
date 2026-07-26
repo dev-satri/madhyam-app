@@ -86,7 +86,7 @@ new #[Layout('components.layouts.app')] class extends Component
             $this->pkgDeliverableLimits = is_array($decodedLimits)
                 ? array_values(array_map(fn ($r) => [
                     'type' => (string) ($r['type'] ?? ''),
-                    'limit' => (int) ($r['limit'] ?? 0),
+                    'limit' => (int) ($r['limit'] ?? 0) ?: '',
                 ], $decodedLimits))
                 : [];
             $this->pkgFeatures = is_array(json_decode($pkg->features ?? '[]', true)) ? implode("\n", json_decode($pkg->features ?? '[]', true)) : '';
@@ -117,7 +117,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function addDeliverableRow(): void
     {
-        $this->pkgDeliverableLimits[] = ['type' => '', 'limit' => 0];
+        $this->pkgDeliverableLimits[] = ['type' => '', 'limit' => ''];
     }
 
     public function removeDeliverableRow(int $index): void
@@ -1148,50 +1148,97 @@ new #[Layout('components.layouts.app')] class extends Component
                         </div>
                     </div>
                     <div>
-                        <div class="flex items-center justify-between mb-1">
-                            <label class="block text-xs font-semibold text-gray-600"
-                                >Deliverable Limits (per month)</label
-                            >
-                            <button
-                                type="button"
-                                wire:click="addDeliverableRow"
-                                class="text-xs font-semibold text-[var(--brand)] hover:underline"
-                            >
-                                <i class="fas fa-plus mr-1"></i>Add type
-                            </button>
+                        <div class="flex items-center justify-between mb-3">
+                            <div>
+                                <label class="block text-xs font-semibold text-gray-600"
+                                    >Deliverable Limits (per month)</label
+                                >
+                                <p class="text-[11px] text-gray-400 mt-0.5">Set how many of each content type this package includes.</p>
+                            </div>
+                            <div class="relative">
+                                <button
+                                    type="button"
+                                    wire:click="addDeliverableRow"
+                                    wire:loading.attr="disabled"
+                                    wire:target="addDeliverableRow"
+                                    class="inline-flex items-center gap-1.5 text-xs font-medium text-white bg-[var(--brand)] hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed rounded-md px-3 py-1.5 transition"
+                                >
+                                    <span wire:loading.remove wire:target="addDeliverableRow"
+                                        ><i class="fas fa-plus text-[10px]"></i> Add Type</span
+                                    >
+                                    <span wire:loading wire:target="addDeliverableRow"
+                                        ><i class="fas fa-spinner fa-spin text-[10px]"></i> Adding...</span
+                                    >
+                                </button>
+                            </div>
                         </div>
-                        <p class="text-xs text-gray-500 mb-2">e.g. type=<code class="bg-gray-100 px-1 rounded">reel</code>, limit=<code class="bg-gray-100 px-1 rounded">8</code>. Type must match the content type used on the calendar (post, reel, story, video, …).</p>
                         @if (empty($pkgDeliverableLimits))
                             <div
-                                class="text-xs text-gray-400 italic border border-dashed border-gray-200 rounded-md px-3 py-4 text-center"
+                                class="border border-dashed border-gray-200 rounded-lg px-4 py-6 text-center bg-gray-50/50"
                             >
-                                No deliverable limits set yet — click "Add type" to define per-type quotas (reel, post,
-                                story, …).
+                                <div
+                                    class="inline-flex items-center justify-center w-8 h-8 rounded-full bg-gray-100 mb-2"
+                                >
+                                    <i class="fas fa-layer-group text-gray-400 text-xs"></i>
+                                </div>
+                                <p class="text-xs text-gray-500 font-medium">No deliverable types added yet</p>
+                                <p class="text-[11px] text-gray-400 mt-1">Click <strong>"Add Type"</strong> to set limits for reels, posts, stories, etc.</p>
                             </div>
                         @else
                             <div class="space-y-2">
+                                <datalist id="deliverable-type-options">
+                                    <option value="reel">
+                                    <option value="post">
+                                    <option value="story">
+                                    <option value="video">
+                                    <option value="carousel">
+                                    <option value="blog">
+                                    <option value="email">
+                                    <option value="ad">
+                                </datalist>
                                 @foreach ($pkgDeliverableLimits as $idx => $row)
-                                    <div class="flex items-center gap-2" wire:key="pkg-deliverable-{{ $idx }}">
+                                    <div
+                                        class="flex items-center gap-2 bg-gray-50 rounded-lg px-3 py-2 border border-gray-100 transition-all duration-200"
+                                        wire:key="pkg-deliverable-{{ $idx }}"
+                                    >
+                                        <span
+                                            class="flex items-center justify-center w-6 h-6 rounded-md bg-[var(--brand)]/10 text-[var(--brand)] text-[10px] font-bold flex-shrink-0"
+                                            >{{ $idx + 1 }}</span
+                                        >
                                         <input
                                             type="text"
                                             wire:model.defer="pkgDeliverableLimits.{{ $idx }}.type"
-                                            class="form-input flex-1 text-sm"
-                                            placeholder="Type (e.g. reel, post, story)"
+                                            class="form-input flex-1 text-sm border-gray-200 rounded-md focus:border-[var(--brand)] focus:ring-[var(--brand)]/20"
+                                            placeholder="e.g. reel, post, story..."
+                                            list="deliverable-type-options"
                                         />
-                                        <input
-                                            type="number"
-                                            wire:model.defer="pkgDeliverableLimits.{{ $idx }}.limit"
-                                            class="form-input w-24 text-sm"
-                                            min="0"
-                                            placeholder="Limit"
-                                        />
+                                        <div class="relative flex-shrink-0">
+                                            <input
+                                                type="number"
+                                                wire:model.defer="pkgDeliverableLimits.{{ $idx }}.limit"
+                                                class="form-input w-20 text-sm text-center border-gray-200 rounded-md pr-7 focus:border-[var(--brand)] focus:ring-[var(--brand)]/20 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                                min="0"
+                                                placeholder="Limit"
+                                            />
+                                            <span
+                                                class="absolute right-2 top-1/2 -translate-y-1/2 text-[11px] text-gray-400 pointer-events-none"
+                                                >/mo</span
+                                            >
+                                        </div>
                                         <button
                                             type="button"
                                             wire:click="removeDeliverableRow({{ $idx }})"
-                                            class="text-gray-400 hover:text-red-500 p-1"
-                                            aria-label="Remove row"
+                                            wire:loading.attr="disabled"
+                                            wire:target="removeDeliverableRow({{ $idx }})"
+                                            class="flex items-center justify-center w-7 h-7 rounded-md text-gray-300 hover:text-red-500 hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed transition flex-shrink-0"
+                                            aria-label="Remove type"
                                         >
-                                            <i class="fas fa-times"></i>
+                                            <span wire:loading.remove wire:target="removeDeliverableRow({{ $idx }})"
+                                                ><i class="fas fa-trash-alt text-xs"></i
+                                            ></span>
+                                            <span wire:loading wire:target="removeDeliverableRow({{ $idx }})"
+                                                ><i class="fas fa-spinner fa-spin text-xs"></i
+                                            ></span>
                                         </button>
                                     </div>
                                 @endforeach
