@@ -445,7 +445,12 @@ new #[Layout('components.layouts.app')] class extends Component
             $this->dispatch('toast', message: 'Unauthorized action', type: 'error');
             return;
         }
-        Approval::findOrFail($id)->delete();
+        $approval = Approval::findOrFail($id);
+        if ($approval->status === 'pending') {
+            $this->dispatch('toast', message: 'Cannot delete a pending approval', type: 'error');
+            return;
+        }
+        $approval->delete();
         app(ActivityLogger::class)->record(Auth::user() ?? Auth::guard('client')->user(), "Deleted approval #{$id}");
         $this->resetPage();
         $this->dispatch('toast', message: 'Approval deleted', type: 'success');
@@ -818,7 +823,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                     <div class="flex gap-2 mt-3"><textarea wire:model="commentText" class="form-input flex-1" rows="2" placeholder="Add a comment..."></textarea><button wire:click="addComment" class="btn btn-primary btn-sm self-end"><i class="fas fa-paper-plane text-xs"></i></button></div>
                                 </div>
 
-                                @if($this->isManager)
+                                @if($this->isManager && $appr->status !== 'pending')
                                 <div class="pt-2 border-t border-gray-100">
                                     <button type="button" wire:click="$dispatch('open-confirm', { title: 'Delete Approval?', message: 'This approval and its comments will be removed.', type: 'danger', action: 'deleteApproval', params: [{{ $appr->id }}] })" class="btn btn-ghost btn-sm text-red-500" aria-label="Delete approval"><i class="fas fa-trash text-xs"></i> Delete</button>
                                 </div>

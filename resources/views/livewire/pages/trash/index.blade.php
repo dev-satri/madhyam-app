@@ -12,7 +12,9 @@ new class extends Component
     public string $typeFilter = '';
     public string $search = '';
     public int $deleteId = 0;
+    public int $restoreId = 0;
     public bool $showDeleteConfirm = false;
+    public bool $showRestoreConfirm = false;
     public bool $showRestoreAllConfirm = false;
     public bool $showDeleteAllConfirm = false;
 
@@ -49,7 +51,7 @@ new class extends Component
             });
         }
 
-        return $query->with('dealer')->latest()->paginate(15);
+        return $query->with('deleter')->latest()->paginate(15);
     }
 
     public function getTypeCountsProperty(): array
@@ -82,10 +84,24 @@ new class extends Component
         ];
     }
 
-    public function restore(int $id): void
+    public function confirmRestore(int $id): void
     {
-        $this->trashService->restore($id);
+        $this->restoreId = $id;
+        $this->showRestoreConfirm = true;
+    }
+
+    public function performRestore(): void
+    {
+        $this->trashService->restore($this->restoreId);
+        $this->restoreId = 0;
+        $this->showRestoreConfirm = false;
         $this->dispatch('toast', message: 'Item restored successfully', type: 'success');
+    }
+
+    public function cancelRestore(): void
+    {
+        $this->restoreId = 0;
+        $this->showRestoreConfirm = false;
     }
 
     public function confirmDelete(int $id): void
@@ -221,6 +237,7 @@ new class extends Component
                     <tr>
                         <th>Item</th>
                         <th>Type</th>
+                        <th>Status</th>
                         <th>Deleted By</th>
                         <th>Deleted At</th>
                         <th>Expires In</th>
@@ -252,8 +269,17 @@ new class extends Component
                                     {{ class_basename($item->trashable_type) }}
                                 </span>
                             </td>
+                            <td>
+                                @if ($item->status)
+                                    <span class="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold {{ $item->status_badge_class }}">
+                                        {{ $item->status_label }}
+                                    </span>
+                                @else
+                                    <span class="text-xs text-gray-400">-</span>
+                                @endif
+                            </td>
                             <td class="text-gray-600 text-sm">
-                                {{ $item->dealer?->name ?? ($item->deleted_by_type === 'client' ? 'Client' : 'System') }}
+                                {{ $item->deleter?->name ?? ($item->deleted_by_type === 'client' ? 'Client' : 'System') }}
                             </td>
                             <td class="text-gray-600 text-sm">{{ $item->created_at->diffForHumans() }}</td>
                             <td>
@@ -268,7 +294,7 @@ new class extends Component
                             <td>
                                 <div class="flex items-center justify-end gap-1">
                                     <button
-                                        wire:click="restore({{ $item->id }})"
+                                        wire:click="confirmRestore({{ $item->id }})"
                                         class="btn btn-icon btn-ghost"
                                         title="Restore"
                                     >
@@ -286,7 +312,7 @@ new class extends Component
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="6">
+                            <td colspan="7">
                                 <div class="py-16 text-center">
                                     <div
                                         class="flex h-14 w-14 mx-auto items-center justify-center rounded-2xl bg-gray-100 mb-4"
@@ -307,6 +333,35 @@ new class extends Component
             <div class="border-t border-gray-100 px-4 py-3">{{ $this->items->links() }}</div>
         @endif
     </div>
+
+    {{-- ========== RESTORE CONFIRMATION ========== --}}
+    @if ($showRestoreConfirm)
+        <div class="confirm-overlay" x-data x-on:keydown.escape.window="$wire.cancelRestore()">
+            <div class="confirm-box">
+                <div class="confirm-icon info">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+                    </svg>
+                </div>
+                <h3 class="mb-2 text-lg font-bold text-gray-900">Restore Item</h3>
+                <p class="mb-6 text-sm text-gray-500">Are you sure you want to restore this item? It will be returned to its original location.</p>
+                <div class="flex gap-3">
+                    <button
+                        wire:click="cancelRestore"
+                        class="flex-1 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors"
+                    >
+                        Cancel
+                    </button>
+                    <button
+                        wire:click="performRestore"
+                        class="flex-1 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 transition-colors"
+                    >
+                        <i class="fas fa-undo text-xs mr-1"></i> Restore
+                    </button>
+                </div>
+            </div>
+        </div>
+    @endif
 
     {{-- ========== DELETE CONFIRMATION ========== --}}
     @if ($showDeleteConfirm)

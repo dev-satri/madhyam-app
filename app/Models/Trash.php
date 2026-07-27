@@ -76,4 +76,50 @@ class Trash extends Model
     {
         return max(0, 7 - (int) now()->diffInDays($this->created_at, false));
     }
+
+    public function getStatusAttribute(): ?string
+    {
+        return $this->model_data['status'] ?? null;
+    }
+
+    public function getStatusLabelAttribute(): ?string
+    {
+        $status = $this->status;
+        if ($status === null) {
+            return null;
+        }
+
+        return match ($status) {
+            'todo' => 'To Do',
+            'in-progress' => 'In Progress',
+            'completed' => 'Completed',
+            'pending' => 'Pending',
+            'approved' => 'Approved',
+            'revision' => 'Revision',
+            'rejected' => 'Rejected',
+            'open' => 'Open',
+            'resolved' => 'Resolved',
+            'draft' => 'Draft',
+            'scripting' => 'Scripting',
+            'in-review' => 'In Review',
+            'scheduled' => 'Scheduled',
+            'published' => 'Published',
+            default => ucfirst(str_replace('-', ' ', $status)),
+        };
+    }
+
+    public function getStatusBadgeClassAttribute(): string
+    {
+        return match ($this->status) {
+            'todo', 'draft', 'open' => 'bg-gray-100 text-gray-700',
+            'in-progress', 'scripting' => 'bg-blue-100 text-blue-700',
+            'completed', 'resolved', 'published' => 'bg-green-100 text-green-700',
+            'pending' => 'bg-amber-100 text-amber-700',
+            'approved' => 'bg-emerald-100 text-emerald-700',
+            'revision', 'rejected' => 'bg-red-100 text-red-700',
+            'in-review' => 'bg-purple-100 text-purple-700',
+            'scheduled' => 'bg-indigo-100 text-indigo-700',
+            default => 'bg-gray-100 text-gray-600',
+        };
+    }
 }

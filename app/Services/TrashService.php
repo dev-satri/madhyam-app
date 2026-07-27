@@ -12,7 +12,7 @@ class TrashService
      */
     public function getTrashedItems(?string $type = null, int $perPage = 20): LengthAwarePaginator
     {
-        $query = Trash::with('dealer')->latest();
+        $query = Trash::with('deleter')->latest();
 
         if ($type) {
             $query->forModel($type);

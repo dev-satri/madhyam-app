@@ -499,7 +499,15 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function delete(int $id): void
     {
-        Workflow::find($id)?->delete();
+        $workflow = Workflow::find($id);
+        if (!$workflow) {
+            return;
+        }
+        if (in_array($workflow->stage, ['published', 'ready-for-production'])) {
+            $this->dispatch('toast', message: 'Cannot delete a workflow in ' . str_replace('-', ' ', $workflow->stage) . ' stage', type: 'error');
+            return;
+        }
+        $workflow->delete();
         app(ActivityLogger::class)->record(Auth::user(), "Deleted workflow #{$id}");
         $this->dispatch('workflowUpdated');
         $this->dispatch('toast', message: 'Workflow item deleted', type: 'success');
@@ -1213,7 +1221,7 @@ new #[Layout('components.layouts.app')] class extends Component
                             <button type="button" wire:click="$set('showForm', false)" class="btn btn-secondary">
                                 Cancel
                             </button>
-                            @if ($formMode === 'edit')
+                            @if ($formMode === 'edit' && !in_array($formStage, ['published', 'ready-for-production']))
                                 <button
                                     type="button"
                                     wire:click="$dispatch('open-confirm', { title: 'Delete Workflow Item?', message: 'This item and its activity will be permanently removed.', type: 'danger', action: 'delete', params: [{{ $editingId }}] })"

@@ -324,7 +324,12 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function deleteContent(int $id): void
     {
-        Content::findOrFail($id)->delete();
+        $content = Content::findOrFail($id);
+        if (in_array($content->status, ['published', 'in-review', 'scheduled'])) {
+            $this->dispatch('toast', message: 'Cannot delete content with status: ' . $content->status, type: 'error');
+            return;
+        }
+        $content->delete();
         $this->loadMonthContent();
         $this->dispatch('contentUpdated');
         $this->dispatch('toast', message: 'Content deleted successfully', type: 'success');
@@ -736,7 +741,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                                 ><i class="fas fa-clock mr-1"></i>Pending</span
                                             >
                                         @endif
-                                        @if ($item->status !== 'published' && $item->status !== 'in-review')
+                                        @if ($item->status !== 'published' && $item->status !== 'in-review' && $item->status !== 'scheduled')
                                             <button
                                                 wire:click="editContent({{ $item->id }})"
                                                 class="btn btn-icon btn-ghost"

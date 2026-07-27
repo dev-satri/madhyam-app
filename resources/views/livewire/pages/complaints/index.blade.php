@@ -314,7 +314,12 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function deleteComplaint(int $id): void
     {
-        Complaint::findOrFail($id)->delete();
+        $complaint = Complaint::findOrFail($id);
+        if ($complaint->status === 'in-progress') {
+            $this->dispatch('toast', message: 'Cannot delete a complaint that is in progress', type: 'error');
+            return;
+        }
+        $complaint->delete();
         $this->closeDetail();
         $this->dispatch('toast', message: 'Complaint deleted', type: 'success');
     }
@@ -627,7 +632,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                 <button wire:click="openForm({{ $detailId }})" class="btn btn-primary btn-sm"><i class="fas fa-pen mr-1"></i> Edit Complaint</button>
                             @endif
 
-                            @if($this->isManagerUser)
+                            @if($this->isManagerUser && $currentComplaint->status !== 'in-progress')
                                 <div class="ml-auto">
                                     <button type="button" wire:click="$dispatch('open-confirm', { title: 'Delete Complaint?', message: 'This complaint and all its replies will be permanently removed.', type: 'danger', action: 'deleteComplaint', params: [{{ $detailId }}] })" class="btn btn-ghost btn-sm text-red-500 hover:text-red-700 hover:bg-red-50">
                                         <i class="fas fa-trash mr-1"></i> Delete
