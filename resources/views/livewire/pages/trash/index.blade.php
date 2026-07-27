@@ -271,7 +271,9 @@ new class extends Component
                             </td>
                             <td>
                                 @if ($item->status)
-                                    <span class="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold {{ $item->status_badge_class }}">
+                                    <span
+                                        class="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold {{ $item->status_badge_class }}"
+                                    >
                                         {{ $item->status_label }}
                                     </span>
                                 @else
