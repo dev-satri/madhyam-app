@@ -375,10 +375,10 @@ new #[Layout('components.layouts.guest')] class extends Component
                         @if ($loginMode === 'staff')
                             <div class="grid grid-cols-2 gap-2">
                                 @foreach ([
-                                    ['label' => 'Super Admin', 'email' => 'super@madhyam.com', 'password' => 'admin123'],
-                                    ['label' => 'Manager', 'email' => 'rajesh@madhyam.com', 'password' => 'pass123'],
-                                    ['label' => 'Editor', 'email' => 'anil@madhyam.com', 'password' => 'pass123'],
-                                    ['label' => 'Videographer', 'email' => 'sita@madhyam.com', 'password' => 'pass123'],
+                                    ['label' => 'Super Admin', 'email' => 'superadmin@madhyam.com', 'password' => 'SuperAdmin@123'],
+                                    ['label' => 'Admin', 'email' => 'admin@madhyam.com', 'password' => 'Admin@123'],
+                                    ['label' => 'Editor', 'email' => 'staff.editor@madhyam.com', 'password' => 'Staff@123'],
+                                    ['label' => 'Videographer', 'email' => 'staff.video@madhyam.com', 'password' => 'Staff@123'],
                                 ] as $account)
                                     <button
                                         type="button"
@@ -393,13 +393,12 @@ new #[Layout('components.layouts.guest')] class extends Component
                         @else
                             <div class="space-y-2">
                                 @foreach ([
-                                    ['label' => 'Himalayan Coffee', 'email' => 'ram@himalayancoffee.com'],
-                                    ['label' => 'Trek Nepal', 'email' => 'maya@treknepal.com'],
-                                    ['label' => 'Green Leaf', 'email' => 'devi@greenleaf.com'],
+                                    ['label' => 'Himalayan Coffee Co.', 'email' => 'client1@madhyam.com', 'password' => 'Client@123'],
+                                    ['label' => 'Trek Nepal Adventures', 'email' => 'client2@madhyam.com', 'password' => 'Client@123'],
                                 ] as $account)
                                     <button
                                         type="button"
-                                        wire:click="fillDemo('{{ $account['email'] }}', 'client123')"
+                                        wire:click="fillDemo('{{ $account['email'] }}', '{{ $account['password'] }}')"
                                         class="w-full rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 text-left transition-colors hover:border-brand-200 hover:bg-brand-50"
                                     >
                                         <p class="text-xs font-semibold text-gray-700">{{ $account['label'] }}</p>
