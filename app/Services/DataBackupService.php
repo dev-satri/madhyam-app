@@ -13,7 +13,7 @@ class DataBackupService
         'feature_access', 'data_access', 'custom_roles',
         'contents',
         'workflows', 'tasks', 'task_comments',
-        'files', 'folders', 'file_expiries',
+        'folders', 'files', 'file_expiries',
         'invoices', 'invoice_payments',
         'leaves', 'salaries', 'overtime_logs', 'expenses',
         'complaints', 'complaint_replies',

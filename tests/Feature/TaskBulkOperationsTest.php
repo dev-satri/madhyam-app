@@ -27,7 +27,10 @@ class TaskBulkOperationsTest extends TestCase
         parent::setUp();
         $this->seed([DatabaseSeeder::class]);
 
-        $this->manager = User::where('role', 'manager')->first();
+        // The final-test seeder produces admin + editor + videographer + super-admin.
+        // Admin fills the "elevated view" role previously exercised by 'manager';
+        // videographer fills the "someone else" role previously exercised by 'designer'.
+        $this->manager = User::where('role', 'admin')->first();
         $this->editor = User::where('role', 'editor')->first();
     }
 
@@ -109,7 +112,7 @@ class TaskBulkOperationsTest extends TestCase
         ]);
 
         // Create task assigned to someone else
-        $other = User::where('role', 'designer')->first();
+        $other = User::where('role', 'videographer')->first();
         DB::table('tasks')->insert([
             'title' => 'Not My Task', 'type' => 'task', 'priority' => 'medium',
             'assignee' => $other->id, 'due_date' => now()->format('Y-m-d'),
