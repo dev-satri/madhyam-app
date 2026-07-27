@@ -746,23 +746,23 @@ new #[Layout('components.layouts.app')] class extends Component
                 </div>
             @endif
             @if($showMemberForm)
-                <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" wire:click.self="$set('showMemberForm', false)" x-on:keydown.escape.window="$wire.set('showMemberForm', false)">
-                    <div class="modal-box w-full max-w-lg mx-4">
-                        <div class="sticky top-0 bg-white flex items-center justify-between p-4 border-b">
+                <div class="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm p-0 sm:p-4" wire:click.self="$set('showMemberForm', false)" x-on:keydown.escape.window="$wire.set('showMemberForm', false)">
+                    <div class="modal-box w-full max-w-lg sm:mx-4 max-h-[92vh] sm:max-h-[90vh] rounded-t-2xl sm:rounded-2xl">
+                        <div class="sticky top-0 bg-white flex items-center justify-between px-4 py-3 sm:p-4 border-b z-10">
                             <h3 class="font-bold text-lg">{{ $editingMemberId ? 'Edit' : 'Add' }} Member</h3>
-                            <button wire:click="$set('showMemberForm', false)" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
+                            <button wire:click="$set('showMemberForm', false)" class="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
                         </div>
-                        <div class="p-4 space-y-4">
+                        <div class="modal-body px-4 py-4 sm:p-4 space-y-3 sm:space-y-4">
                             @if($generatedPassword)
                                 <div class="bg-green-50 border border-green-200 rounded-lg p-3">
                                     <div class="flex items-start gap-2">
                                         <i class="fas fa-check-circle text-green-500 mt-0.5"></i>
-                                        <div class="flex-1">
+                                        <div class="flex-1 min-w-0">
                                             <p class="text-sm font-semibold text-green-800">Member created! Welcome email sent.</p>
                                             <p class="text-xs text-green-700 mt-1">Auto-generated password (share this with the member):</p>
                                             <div class="mt-2 flex items-center gap-2">
-                                                <code class="bg-white border border-green-200 rounded px-2 py-1 text-sm font-mono text-gray-900">{{ $generatedPassword }}</code>
-                                                <button type="button" wire:click="dismissGeneratedPassword" class="text-xs text-green-600 hover:text-green-800 underline">Dismiss</button>
+                                                <code class="bg-white border border-green-200 rounded px-2 py-1 text-sm font-mono text-gray-900 truncate">{{ $generatedPassword }}</code>
+                                                <button type="button" wire:click="dismissGeneratedPassword" class="text-xs text-green-600 hover:text-green-800 underline whitespace-nowrap">Dismiss</button>
                                             </div>
                                         </div>
                                     </div>
@@ -827,7 +827,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                 <span wire:error="formBaseSalary" class="text-red-500 text-xs mt-1 block"></span>
                             </div>
                         </div>
-                        <div class="sticky bottom-0 bg-white flex justify-end gap-2 p-4 border-t">
+                        <div class="sticky bottom-0 bg-white flex justify-end gap-2 px-4 py-3 sm:p-4 border-t">
                             <button wire:click="$set('showMemberForm', false)" class="btn btn-secondary">Cancel</button>
                             <button wire:click="saveMember" class="btn btn-primary" wire:loading.attr="disabled" wire:target="saveMember"><span wire:loading.remove wire:target="saveMember">Save</span><span wire:loading wire:target="saveMember" class="flex items-center gap-2"><svg class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Saving...</span></button>
                         </div>
@@ -837,17 +837,17 @@ new #[Layout('components.layouts.app')] class extends Component
 
             {{-- Department Form Modal --}}
             @if($showDeptForm)
-                <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" wire:click.self="$set('showDeptForm', false)" x-on:keydown.escape.window="$wire.set('showDeptForm', false)">
-                    <div class="modal-box w-full max-w-sm mx-4">
-                        <div class="sticky top-0 bg-white flex items-center justify-between p-4 border-b">
+                <div class="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm p-0 sm:p-4" wire:click.self="$set('showDeptForm', false)" x-on:keydown.escape.window="$wire.set('showDeptForm', false)">
+                    <div class="modal-box w-full max-w-sm sm:mx-4 max-h-[85vh] rounded-t-2xl sm:rounded-2xl">
+                        <div class="sticky top-0 bg-white flex items-center justify-between px-4 py-3 sm:p-4 border-b z-10">
                             <h3 class="font-bold text-lg">{{ $editingDeptId ? 'Edit' : 'Add' }} Department</h3>
-                            <button wire:click="$set('showDeptForm', false)" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
+                            <button wire:click="$set('showDeptForm', false)" class="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
                         </div>
-                        <div class="p-4 space-y-4">
+                        <div class="modal-body px-4 py-4 sm:p-4 space-y-3 sm:space-y-4">
                             <div><label class="form-label">Name</label><input type="text" wire:model="formDeptName" class="form-input"><span wire:error="formDeptName" class="text-red-500 text-xs mt-1 block"></span></div>
                             <div><label class="form-label">Description</label><textarea wire:model="formDeptDesc" class="form-input" rows="2"></textarea></div>
                         </div>
-                        <div class="sticky bottom-0 bg-white flex justify-end gap-2 p-4 border-t">
+                        <div class="sticky bottom-0 bg-white flex justify-end gap-2 px-4 py-3 sm:p-4 border-t">
                             <button wire:click="$set('showDeptForm', false)" class="btn btn-secondary">Cancel</button>
                             <button wire:click="saveDept" class="btn btn-primary">Save</button>
                         </div>
@@ -857,13 +857,13 @@ new #[Layout('components.layouts.app')] class extends Component
 
             {{-- Role Form Modal --}}
             @if($showRoleForm)
-                <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" wire:click.self="$set('showRoleForm', false)" x-on:keydown.escape.window="$wire.set('showRoleForm', false)">
-                    <div class="modal-box w-full max-w-lg mx-4 max-h-[85vh] overflow-y-auto">
-                        <div class="sticky top-0 bg-white flex items-center justify-between p-4 border-b z-10">
+                <div class="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm p-0 sm:p-4" wire:click.self="$set('showRoleForm', false)" x-on:keydown.escape.window="$wire.set('showRoleForm', false)">
+                    <div class="modal-box w-full max-w-lg sm:mx-4 max-h-[92vh] sm:max-h-[85vh] rounded-t-2xl sm:rounded-2xl">
+                        <div class="sticky top-0 bg-white flex items-center justify-between px-4 py-3 sm:p-4 border-b z-10">
                             <h3 class="font-bold text-lg">{{ $editingRoleId ? 'Edit' : 'Add' }} Role</h3>
-                            <button wire:click="$set('showRoleForm', false)" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
+                            <button wire:click="$set('showRoleForm', false)" class="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
                         </div>
-                        <div class="p-4 space-y-4">
+                        <div class="modal-body px-4 py-4 sm:p-4 space-y-3 sm:space-y-4">
                             <div><label class="form-label">Role Name</label><input type="text" wire:model="formRoleName" class="form-input" placeholder="e.g. Senior Designer"><span wire:error="formRoleName" class="text-red-500 text-xs mt-1 block"></span></div>
                             <div><label class="form-label">Description</label><textarea wire:model="formRoleDesc" class="form-input" rows="2" placeholder="Optional description"></textarea></div>
 
@@ -909,7 +909,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                 </div>
                             </div>
                         </div>
-                        <div class="sticky bottom-0 bg-white flex justify-end gap-2 p-4 border-t">
+                        <div class="sticky bottom-0 bg-white flex justify-end gap-2 px-4 py-3 sm:p-4 border-t">
                             <button wire:click="$set('showRoleForm', false)" class="btn btn-secondary">Cancel</button>
                             <button wire:click="saveRole" class="btn btn-primary" wire:loading.attr="disabled" wire:target="saveRole"><span wire:loading.remove wire:target="saveRole">Save</span><span wire:loading wire:target="saveRole" class="flex items-center gap-2"><svg class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Saving...</span></button>
                         </div>

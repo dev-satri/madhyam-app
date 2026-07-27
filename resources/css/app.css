@@ -1379,9 +1379,20 @@ body {
         font-size: 20px;
     }
     .modal-box {
-        border-radius: 12px;
+        border-radius: 16px 16px 0 0;
         max-width: 100%;
         margin: 0;
+        max-height: 92vh;
+    }
+    .modal-body {
+        padding: 16px;
+    }
+    .modal-header {
+        padding: 12px 16px;
+    }
+    .form-input, .form-select, .form-textarea {
+        min-height: 44px;
+        font-size: 16px;
     }
     .toast {
         min-width: auto;
