@@ -1407,3 +1407,9 @@ body {
         padding: 0 20px;
     }
 }
+
+/* Prevent flash of loading elements before Livewire boots */
+[wire\:loading],
+[wire\:loading\.delay] {
+    display: none;
+}

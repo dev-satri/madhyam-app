@@ -68,6 +68,21 @@ class PaymentTracker
             $invoice->payment_status = 'pending';
         }
 
+        // Update installment plan progress before saving.
+        if ($hasPlan) {
+            $plan = is_array($invoice->installment_plan)
+                ? $invoice->installment_plan
+                : json_decode($invoice->installment_plan, true);
+
+            if (is_array($plan)) {
+                $perInstallment = (float) ($plan['amountPerInstallment'] ?? 0);
+                if ($perInstallment > 0) {
+                    $plan['paidInstallments'] = (int) floor($totalPaid / $perInstallment);
+                }
+                $invoice->installment_plan = $plan;
+            }
+        }
+
         $invoice->save();
 
         return $invoice;

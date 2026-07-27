@@ -9,6 +9,10 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
 use App\Models\Invoice;
+use App\Models\InvoicePayment;
+use App\Models\User;
+use App\Notifications\InvoiceCreatedNotification;
+use App\Notifications\InvoicePaymentReceivedNotification;
 use App\Services\PaymentTracker;
 use App\Services\ActivityLogger;
 use App\Services\NotificationService;
@@ -233,7 +237,39 @@ new #[Layout('components.layouts.app')] class extends Component
         // Normalize status via PaymentTracker (handles overdue/discount/installment edge cases).
         if ($invoice = Invoice::find($invoiceId)) {
             app(PaymentTracker::class)->recalc($invoice);
+
+            // Send invoice created notification to client (only for new invoices).
+            // Sends to the primary client email AND any portal accounts (deduped),
+            // so clients without a portal login still receive the invoice.
+            if ($verb === 'created' && $invoice->client && $invoice->client->email) {
+                $sent = [];
+                \Illuminate\Support\Facades\Notification::route('mail', $invoice->client->email)
+                    ->notify(new InvoiceCreatedNotification($invoice));
+                $sent[] = strtolower($invoice->client->email);
+                $invoice->client->accounts->each(function ($account) use ($invoice, &$sent) {
+                    if ($account->email && ! in_array(strtolower($account->email), $sent, true)) {
+                        $account->notify(new InvoiceCreatedNotification($invoice));
+                        $sent[] = strtolower($account->email);
+                    }
+                });
+            }
         }
+
+        // In-app notification for admin/manager
+        $clientName = $invoice->client->name ?? 'Unknown';
+        $amount = number_format($this->formAmount, 2);
+        app(NotificationService::class)->sendNotification(
+            text: "Invoice #{$invoiceId} {$verb} for {$clientName} — NPR {$amount}",
+            type: 'info',
+            link: route('reports', absolute: false),
+            forRole: 'admin',
+        );
+        app(NotificationService::class)->sendNotification(
+            text: "Invoice #{$invoiceId} {$verb} for {$clientName} — NPR {$amount}",
+            type: 'info',
+            link: route('reports', absolute: false),
+            forRole: 'manager',
+        );
 
         app(ActivityLogger::class)->record(Auth::user(), "Invoice #{$invoiceId} {$verb}");
 
@@ -260,6 +296,49 @@ new #[Layout('components.layouts.app')] class extends Component
         return DB::table('invoices')->where('id', $this->paymentInvoiceId)->first();
     }
 
+    public function getPaymentContext(): array
+    {
+        $inv = DB::table('invoices')->where('id', $this->paymentInvoiceId)->first();
+        if (! $inv) {
+            return ['remaining' => 0, 'is_installment' => false];
+        }
+
+        $totalPaid = (float) DB::table('invoice_payments')->where('invoice_id', $inv->id)->sum('amount');
+        $netAmount = (float) $inv->amount - (float) $inv->discount_amount;
+        $remaining = max(0, $netAmount - $totalPaid);
+        $isInstallment = $inv->payment_status === 'installment' && ! empty($inv->installment_plan);
+
+        $context = [
+            'remaining' => $remaining,
+            'net_amount' => $netAmount,
+            'total_paid' => $totalPaid,
+            'is_installment' => $isInstallment,
+            'invoice_id' => $inv->id,
+            'status' => $inv->status,
+        ];
+
+        if ($isInstallment) {
+            $plan = is_string($inv->installment_plan) ? json_decode($inv->installment_plan, true) : $inv->installment_plan;
+            $amountPerInstallment = (float) ($plan['amountPerInstallment'] ?? 0);
+            $totalInstallments = (int) ($plan['totalInstallments'] ?? 0);
+            $paidInstallments = $amountPerInstallment > 0 ? (int) floor($totalPaid / $amountPerInstallment) : 0;
+            $currentInstallmentPaid = $totalPaid - ($paidInstallments * $amountPerInstallment);
+            $currentInstallmentRemaining = max(0, $amountPerInstallment - $currentInstallmentPaid);
+
+            $context['amount_per_installment'] = $amountPerInstallment;
+            $context['total_installments'] = $totalInstallments;
+            $context['paid_installments'] = min($paidInstallments, $totalInstallments);
+            $context['current_installment_number'] = min($paidInstallments + 1, $totalInstallments);
+            $context['current_installment_paid'] = $currentInstallmentPaid;
+            $context['current_installment_remaining'] = $currentInstallmentRemaining;
+            $context['expected_amount'] = $currentInstallmentRemaining;
+        } else {
+            $context['expected_amount'] = $remaining;
+        }
+
+        return $context;
+    }
+
     public function savePayment(): void
     {
         abort_if($this->isClientPortal(), 403);
@@ -269,12 +348,28 @@ new #[Layout('components.layouts.app')] class extends Component
             'payMethod' => 'required',
         ]);
 
+        // Validate payment amount against remaining balance
+        $context = $this->getPaymentContext();
+        $payAmount = (float) $this->payAmount;
+
+        if ($payAmount > $context['remaining'] + 0.01) {
+            $this->dispatch('toast', message: 'Payment amount (NPR ' . number_format($payAmount, 2) . ') exceeds remaining balance (NPR ' . number_format($context['remaining'], 2) . ')', type: 'error');
+            return;
+        }
+
+        if ($context['is_installment']) {
+            $expected = $context['expected_amount'];
+            if ($payAmount < $expected - 0.01 && $payAmount < $context['remaining'] - 0.01) {
+                $this->dispatch('toast', message: 'Installment expected: NPR ' . number_format($expected, 2) . '. Partial payment of NPR ' . number_format($payAmount, 2) . ' recorded — remaining NPR ' . number_format($expected - $payAmount, 2) . ' carried to next installment.', type: 'warning');
+            }
+        }
+
         $proofPath = null;
         if ($this->payProof) {
             $proofPath = $this->payProof->store('payment-proofs', 'public');
         }
 
-        DB::table('invoice_payments')->insert([
+        $paymentId = DB::table('invoice_payments')->insertGetId([
             'invoice_id' => $this->paymentInvoiceId,
             'amount' => $this->payAmount,
             'date' => $this->payDate,
@@ -285,24 +380,164 @@ new #[Layout('components.layouts.app')] class extends Component
             'updated_at' => now(),
         ]);
 
-        // Recalculate invoice status via the canonical service (plan §24.5).
+        // Auto-update installment paidInstallments counter
         if ($invoice = Invoice::find($this->paymentInvoiceId)) {
+            if ($invoice->installment_plan) {
+                $plan = is_array($invoice->installment_plan) ? $invoice->installment_plan : json_decode($invoice->installment_plan, true);
+                if ($plan && isset($plan['totalInstallments'])) {
+                    $totalPaid = (float) $invoice->payments->sum('amount');
+                    $amountPerInstallment = (float) ($plan['amountPerInstallment'] ?? 0);
+                    if ($amountPerInstallment > 0) {
+                        $plan['paidInstallments'] = min(
+                            (int) $plan['totalInstallments'],
+                            (int) floor($totalPaid / $amountPerInstallment)
+                        );
+                    }
+                    $invoice->installment_plan = $plan;
+                    $invoice->save();
+                }
+            }
+
+            // Recalculate invoice status via the canonical service (plan §24.5).
             app(PaymentTracker::class)->recalc($invoice);
+
+            // Refresh to get updated status after recalc
+            $invoice->refresh();
+
+            // Send payment received notification to client via email.
+            // Sends to the primary client email AND any portal accounts (deduped),
+            // so clients without a portal login still receive the payment receipt.
+            $payment = InvoicePayment::find($paymentId);
+            if ($payment && $invoice->client && $invoice->client->email) {
+                $sent = [];
+                \Illuminate\Support\Facades\Notification::route('mail', $invoice->client->email)
+                    ->notify(new InvoicePaymentReceivedNotification($invoice, $payment));
+                $sent[] = strtolower($invoice->client->email);
+                $invoice->client->accounts->each(function ($account) use ($invoice, $payment, &$sent) {
+                    if ($account->email && ! in_array(strtolower($account->email), $sent, true)) {
+                        $account->notify(new InvoicePaymentReceivedNotification($invoice, $payment));
+                        $sent[] = strtolower($account->email);
+                    }
+                });
+            }
+
+            // In-app notification text
+            $clientName = $invoice->client->name ?? 'Unknown';
+            $paymentAmount = number_format($this->payAmount, 2);
+            $statusText = $invoice->status === 'paid' ? ' (FULLY PAID)' : '';
+
+            // Notify admin
+            app(NotificationService::class)->sendNotification(
+                text: "Payment of NPR {$paymentAmount} received from {$clientName} for invoice #{$this->paymentInvoiceId}{$statusText}",
+                type: 'success',
+                link: route('reports', absolute: false),
+                forRole: 'admin',
+            );
+
+            // Notify manager
+            app(NotificationService::class)->sendNotification(
+                text: "Payment of NPR {$paymentAmount} received from {$clientName} for invoice #{$this->paymentInvoiceId}{$statusText}",
+                type: 'success',
+                link: route('reports', absolute: false),
+                forRole: 'manager',
+            );
+
+            // Also send email notification to admin/manager
+            $managerEmails = User::whereIn('role', ['admin', 'manager'])->pluck('email')->filter()->toArray();
+            foreach ($managerEmails as $email) {
+                app(NotificationService::class)->emailNotify(
+                    to: $email,
+                    subject: "Payment Received — NPR {$paymentAmount} from {$clientName}",
+                    body: "A payment of NPR {$paymentAmount} has been received from {$clientName} for Invoice #{$this->paymentInvoiceId}.\n\nMethod: " . ucfirst($this->payMethod) . "\nDate: {$this->payDate}\n\n" . ($invoice->status === 'paid' ? "This invoice is now FULLY PAID.\n\n" : "Remaining balance: NPR " . number_format($invoice->net_amount - $invoice->total_paid, 2) . "\n\n") . "View invoice: " . route('reports'),
+                );
+            }
         }
 
         app(ActivityLogger::class)->record(
             Auth::user(),
             "Payment of {$this->payAmount} recorded for invoice #{$this->paymentInvoiceId}"
         );
+
+        $this->showRecordPayment = false;
+        $this->dispatch('toast', message: 'Payment recorded' . ($invoice->status === 'paid' ? ' — Invoice fully paid!' : ''), type: 'success');
+    }
+
+    public function markAsPaid(int $invoiceId): void
+    {
+        abort_if($this->isClientPortal(), 403);
+
+        $invoice = Invoice::find($invoiceId);
+        if (! $invoice) {
+            return;
+        }
+
+        $remaining = max(0, $invoice->net_amount - $invoice->total_paid);
+
+        // Record a payment for the remaining balance if there's anything left
+        if ($remaining > 0) {
+            DB::table('invoice_payments')->insert([
+                'invoice_id' => $invoiceId,
+                'amount' => $remaining,
+                'date' => now()->toDateString(),
+                'method' => 'cash',
+                'note' => 'Marked as paid by ' . Auth::user()->name,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
+
+        // Recalculate status
+        $invoice->refresh();
+        app(PaymentTracker::class)->recalc($invoice);
+        $invoice->refresh();
+
+        // Send notifications
+        $clientName = $invoice->client->name ?? 'Unknown';
+        $paymentAmount = number_format($remaining, 2);
+
+        // Email to client — primary email + portal accounts, deduped.
+        if ($invoice->client && $invoice->client->email) {
+            $payment = InvoicePayment::where('invoice_id', $invoiceId)->latest()->first();
+            if ($payment) {
+                $sent = [];
+                \Illuminate\Support\Facades\Notification::route('mail', $invoice->client->email)
+                    ->notify(new InvoicePaymentReceivedNotification($invoice, $payment));
+                $sent[] = strtolower($invoice->client->email);
+                $invoice->client->accounts->each(function ($account) use ($invoice, $payment, &$sent) {
+                    if ($account->email && ! in_array(strtolower($account->email), $sent, true)) {
+                        $account->notify(new InvoicePaymentReceivedNotification($invoice, $payment));
+                        $sent[] = strtolower($account->email);
+                    }
+                });
+            }
+        }
+
+        // In-app notifications
         app(NotificationService::class)->sendNotification(
-            text: "Payment of {$this->payAmount} recorded for invoice #{$this->paymentInvoiceId}",
+            text: "Invoice #{$invoiceId} ({$clientName}) marked as paid" . ($remaining > 0 ? " — NPR {$paymentAmount} balance settled" : ''),
             type: 'success',
             link: route('reports', absolute: false),
             forRole: 'admin',
         );
+        app(NotificationService::class)->sendNotification(
+            text: "Invoice #{$invoiceId} ({$clientName}) marked as paid" . ($remaining > 0 ? " — NPR {$paymentAmount} balance settled" : ''),
+            type: 'success',
+            link: route('reports', absolute: false),
+            forRole: 'manager',
+        );
 
-        $this->showRecordPayment = false;
-        $this->dispatch('toast', message: 'Payment recorded', type: 'success');
+        // Email to admin/manager
+        $managerEmails = User::whereIn('role', ['admin', 'manager'])->pluck('email')->filter()->toArray();
+        foreach ($managerEmails as $email) {
+            app(NotificationService::class)->emailNotify(
+                to: $email,
+                subject: "Invoice #{$invoiceId} Marked as Paid — {$clientName}",
+                body: "Invoice #{$invoiceId} for {$clientName} has been marked as paid.\n\n" . ($remaining > 0 ? "A final payment of NPR {$paymentAmount} was recorded to settle the remaining balance.\n\n" : "") . "View invoice: " . route('reports'),
+            );
+        }
+
+        app(ActivityLogger::class)->record(Auth::user(), "Invoice #{$invoiceId} marked as paid");
+        $this->dispatch('toast', message: 'Invoice marked as paid', type: 'success');
     }
 
     public function openDetail(int $id): void
@@ -541,6 +776,68 @@ new #[Layout('components.layouts.app')] class extends Component
         return $this->getOvertimeSummary();
     }
 
+    public function getOutstandingSummary(): array
+    {
+        $invoices = DB::table('invoices')->where('status', '!=', 'paid');
+        $this->scopeToClient($invoices);
+
+        $all = $invoices->get();
+        $total = (clone $invoices)->sum('amount') - (clone $invoices)->sum('discount_amount');
+
+        // Calculate actual remaining by subtracting payments
+        $invoiceIds = $all->pluck('id')->toArray();
+        $payments = !empty($invoiceIds)
+            ? DB::table('invoice_payments')
+                ->whereIn('invoice_id', $invoiceIds)
+                ->selectRaw('invoice_id, SUM(amount) as total_paid')
+                ->groupBy('invoice_id')
+                ->get()
+                ->keyBy('invoice_id')
+            : collect();
+
+        $totalRemaining = 0;
+        $overdueAmount = 0;
+        $overdueCount = 0;
+        $pendingAmount = 0;
+        $pendingCount = 0;
+        $installmentAmount = 0;
+        $installmentCount = 0;
+        $oldestDue = null;
+
+        foreach ($all as $inv) {
+            $paid = $payments[$inv->id]->total_paid ?? 0;
+            $remaining = max(0, $inv->amount - $inv->discount_amount - $paid);
+            $totalRemaining += $remaining;
+
+            if ($inv->status === 'overdue') {
+                $overdueAmount += $remaining;
+                $overdueCount++;
+            } elseif ($inv->payment_status === 'installment') {
+                $installmentAmount += $remaining;
+                $installmentCount++;
+            } else {
+                $pendingAmount += $remaining;
+                $pendingCount++;
+            }
+
+            if (! $oldestDue || $inv->due_date < $oldestDue) {
+                $oldestDue = $inv->due_date;
+            }
+        }
+
+        return [
+            'count' => $all->count(),
+            'total' => $totalRemaining,
+            'overdue' => $overdueAmount,
+            'overdue_count' => $overdueCount,
+            'pending' => $pendingAmount,
+            'pending_count' => $pendingCount,
+            'installment' => $installmentAmount,
+            'installment_count' => $installmentCount,
+            'oldest_due' => $oldestDue,
+        ];
+    }
+
     public function render(): mixed
     {
         return <<<'blade'
@@ -555,21 +852,8 @@ new #[Layout('components.layouts.app')] class extends Component
                 @endunless
             </div>
 
-            {{-- Skeleton loader --}}
-            <div wire:loading.delay class="space-y-4 p-6">
-                <div class="h-8 bg-gray-200 rounded animate-pulse w-1/3"></div>
-                <div class="h-4 bg-gray-200 rounded animate-pulse w-2/3"></div>
-                <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    <div class="h-20 bg-gray-200 rounded-xl animate-pulse"></div>
-                    <div class="h-20 bg-gray-200 rounded-xl animate-pulse"></div>
-                    <div class="h-20 bg-gray-200 rounded-xl animate-pulse"></div>
-                    <div class="h-20 bg-gray-200 rounded-xl animate-pulse"></div>
-                </div>
-                <div class="h-64 bg-gray-200 rounded-2xl animate-pulse"></div>
-            </div>
-
             {{-- Global Stats --}}
-            <div wire:loading.remove.delay class="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div wire:loading.class="opacity-60" class="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div class="stat-card"><div class="stat-icon bg-green-100 text-green-600"><i class="fas fa-dollar-sign"></i></div><div class="stat-value">{{ fmtCurrency($this->stats['revenue']) }}</div><div class="stat-label">{{ $this->isClient ? 'Total Billed' : 'Total Revenue' }}</div></div>
                 <div class="stat-card"><div class="stat-icon bg-blue-100 text-blue-600"><i class="fas fa-check-circle"></i></div><div class="stat-value">{{ fmtCurrency($this->stats['paid']) }}</div><div class="stat-label">Paid</div></div>
                 <div class="stat-card"><div class="stat-icon bg-amber-100 text-amber-600"><i class="fas fa-clock"></i></div><div class="stat-value">{{ fmtCurrency($this->stats['pending']) }}</div><div class="stat-label">Pending</div></div>
@@ -577,7 +861,7 @@ new #[Layout('components.layouts.app')] class extends Component
             </div>
 
             @unless($this->isClient)
-                <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div wire:loading.class="opacity-60" class="grid grid-cols-2 md:grid-cols-4 gap-4">
                     <div class="stat-card"><div class="stat-icon bg-orange-100 text-orange-600"><i class="fas fa-receipt"></i></div><div class="stat-value">{{ fmtCurrency($this->stats['expenses']) }}</div><div class="stat-label">Total Expenses</div></div>
                     <div class="stat-card"><div class="stat-icon {{ $this->stats['net_profit'] >= 0 ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600' }}"><i class="fas fa-chart-line"></i></div><div class="stat-value">{{ fmtCurrency($this->stats['net_profit']) }}</div><div class="stat-label">Net Profit</div></div>
                     <div class="stat-card"><div class="stat-icon bg-purple-100 text-purple-600"><i class="fas fa-percentage"></i></div><div class="stat-value">{{ fmtCurrency($this->stats['discount']) }}</div><div class="stat-label">Discount Given</div></div>
@@ -614,50 +898,173 @@ new #[Layout('components.layouts.app')] class extends Component
                     </select></div>
                 </div>
 
-                <div class="overflow-x-auto" wire:loading.target="search,statusFilter,clientFilter">
-                    <div wire:loading class="p-6 space-y-3">
-                        @for($i = 0; $i < 5; $i++)
-                            <div class="skeleton-row"><div class="skeleton" style="width:100px;height:12px"></div><div class="skeleton" style="width:140px;height:12px"></div><div class="skeleton" style="width:70px;height:12px"></div><div class="skeleton" style="width:60px;height:12px"></div></div>
-                        @endfor
-                    </div>
-                    <div wire:loading.remove wire:target="search,statusFilter,clientFilter">
+                <div class="overflow-x-auto">
                     <table class="data-table w-full">
                         <thead><tr>
-                            <th>Client</th><th>Description</th><th>Amount</th><th>Status</th><th>Payment</th><th>Due Date</th><th>Actions</th>
+                            <th>Client</th><th>Description</th><th>Amount</th><th>Status</th><th>Due Date</th><th class="text-right">Actions</th>
                         </tr></thead>
                         <tbody>
+                            <!-- Skeleton Rows -->
+                            @for($i = 0; $i < 5; $i++)
+                                <tr wire:loading wire:target="search,statusFilter,clientFilter,activeTab">
+                                    <td><div class="skeleton h-4 w-28"></div></td>
+                                    <td><div class="skeleton h-4 w-40"></div></td>
+                                    <td class="text-right"><div class="skeleton h-4 w-20 ml-auto"></div></td>
+                                    <td>
+                                        <div class="flex gap-1.5">
+                                            <div class="skeleton h-5 w-16 rounded-full"></div>
+                                            <div class="skeleton h-5 w-12 rounded-full"></div>
+                                        </div>
+                                    </td>
+                                    <td><div class="skeleton h-4 w-24"></div></td>
+                                    <td><div class="skeleton h-8 w-8 rounded-lg ml-auto"></div></td>
+                                </tr>
+                            @endfor
+
                             @forelse($this->invoices as $inv)
+                                <tr wire:loading.remove wire:target="search,statusFilter,clientFilter,activeTab" class="{{ $inv->status === 'overdue' ? 'bg-red-50' : '' }}">
+                                @php
+                                    $sColor = match($inv->status) {
+                                        'paid' => 'green',
+                                        'overdue' => 'red',
+                                        default => 'amber',
+                                    };
+                                    $pLabel = match($inv->payment_status) {
+                                        'full' => 'Paid',
+                                        'half' => 'Partial',
+                                        'installment' => 'Installment',
+                                        'discount' => 'Discount',
+                                        default => 'Unpaid',
+                                    };
+                                    $pColor = match($inv->payment_status) {
+                                        'full' => 'green',
+                                        'half' => 'blue',
+                                        'installment' => 'cyan',
+                                        'discount' => 'purple',
+                                        default => 'gray',
+                                    };
+                                @endphp
                                 <tr class="{{ $inv->status === 'overdue' ? 'bg-red-50' : '' }}">
                                     <td class="font-medium">{{ $inv->client_name }}</td>
                                     <td class="text-sm text-gray-600">{{ $inv->description ?? '-' }}</td>
                                     <td class="text-right font-semibold">{{ fmtCurrency($inv->amount) }}</td>
-                                    <td><span class="badge {{ $inv->status === 'paid' ? 'badge-success' : ($inv->status === 'overdue' ? 'badge-danger' : 'badge-warning') }}">{{ ucfirst($inv->status) }}</span></td>
                                     <td>
-                                        <span class="badge {{ $inv->payment_status === 'full' ? 'badge-success' : ($inv->payment_status === 'half' ? 'badge-warning' : 'badge-gray') }}">
-                                            {{ ucfirst($inv->payment_status) }}
-                                            @if(!empty($inv->installment_progress)) ({{ $inv->installment_progress }}) @endif
-                                        </span>
+                                        <div class="flex items-center gap-1.5">
+                                            <span class="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[10px] font-bold bg-{{ $sColor }}-100 text-{{ $sColor }}-700">
+                                                @if($inv->status === 'paid')<i class="fas fa-check-circle"></i>@elseif($inv->status === 'overdue')<i class="fas fa-exclamation-triangle"></i>@else<i class="fas fa-clock"></i>@endif
+                                                {{ ucfirst($inv->status) }}
+                                            </span>
+                                            <span class="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-{{ $pColor }}-100 text-{{ $pColor }}-700">
+                                                {{ $pLabel }}@if(!empty($inv->installment_progress)) ({{ $inv->installment_progress }})@endif
+                                            </span>
+                                        </div>
                                     </td>
                                     <td class="text-sm">{{ fmtDate($inv->due_date) }}</td>
                                     <td>
-                                        <div class="flex items-center gap-1">
-                                            @unless($this->isClient)
-                                                <button wire:click="openRecordPayment({{ $inv->id }})" class="btn btn-icon btn-ghost" title="Record Payment"><i class="fas fa-money-bill-wave text-gray-400 hover:text-green-500 text-xs"></i></button>
-                                            @endunless
-                                            <button wire:click="openDetail({{ $inv->id }})" class="btn btn-icon btn-ghost" title="View Details"><i class="fas fa-eye text-gray-400 hover:text-[var(--brand)] text-xs"></i></button>
-                                            @unless($this->isClient)
-                                                <button type="button" wire:click="$dispatch('open-confirm', { title: 'Delete Invoice?', message: 'This invoice will be permanently removed.', type: 'danger', action: 'deleteInvoice', params: [{{ $inv->id }}] })" class="btn btn-icon btn-ghost" aria-label="Delete invoice" title="Delete"><i class="fas fa-trash text-gray-400 hover:text-red-500 text-xs"></i></button>
-                                            @endunless
+                                        <div class="flex items-center justify-end gap-1.5">
+                                            {{-- Primary action: contextual based on client/status --}}
+                                            @if($this->isClient)
+                                                <button wire:click="openDetail({{ $inv->id }})" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-gray-100 text-gray-700 hover:bg-gray-200 transition">
+                                                    <i class="fas fa-eye text-[11px]"></i> View
+                                                </button>
+                                            @elseif($inv->status !== 'paid')
+                                                <button wire:click="openRecordPayment({{ $inv->id }})" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-green-50 text-green-700 hover:bg-green-100 transition">
+                                                    <i class="fas fa-money-bill-wave text-[11px]"></i> Record Payment
+                                                </button>
+                                            @else
+                                                <button wire:click="openDetail({{ $inv->id }})" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-gray-100 text-gray-700 hover:bg-gray-200 transition">
+                                                    <i class="fas fa-eye text-[11px]"></i> View
+                                                </button>
+                                            @endif
+
+                                            {{-- Kebab menu with the rest --}}
+                                            <div class="relative" x-data="{ open: false }" @click.outside="open = false" @keydown.escape.window="open = false">
+                                                <button @click="open = !open" class="inline-flex items-center justify-center w-8 h-8 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition" aria-label="More actions">
+                                                    <i class="fas fa-ellipsis-v text-sm"></i>
+                                                </button>
+                                                <div
+                                                    x-show="open"
+                                                    x-transition.origin.top.right
+                                                    x-cloak
+                                                    class="absolute right-0 z-20 mt-1 w-52 rounded-xl border border-gray-100 bg-white py-1.5 shadow-lg ring-1 ring-black/5"
+                                                    style="display:none;"
+                                                >
+                                                    <button wire:click="openDetail({{ $inv->id }})" @click="open = false" class="flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs font-medium text-gray-700 hover:bg-gray-50">
+                                                        <i class="fas fa-eye w-4 text-gray-400"></i> View details
+                                                    </button>
+                                                    @unless($this->isClient)
+                                                        <button wire:click="openRecordPayment({{ $inv->id }})" @click="open = false" class="flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs font-medium text-gray-700 hover:bg-gray-50">
+                                                            <i class="fas fa-money-bill-wave w-4 text-gray-400"></i> Record payment
+                                                        </button>
+                                                        @if($inv->status !== 'paid')
+                                                            <button
+                                                                type="button"
+                                                                @click="open = false; $dispatch('open-confirm', { title: 'Mark as Paid?', message: 'Invoice #{{ $inv->id }} will be marked as paid and the remaining balance (NPR {{ number_format($inv->remaining, 2) }}) will be settled.', type: 'info', action: 'markAsPaid', params: [{{ $inv->id }}] })"
+                                                                class="flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs font-medium text-gray-700 hover:bg-gray-50"
+                                                            >
+                                                                <i class="fas fa-check-circle w-4 text-gray-400"></i> Mark as paid
+                                                            </button>
+                                                        @endif
+                                                    @endunless
+                                                    <a href="{{ route('invoices.pdf', $inv->id) }}" target="_blank" @click="open = false" class="flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50">
+                                                        <i class="fas fa-file-pdf w-4 text-gray-400"></i> Download PDF
+                                                    </a>
+                                                    @unless($this->isClient)
+                                                        <div class="my-1 border-t border-gray-100"></div>
+                                                        <button
+                                                            type="button"
+                                                            @click="open = false; $dispatch('open-confirm', { title: 'Delete Invoice?', message: 'This invoice will be permanently removed.', type: 'danger', action: 'deleteInvoice', params: [{{ $inv->id }}] })"
+                                                            class="flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs font-medium text-red-600 hover:bg-red-50"
+                                                        >
+                                                            <i class="fas fa-trash w-4"></i> Delete invoice
+                                                        </button>
+                                                    @endunless
+                                                </div>
+                                            </div>
                                         </div>
                                     </td>
                                 </tr>
                             @empty
-                                <tr><td colspan="7" class="text-center py-8 text-gray-400">No invoices found</td></tr>
+                                <tr wire:loading.remove wire:target="search,statusFilter,clientFilter,activeTab"><td colspan="6" class="text-center py-8 text-gray-400">No invoices found</td></tr>
                             @endforelse
                         </tbody>
                     </table>
-                    </div>
                 </div>
+            @endif
+
+            {{-- OUTSTANDING PAYMENTS SUMMARY --}}
+            @if($activeTab === 'invoices' && !$this->isClient)
+                @php $outstanding = $this->getOutstandingSummary(); @endphp
+                @if($outstanding['count'] > 0)
+                    <div class="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
+                        <div class="px-4 py-3 bg-amber-50 border-b border-amber-100 flex items-center justify-between">
+                            <h3 class="text-sm font-bold text-amber-700"><i class="fas fa-exclamation-triangle mr-1.5"></i>Outstanding Payments ({{ $outstanding['count'] }} invoices)</h3>
+                            <span class="text-sm font-bold text-amber-700">{{ fmtCurrency($outstanding['total']) }}</span>
+                        </div>
+                        <div class="p-4">
+                            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+                                <div class="bg-red-50 rounded-lg p-3">
+                                    <div class="text-xs text-red-600 font-semibold mb-1"><i class="fas fa-clock mr-1"></i>Overdue</div>
+                                    <div class="text-lg font-bold text-red-700">{{ fmtCurrency($outstanding['overdue']) }}</div>
+                                    <div class="text-xs text-red-500">{{ $outstanding['overdue_count'] }} invoice(s)</div>
+                                </div>
+                                <div class="bg-amber-50 rounded-lg p-3">
+                                    <div class="text-xs text-amber-600 font-semibold mb-1"><i class="fas fa-hourglass-half mr-1"></i>Pending</div>
+                                    <div class="text-lg font-bold text-amber-700">{{ fmtCurrency($outstanding['pending']) }}</div>
+                                    <div class="text-xs text-amber-500">{{ $outstanding['pending_count'] }} invoice(s)</div>
+                                </div>
+                                <div class="bg-cyan-50 rounded-lg p-3">
+                                    <div class="text-xs text-cyan-600 font-semibold mb-1"><i class="fas fa-calendar-alt mr-1"></i>Installment</div>
+                                    <div class="text-lg font-bold text-cyan-700">{{ fmtCurrency($outstanding['installment']) }}</div>
+                                    <div class="text-xs text-cyan-500">{{ $outstanding['installment_count'] }} invoice(s)</div>
+                                </div>
+                            </div>
+                            @if($outstanding['oldest_due'])
+                                <div class="text-xs text-gray-500 text-center">Oldest unpaid invoice due on {{ fmtDate($outstanding['oldest_due']) }}</div>
+                            @endif
+                        </div>
+                    </div>
+                @endif
             @endif
 
             {{-- SALARY & WORKERS TAB --}}
@@ -674,63 +1081,73 @@ new #[Layout('components.layouts.app')] class extends Component
                     <div class="stat-card"><div class="stat-icon bg-red-100 text-red-600"><i class="fas fa-minus-circle"></i></div><div class="stat-value">{{ fmtCurrency($this->salaryStats['total_deductions']) }}</div><div class="stat-label">Total Deductions</div></div>
                 </div>
 
-                <div class="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
-                    <div class="px-4 py-3 bg-gray-50 border-b border-gray-100">
-                        <h3 class="text-sm font-bold text-gray-700"><i class="fas fa-users-cog mr-1.5 text-gray-400"></i>Worker Overview — {{ now()->format('F Y') }}</h3>
+                <div class="bg-white rounded-xl border border-gray-200 p-6 text-center">
+                    <div class="w-12 h-12 rounded-full bg-indigo-100 flex items-center justify-center mx-auto mb-3">
+                        <i class="fas fa-users-cog text-indigo-500 text-xl"></i>
                     </div>
-                    <table class="data-table w-full">
-                        <thead><tr><th>Staff</th><th>Role</th><th>Base</th><th>OT Pay</th><th>Bonus</th><th>Deduction</th><th>Net Salary</th><th>Status</th></tr></thead>
-                        <tbody>
-                            @forelse($this->workerOverview as $w)
-                                <tr>
-                                    <td class="font-medium"><div class="flex items-center gap-2"><div class="w-7 h-7 rounded-full bg-[var(--brand)] text-white flex items-center justify-center text-[10px] font-bold">{{ substr($w->member_name, 0, 2) }}</div><div><div class="text-sm">{{ $w->member_name }}</div><div class="text-[10px] text-gray-400">{{ $w->dept_name ?? 'General' }}</div></div></div></td>
-                                    <td class="text-xs text-gray-500">{{ ucfirst(str_replace('-', ' ', $w->member_role)) }}</td>
-                                    <td class="text-sm font-mono">{{ fmtCurrency($w->base_salary) }}</td>
-                                    <td class="text-sm font-mono text-purple-600">{{ fmtCurrency($w->overtime_pay) }}</td>
-                                    <td class="text-sm font-mono text-green-600">{{ fmtCurrency($w->bonus) }}</td>
-                                    <td class="text-sm font-mono text-red-600">{{ $w->leave_deduction > 0 ? '-'.fmtCurrency($w->leave_deduction) : '—' }}</td>
-                                    <td class="text-sm font-bold">{{ fmtCurrency($w->net_salary) }}</td>
-                                    <td><span class="badge {{ $w->status === 'paid' ? 'badge-success' : ($w->status === 'approved' ? 'badge-info' : 'badge-warning') }}">{{ ucfirst($w->status) }}</span></td>
-                                </tr>
-                            @empty
-                                <tr><td colspan="8" class="text-center py-8 text-gray-400">No salary records for this month. Click "Ensure Records" on the <a href="{{ route('salary') }}" class="text-[var(--brand)] underline">Salary page</a> to generate.</td></tr>
-                            @endforelse
-                        </tbody>
-                    </table>
+                    <h3 class="font-bold text-gray-800 mb-1">Salary & Workers</h3>
+                    <p class="text-sm text-gray-500 mb-4">Manage salaries, generate payslips, and track worker payments</p>
+                    <a href="{{ route('salary') }}" class="inline-flex items-center gap-2 px-5 py-2.5 bg-[var(--brand)] text-white rounded-lg font-semibold text-sm hover:opacity-90 transition">
+                        <i class="fas fa-external-link-alt"></i> Open Full Salary Page
+                    </a>
                 </div>
             @endif
 
             {{-- EXPENSES TAB --}}
             @if($activeTab === 'expenses' && !$this->isClient)
-                <div class="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
-                    <div class="px-4 py-3 bg-gray-50 border-b border-gray-100">
-                        <h3 class="text-sm font-bold text-gray-700"><i class="fas fa-receipt mr-1.5 text-gray-400"></i>Expense Breakdown — {{ now()->format('F Y') }}</h3>
-                    </div>
-                    <div class="p-4">
-                        @forelse($this->expenseSummary as $cat)
-                            @php
-                                $colors = ['salary'=>'red','office'=>'blue','operations'=>'gray','software'=>'purple','equipment'=>'amber','travel'=>'green','marketing'=>'pink','other'=>'slate'];
-                                $icons = ['salary'=>'fa-users','office'=>'fa-building','operations'=>'fa-cogs','software'=>'fa-code','equipment'=>'fa-laptop','travel'=>'fa-plane','marketing'=>'fa-bullhorn','other'=>'fa-ellipsis-h'];
-                                $color = $colors[$cat->category] ?? 'gray';
-                                $icon = $icons[$cat->category] ?? 'fa-circle';
-                            @endphp
-                            <div class="flex items-center gap-3 py-2.5 {{ !$loop->last ? 'border-b border-gray-50' : '' }}">
-                                <div class="w-8 h-8 rounded-lg bg-{{ $color }}-100 flex items-center justify-center"><i class="fas {{ $icon }} text-{{ $color }}-500 text-sm"></i></div>
-                                <div class="flex-1 min-w-0">
-                                    <div class="flex items-center justify-between">
-                                        <span class="text-sm font-medium text-gray-700 capitalize">{{ $cat->category }}</span>
-                                        <span class="text-sm font-bold">{{ fmtCurrency($cat->total) }}</span>
-                                    </div>
-                                    <div class="mt-1 h-1.5 bg-gray-100 rounded-full overflow-hidden"><div class="h-full bg-{{ $color }}-400 rounded-full" style="width: {{ $this->stats['expenses'] > 0 ? round(($cat->total / $this->stats['expenses']) * 100) : 0 }}%"></div></div>
-                                </div>
-                                <span class="text-xs text-gray-400 w-12 text-right">{{ $cat->count }} items</span>
-                            </div>
-                        @empty
-                            <p class="text-center text-gray-400 py-8">No expenses this month</p>
-                        @endforelse
-                    </div>
+                @php
+                    $totalExpenses = $this->stats['expenses'];
+                    $topCategories = $this->expenseSummary->take(3);
+                @endphp
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div class="stat-card"><div class="stat-icon bg-orange-100 text-orange-600"><i class="fas fa-receipt"></i></div><div class="stat-value">{{ fmtCurrency($totalExpenses) }}</div><div class="stat-label">Total Expenses</div></div>
+                    <div class="stat-card"><div class="stat-icon bg-blue-100 text-blue-600"><i class="fas fa-layer-group"></i></div><div class="stat-value">{{ $this->expenseSummary->count() }}</div><div class="stat-label">Categories</div></div>
+                    <div class="stat-card"><div class="stat-icon bg-red-100 text-red-600"><i class="fas fa-arrow-up"></i></div><div class="stat-value">{{ $topCategories->isNotEmpty() ? $topCategories->first()->category : '-' }}</div><div class="stat-label">Highest Category</div></div>
+                    <div class="stat-card"><div class="stat-icon bg-green-100 text-green-600"><i class="fas fa-chart-line"></i></div><div class="stat-value">{{ fmtCurrency($this->stats['net_profit']) }}</div><div class="stat-label">Net Profit</div></div>
                 </div>
-                <p class="text-xs text-gray-400 text-center">For full expense management, visit the <a href="{{ route('expenses') }}" class="text-[var(--brand)] underline">Expenses page</a>.</p>
+
+                @if($topCategories->count())
+                    <div class="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
+                        <div class="px-4 py-3 bg-gray-50 border-b border-gray-100">
+                            <h3 class="text-sm font-bold text-gray-700"><i class="fas fa-chart-pie mr-1.5 text-gray-400"></i>Top Expense Categories — {{ now()->format('F Y') }}</h3>
+                        </div>
+                        <div class="p-4 space-y-3">
+                            @foreach($topCategories as $cat)
+                                @php
+                                    $colors = ['salary'=>'red','office'=>'blue','operations'=>'gray','software'=>'purple','equipment'=>'amber','travel'=>'green','marketing'=>'pink','other'=>'slate'];
+                                    $icons = ['salary'=>'fa-users','office'=>'fa-building','operations'=>'fa-cogs','software'=>'fa-code','equipment'=>'fa-laptop','travel'=>'fa-plane','marketing'=>'fa-bullhorn','other'=>'fa-ellipsis-h'];
+                                    $color = $colors[$cat->category] ?? 'gray';
+                                    $icon = $icons[$cat->category] ?? 'fa-circle';
+                                    $pct = $totalExpenses > 0 ? round(($cat->total / $totalExpenses) * 100) : 0;
+                                @endphp
+                                <div class="flex items-center gap-3">
+                                    <div class="w-9 h-9 rounded-lg bg-{{ $color }}-100 flex items-center justify-center shrink-0"><i class="fas {{ $icon }} text-{{ $color }}-500"></i></div>
+                                    <div class="flex-1 min-w-0">
+                                        <div class="flex items-center justify-between">
+                                            <span class="text-sm font-medium text-gray-700 capitalize">{{ $cat->category }}</span>
+                                            <span class="text-sm font-bold">{{ fmtCurrency($cat->total) }}</span>
+                                        </div>
+                                        <div class="mt-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                                            <div class="h-full bg-{{ $color }}-400 rounded-full" style="width: {{ $pct }}%"></div>
+                                        </div>
+                                    </div>
+                                    <span class="text-xs text-gray-400 w-14 text-right">{{ $pct }}%</span>
+                                </div>
+                            @endforeach
+                        </div>
+                    </div>
+                @endif
+
+                <div class="bg-white rounded-xl border border-gray-200 p-6 text-center">
+                    <div class="w-12 h-12 rounded-full bg-orange-100 flex items-center justify-center mx-auto mb-3">
+                        <i class="fas fa-receipt text-orange-500 text-xl"></i>
+                    </div>
+                    <h3 class="font-bold text-gray-800 mb-1">Expense Management</h3>
+                    <p class="text-sm text-gray-500 mb-4">Track, categorize, and manage all business expenses</p>
+                    <a href="{{ route('expenses') }}" class="inline-flex items-center gap-2 px-5 py-2.5 bg-[var(--brand)] text-white rounded-lg font-semibold text-sm hover:opacity-90 transition">
+                        <i class="fas fa-external-link-alt"></i> Open Full Expenses Page
+                    </a>
+                </div>
             @endif
 
             {{-- OVERTIME TAB --}}
@@ -741,7 +1158,17 @@ new #[Layout('components.layouts.app')] class extends Component
                     <div class="stat-card"><div class="stat-icon bg-amber-100 text-amber-600"><i class="fas fa-hourglass-half"></i></div><div class="stat-value">{{ $this->overtimeSummary['pending_count'] }}</div><div class="stat-label">Pending Approval</div></div>
                     <div class="stat-card"><div class="stat-icon bg-purple-100 text-purple-600"><i class="fas fa-coins"></i></div><div class="stat-value">{{ fmtCurrency($this->overtimeSummary['total_cost']) }}</div><div class="stat-label">Total OT Cost</div></div>
                 </div>
-                <p class="text-xs text-gray-400 text-center">For full overtime management, visit the <a href="{{ route('overtime') }}" class="text-[var(--brand)] underline">Overtime page</a>.</p>
+
+                <div class="bg-white rounded-xl border border-gray-200 p-6 text-center">
+                    <div class="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center mx-auto mb-3">
+                        <i class="fas fa-clock text-blue-500 text-xl"></i>
+                    </div>
+                    <h3 class="font-bold text-gray-800 mb-1">Overtime Tracking</h3>
+                    <p class="text-sm text-gray-500 mb-4">Log overtime hours, approve entries, and calculate OT pay</p>
+                    <a href="{{ route('overtime') }}" class="inline-flex items-center gap-2 px-5 py-2.5 bg-[var(--brand)] text-white rounded-lg font-semibold text-sm hover:opacity-90 transition">
+                        <i class="fas fa-external-link-alt"></i> Open Full Overtime Page
+                    </a>
+                </div>
             @endif
 
             {{-- Invoice Form Modal --}}
@@ -798,7 +1225,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
             {{-- Record Payment Modal --}}
             @if($showRecordPayment)
-                @php $inv = $this->getPaymentInvoice(); @endphp
+                @php $inv = $this->getPaymentInvoice(); $ctx = $this->getPaymentContext(); @endphp
                 <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" wire:click.self="$set('showRecordPayment', false)" x-on:keydown.escape.window="$wire.set('showRecordPayment', false)">
                     <div class="modal-box w-full max-w-md mx-4">
                         <div class="sticky top-0 bg-white flex items-center justify-between p-4 border-b">
@@ -807,21 +1234,77 @@ new #[Layout('components.layouts.app')] class extends Component
                         </div>
                         @if($inv)
                         <div class="p-4 space-y-4">
+                            {{-- Invoice Summary --}}
                             <div class="bg-gray-50 rounded-lg p-3 text-sm space-y-1">
                                 <div class="flex justify-between"><span>Invoice Total:</span><span class="font-semibold">{{ fmtCurrency($inv->amount) }}</span></div>
                                 <div class="flex justify-between"><span>Discount:</span><span>{{ fmtCurrency($inv->discount_amount) }}</span></div>
-                                <div class="flex justify-between"><span>Remaining:</span><span class="font-semibold text-red-600">{{ fmtCurrency($inv->amount - $inv->discount_amount - DB::table('invoice_payments')->where('invoice_id', $inv->id)->sum('amount')) }}</span></div>
+                                <div class="flex justify-between"><span>Already Paid:</span><span class="text-green-600">{{ fmtCurrency($ctx['total_paid']) }}</span></div>
+                                <div class="flex justify-between border-t border-gray-200 pt-1 mt-1"><span class="font-semibold">Remaining:</span><span class="font-bold text-red-600">{{ fmtCurrency($ctx['remaining']) }}</span></div>
                             </div>
-                            <div><label class="form-label">Amount</label><input type="number" wire:model="payAmount" class="form-input" step="0.01"><span wire:error="payAmount" class="text-red-500 text-xs mt-1 block"></span></div>
+
+                            {{-- Installment Progress --}}
+                            @if($ctx['is_installment'])
+                                <div class="bg-cyan-50 rounded-lg p-3 border border-cyan-200">
+                                    <div class="flex items-center justify-between mb-2">
+                                        <span class="text-xs font-bold text-cyan-700"><i class="fas fa-calendar-alt mr-1"></i>Installment {{ $ctx['current_installment_number'] }} of {{ $ctx['total_installments'] }}</span>
+                                        <span class="text-xs text-cyan-600">{{ $ctx['paid_installments'] }} fully paid</span>
+                                    </div>
+                                    {{-- Installment blocks --}}
+                                    <div class="flex gap-1 mb-2">
+                                        @for($i = 0; $i < $ctx['total_installments']; $i++)
+                                            <div class="flex-1 h-3 rounded {{ $i < $ctx['paid_installments'] ? 'bg-green-500' : ($i === $ctx['paid_installments'] ? 'bg-cyan-400' : 'bg-gray-300') }}"></div>
+                                        @endfor
+                                    </div>
+                                    <div class="flex items-center justify-between text-xs">
+                                        <span class="text-cyan-700">Per installment: <strong>{{ fmtCurrency($ctx['amount_per_installment']) }}</strong></span>
+                                        @if($ctx['current_installment_remaining'] > 0 && $ctx['current_installment_paid'] > 0)
+                                            <span class="text-amber-600">Partial paid: {{ fmtCurrency($ctx['current_installment_paid']) }}</span>
+                                        @endif
+                                    </div>
+                                    @if($ctx['current_installment_remaining'] > 0)
+                                        <div class="mt-2 bg-white rounded px-2 py-1.5 border border-cyan-200">
+                                            <span class="text-xs text-gray-500">Expected this payment:</span>
+                                            <span class="text-sm font-bold text-cyan-700 ml-1">{{ fmtCurrency($ctx['current_installment_remaining']) }}</span>
+                                        </div>
+                                    @endif
+                                </div>
+                            @endif
+
+                            {{-- Amount Input --}}
+                            <div>
+                                <label class="form-label">Amount</label>
+                                <div class="relative">
+                                    <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">NPR</span>
+                                    <input type="number" wire:model="payAmount" class="form-input pl-12" step="0.01" placeholder="{{ number_format($ctx['expected_amount'], 2, '.', '') }}">
+                                </div>
+                                @if($ctx['is_installment'] && $ctx['expected_amount'] > 0)
+                                    <button wire:click="$set('payAmount', {{ $ctx['expected_amount'] }})" class="mt-1 text-xs text-cyan-600 hover:text-cyan-800 underline">
+                                        <i class="fas fa-magic mr-0.5"></i>Fill expected amount ({{ fmtCurrency($ctx['expected_amount']) }})
+                                    </button>
+                                @endif
+                                <span wire:error="payAmount" class="text-red-500 text-xs mt-1 block"></span>
+                            </div>
+
+                            {{-- Date --}}
                             <div><label class="form-label">Date</label><input type="date" wire:model="payDate" class="form-input"><span wire:error="payDate" class="text-red-500 text-xs mt-1 block"></span></div>
-                            <div><label class="form-label">Method</label>
+
+                            {{-- Method --}}
+                            <div><label class="form-label">Payment Method</label>
                                 <select wire:model="payMethod" class="form-select">
-                                    <option value="cash">Cash</option><option value="bank">Bank Transfer</option><option value="card">Card</option>
-                                    <option value="cheque">Cheque</option><option value="esewa">eSewa</option><option value="khalti">Khalti</option>
-                                    <option value="other">Other</option>
+                                    <option value="cash">💵 Cash</option>
+                                    <option value="bank">🏦 Bank Transfer</option>
+                                    <option value="card">💳 Card</option>
+                                    <option value="cheque">📄 Cheque</option>
+                                    <option value="esewa">📱 eSewa</option>
+                                    <option value="khalti">📱 Khalti</option>
+                                    <option value="other">📋 Other</option>
                                 </select>
                             </div>
-                            <div><label class="form-label">Note</label><input type="text" wire:model="payNote" class="form-input" placeholder="Optional note"></div>
+
+                            {{-- Note --}}
+                            <div><label class="form-label">Note</label><input type="text" wire:model="payNote" class="form-input" placeholder="e.g. First installment, partial payment, etc."></div>
+
+                            {{-- Proof --}}
                             <div>
                                 <label class="form-label">Payment Proof (optional)</label>
                                 <div class="border-2 border-dashed border-gray-200 rounded-lg p-3 text-center hover:border-[var(--brand)] transition-colors">
@@ -855,25 +1338,59 @@ new #[Layout('components.layouts.app')] class extends Component
                 @php $detail = $this->getDetailInvoice(); $payments = $this->getPayments($this->detailId); @endphp
                 @if($detail)
                 <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" wire:click.self="$set('showDetail', false)" x-on:keydown.escape.window="$wire.set('showDetail', false)">
-                    <div class="modal-box w-full max-w-lg mx-4 print-invoice">
-                        <div class="sticky top-0 bg-white flex items-center justify-between p-4 border-b modal-header">
-                            <h3 class="font-bold text-lg">Invoice Details</h3>
-                            <div class="flex items-center gap-2">
-                                <button onclick="window.print()" class="text-gray-400 hover:text-gray-600 no-print" title="Print Invoice"><i class="fas fa-print"></i></button>
-                                <button wire:click="$set('showDetail', false)" class="text-gray-400 hover:text-gray-600 no-print"><i class="fas fa-times"></i></button>
+                    <div class="modal-box w-full max-w-xl mx-4 print-invoice">
+                        <div class="sticky top-0 bg-white flex items-center justify-between px-6 py-4 border-b modal-header">
+                            <div>
+                                <h3 class="font-bold text-lg text-gray-900">Invoice #{{ $detail->id }}</h3>
+                                <p class="text-xs text-gray-500 mt-0.5">Issued {{ fmtDate($detail->created_at ?? $detail->due_date) }}</p>
+                            </div>
+                            <div class="flex items-center gap-1 no-print">
+                                <button onclick="window.print()" class="inline-flex items-center justify-center w-9 h-9 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition" title="Print"><i class="fas fa-print text-sm"></i></button>
+                                <button wire:click="$set('showDetail', false)" class="inline-flex items-center justify-center w-9 h-9 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition" title="Close"><i class="fas fa-times text-sm"></i></button>
                             </div>
                         </div>
-                        <div class="p-4 space-y-4 max-h-[70vh] overflow-y-auto">
+                        <div class="px-6 py-5 space-y-5 max-h-[70vh] overflow-y-auto">
                             <div class="flex items-center gap-3">
-                                <div><h4 class="font-bold">{{ $detail->client_name }}</h4><p class="text-sm text-gray-500">{{ $detail->description ?? 'No description' }}</p></div>
-                                <span class="badge {{ $detail->status === 'paid' ? 'badge-success' : ($detail->status === 'overdue' ? 'badge-danger' : 'badge-warning') }}">{{ ucfirst($detail->status) }}</span>
-                                <span class="badge {{ $detail->payment_status === 'full' ? 'badge-success' : 'badge-warning' }}">{{ ucfirst($detail->payment_status) }}</span>
+                                <div class="flex-1">
+                                    <h4 class="font-bold">{{ $detail->client_name }}</h4>
+                                    <p class="text-sm text-gray-500">{{ $detail->description ?? 'No description' }}</p>
+                                </div>
+                                @php
+                                    $statusColor = match($detail->status) {
+                                        'paid' => 'green',
+                                        'overdue' => 'red',
+                                        default => 'amber',
+                                    };
+                                    $paymentLabel = match($detail->payment_status) {
+                                        'full' => 'Fully Paid',
+                                        'half' => 'Partially Paid',
+                                        'installment' => 'Installment',
+                                        'discount' => 'Discounted',
+                                        default => 'Unpaid',
+                                    };
+                                    $paymentColor = match($detail->payment_status) {
+                                        'full' => 'green',
+                                        'half' => 'blue',
+                                        'installment' => 'cyan',
+                                        'discount' => 'purple',
+                                        default => 'gray',
+                                    };
+                                @endphp
+                                <div class="flex flex-col items-end gap-1">
+                                    <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-{{ $statusColor }}-100 text-{{ $statusColor }}-700">
+                                        @if($detail->status === 'paid')<i class="fas fa-check-circle"></i>@elseif($detail->status === 'overdue')<i class="fas fa-exclamation-triangle"></i>@else<i class="fas fa-clock"></i>@endif
+                                        {{ ucfirst($detail->status) }}
+                                    </span>
+                                    <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-{{ $paymentColor }}-100 text-{{ $paymentColor }}-700">
+                                        {{ $paymentLabel }}
+                                    </span>
+                                </div>
                             </div>
                             <div class="grid grid-cols-2 gap-3 text-sm">
-                                <div class="bg-gray-50 rounded p-2"><span class="text-gray-500">Amount:</span> <span class="font-bold">{{ fmtCurrency($detail->amount) }}</span></div>
-                                <div class="bg-gray-50 rounded p-2"><span class="text-gray-500">Discount:</span> {{ fmtCurrency($detail->discount_amount) }}</div>
-                                <div class="bg-gray-50 rounded p-2"><span class="text-gray-500">Due:</span> {{ fmtDate($detail->due_date) }}</div>
-                                <div class="bg-gray-50 rounded p-2"><span class="text-gray-500">Paid:</span> {{ $detail->paid_date ? fmtDate($detail->paid_date) : '-' }}</div>
+                                <div class="bg-gray-50 rounded-lg px-3 py-2.5"><div class="text-[10px] uppercase tracking-wide text-gray-400 font-semibold mb-0.5">Amount</div><div class="font-bold text-gray-900">{{ fmtCurrency($detail->amount) }}</div></div>
+                                <div class="bg-gray-50 rounded-lg px-3 py-2.5"><div class="text-[10px] uppercase tracking-wide text-gray-400 font-semibold mb-0.5">Discount</div><div class="font-semibold text-gray-700">{{ fmtCurrency($detail->discount_amount) }}</div></div>
+                                <div class="bg-gray-50 rounded-lg px-3 py-2.5"><div class="text-[10px] uppercase tracking-wide text-gray-400 font-semibold mb-0.5">Due</div><div class="font-semibold text-gray-700">{{ fmtDate($detail->due_date) }}</div></div>
+                                <div class="bg-gray-50 rounded-lg px-3 py-2.5"><div class="text-[10px] uppercase tracking-wide text-gray-400 font-semibold mb-0.5">Paid</div><div class="font-semibold text-gray-700">{{ $detail->paid_date ? fmtDate($detail->paid_date) : '—' }}</div></div>
                             </div>
                             @if($detail->installment_plan)
                                 @php $plan = is_string($detail->installment_plan) ? json_decode($detail->installment_plan, true) : $detail->installment_plan; @endphp
@@ -890,32 +1407,59 @@ new #[Layout('components.layouts.app')] class extends Component
                             <div>
                                 <h5 class="font-semibold text-sm mb-2">Payment History</h5>
                                 @forelse($payments as $i => $p)
-                                    <div class="flex items-center justify-between text-sm py-2 border-b">
+                                    @php
+                                        $methodIcons = ['cash' => 'fa-money-bill-wave', 'bank' => 'fa-university', 'card' => 'fa-credit-card', 'cheque' => 'fa-file-invoice', 'esewa' => 'fa-mobile-alt', 'khalti' => 'fa-mobile-alt', 'other' => 'fa-ellipsis-h'];
+                                        $methodColors = ['cash' => 'green', 'bank' => 'blue', 'card' => 'purple', 'cheque' => 'amber', 'esewa' => 'cyan', 'khalti' => 'cyan', 'other' => 'gray'];
+                                        $mIcon = $methodIcons[$p->method] ?? 'fa-circle';
+                                        $mColor = $methodColors[$p->method] ?? 'gray';
+                                    @endphp
+                                    <div class="flex items-start justify-between text-sm py-2.5 {{ !$loop->last ? 'border-b border-gray-100' : '' }}">
                                         <div class="flex-1">
                                             <div class="flex items-center gap-2">
-                                                <span class="font-medium">#{{ $i + 1 }}</span> — {{ fmtCurrency($p->amount) }} via {{ ucfirst($p->method) }}
+                                                <span class="font-bold text-gray-900">{{ fmtCurrency($p->amount) }}</span>
+                                                <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-{{ $mColor }}-100 text-{{ $mColor }}-700">
+                                                    <i class="fas {{ $mIcon }}"></i> {{ ucfirst($p->method) }}
+                                                </span>
                                                 @if($p->verified)
                                                     <span class="text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full font-semibold"><i class="fas fa-check-circle mr-0.5"></i>Verified</span>
                                                 @else
                                                     <button wire:click="verifyPayment({{ $p->id }})" class="text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full font-semibold hover:bg-amber-200"><i class="fas fa-check mr-0.5"></i>Verify</button>
                                                 @endif
                                             </div>
-                                            <span class="text-gray-500 text-xs">{{ fmtDate($p->date) }}{{ $p->note ? ' — '.$p->note : '' }}{{ $p->verified_by ? ' · Verified by '.$p->verified_by : '' }}</span>
+                                            <div class="flex items-center gap-2 mt-0.5">
+                                                <span class="text-gray-400 text-xs"><i class="fas fa-calendar mr-0.5"></i>{{ fmtDate($p->date) }}</span>
+                                                @if($p->note)
+                                                    <span class="text-gray-500 text-xs"><i class="fas fa-comment mr-0.5"></i>{{ $p->note }}</span>
+                                                @endif
+                                                @if($p->verified_by)
+                                                    <span class="text-gray-400 text-xs">· Verified by {{ $p->verified_by }}</span>
+                                                @endif
+                                            </div>
                                         </div>
                                         @if($p->proof_path)
-                                            <a href="{{ $this->getProofUrl($p->id) }}" target="_blank" class="text-blue-500 hover:text-blue-700 ml-2" title="View proof"><i class="fas fa-paperclip"></i></a>
+                                            <a href="{{ $this->getProofUrl($p->id) }}" target="_blank" class="text-blue-500 hover:text-blue-700 ml-2 mt-0.5" title="View proof"><i class="fas fa-paperclip"></i></a>
                                         @endif
                                     </div>
                                 @empty
-                                    <p class="text-sm text-gray-400">No payments recorded</p>
+                                    <div class="text-center py-6">
+                                        <i class="fas fa-receipt text-gray-300 text-2xl mb-2"></i>
+                                        <p class="text-sm text-gray-400">No payments recorded yet</p>
+                                        <p class="text-xs text-gray-300">Record a payment to start tracking</p>
+                                    </div>
                                 @endforelse
                             </div>
-                            <div class="bg-gray-50 rounded-lg p-3 flex justify-between">
-                                <div><span class="text-gray-500 text-sm">Total Paid:</span> <span class="font-bold">{{ fmtCurrency(DB::table('invoice_payments')->where('invoice_id', $detail->id)->sum('amount')) }}</span></div>
-                                <div><span class="text-gray-500 text-sm">Remaining:</span> <span class="font-bold text-red-600">{{ fmtCurrency($detail->amount - $detail->discount_amount - DB::table('invoice_payments')->where('invoice_id', $detail->id)->sum('amount')) }}</span></div>
+                            <div class="bg-gray-50 rounded-lg px-4 py-3 flex justify-between items-center">
+                                <div><div class="text-[10px] uppercase tracking-wide text-gray-400 font-semibold">Total Paid</div><div class="font-bold text-gray-900 text-base">{{ fmtCurrency(DB::table('invoice_payments')->where('invoice_id', $detail->id)->sum('amount')) }}</div></div>
+                                <div class="text-right"><div class="text-[10px] uppercase tracking-wide text-gray-400 font-semibold">Remaining</div><div class="font-bold text-red-600 text-base">{{ fmtCurrency($detail->amount - $detail->discount_amount - DB::table('invoice_payments')->where('invoice_id', $detail->id)->sum('amount')) }}</div></div>
+                            </div>
+                            <div class="bg-slate-50 rounded-lg px-3 py-2 text-center">
+                                <p class="text-[10px] text-slate-400">⚡ System auto-generated invoice. Contact administration for original.</p>
                             </div>
                         </div>
-                        <div class="sticky bottom-0 bg-white flex justify-end p-4 border-t">
+                        <div class="sticky bottom-0 bg-white flex justify-between items-center px-6 py-4 border-t no-print">
+                            <a href="{{ route('invoices.pdf', $detail->id) }}" target="_blank" class="inline-flex items-center gap-2 px-4 py-2 bg-red-50 text-red-600 rounded-lg font-semibold text-sm hover:bg-red-100 transition">
+                                <i class="fas fa-file-pdf"></i> Download PDF
+                            </a>
                             <button wire:click="$set('showDetail', false)" class="btn btn-secondary">Close</button>
                         </div>
                     </div>

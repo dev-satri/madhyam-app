@@ -5,6 +5,8 @@ namespace App\Console\Commands;
 use App\Models\Client;
 use App\Models\Invoice;
 use App\Models\NotificationRule;
+use App\Models\Task;
+use App\Models\User;
 use App\Notifications\InvoiceDueReminderNotification;
 use App\Notifications\InvoiceOverdueNotification;
 use App\Services\NotificationService;
@@ -28,6 +30,7 @@ class PaymentReminderCommand extends Command
         $count = 0;
         $count += $this->sendDueReminders();
         $count += $this->sendOverdueReminders();
+        $count += $this->createOverdueFollowUpTasks();
 
         $this->info("Sent {$count} payment reminder(s).");
 
@@ -114,9 +117,86 @@ class PaymentReminderCommand extends Command
                 clientId: $client->id,
             );
 
+            // Also notify admin/manager about overdue
+            app(NotificationService::class)->sendNotification(
+                text: "OVERDUE: {$client->name} — NPR {$netAmount} overdue by {$daysOverdue} {$dayWord} (invoice #{$invoice->id})",
+                type: 'error',
+                link: route('reports', absolute: false),
+                forRole: 'admin',
+            );
+
             $count++;
         }
 
         return $count;
+    }
+
+    protected function createOverdueFollowUpTasks(): int
+    {
+        $count = 0;
+
+        // Find invoices overdue by 3+ days that don't have an existing follow-up task
+        $overdueInvoices = Invoice::where('status', '!=', 'paid')
+            ->whereDate('due_date', '<', now()->subDays(3))
+            ->with('client')
+            ->get();
+
+        foreach ($overdueInvoices as $invoice) {
+            $client = $invoice->client;
+            if (! $client) {
+                continue;
+            }
+
+            $daysOverdue = (int) now()->diffInDays($invoice->due_date);
+            $netAmount = number_format($invoice->net_amount, 2);
+
+            // Check if a follow-up task already exists for this invoice recently
+            $exists = Task::where('title', "Follow up: Payment overdue — {$client->name} (invoice #{$invoice->id})")
+                ->where('client_id', $client->id)
+                ->whereDate('created_at', '>=', now()->subDays(7))
+                ->exists();
+
+            if ($exists) {
+                continue;
+            }
+
+            // Determine priority based on how overdue
+            $priority = match (true) {
+                $daysOverdue >= 14 => 'high',
+                $daysOverdue >= 7 => 'medium',
+                default => 'low',
+            };
+
+            Task::create([
+                'title' => "Follow up: Payment overdue — {$client->name} (invoice #{$invoice->id})",
+                'description' => "Invoice #{$invoice->id} for {$client->name} is {$daysOverdue} days overdue.\n\nAmount due: NPR {$netAmount}\nDue date: {$invoice->due_date->format('M d, Y')}\nPayment status: " . ucfirst($invoice->payment_status) . "\n\nPlease follow up with the client for payment collection.",
+                'client_id' => $client->id,
+                'assignee' => $this->getManagerId(),
+                'priority' => $priority,
+                'status' => 'todo',
+                'due_date' => now()->addDays($daysOverdue >= 14 ? 1 : 3),
+            ]);
+
+            // Send escalation notification to manager
+            if ($daysOverdue >= 7) {
+                app(NotificationService::class)->sendNotification(
+                    text: "ESCALATION: {$client->name}'s invoice #{$invoice->id} is {$daysOverdue} days overdue (NPR {$netAmount}). Follow-up task created.",
+                    type: 'error',
+                    link: route('reports', absolute: false),
+                    forRole: 'manager',
+                );
+            }
+
+            $count++;
+        }
+
+        return $count;
+    }
+
+    private function getManagerId(): ?int
+    {
+        $manager = User::where('role', 'manager')->first();
+
+        return $manager?->id;
     }
 }

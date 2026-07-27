@@ -369,33 +369,34 @@ new #[Layout('components.layouts.app')] class extends Component
                 <div><label class="form-label">Client</label><select wire:model.live="clientFilter" class="form-select"><option value="">All Clients</option>@foreach($this->clients as $c)<option value="{{ $c->id }}">{{ $c->name }}</option>@endforeach</select></div>
             </div>
 
-            {{-- Skeleton loader --}}
-            <div wire:loading.delay class="space-y-4 p-6">
-                <div class="h-8 bg-gray-200 rounded animate-pulse w-1/3"></div>
-                <div class="h-4 bg-gray-200 rounded animate-pulse w-2/3"></div>
-                <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    <div class="h-20 bg-gray-200 rounded-xl animate-pulse"></div>
-                    <div class="h-20 bg-gray-200 rounded-xl animate-pulse"></div>
-                    <div class="h-20 bg-gray-200 rounded-xl animate-pulse"></div>
-                    <div class="h-20 bg-gray-200 rounded-xl animate-pulse"></div>
-                </div>
-                <div class="h-64 bg-gray-200 rounded-2xl animate-pulse"></div>
-            </div>
-
             {{-- Table --}}
-            <div wire:loading.remove.delay class="bg-white rounded-2xl border border-gray-100 overflow-hidden" wire:loading.target="search,statusFilter,priorityFilter,clientFilter,tab">
-                <div wire:loading class="p-6 space-y-3">
-                    @for($i = 0; $i < 5; $i++)
-                        <div class="skeleton-row"><div class="skeleton" style="width:120px;height:12px"></div><div class="skeleton" style="width:80px;height:12px"></div><div class="skeleton" style="width:60px;height:12px"></div><div class="skeleton" style="width:100px;height:12px"></div></div>
-                    @endfor
-                </div>
-                <div wire:loading.remove wire:target="search,statusFilter,priorityFilter,clientFilter,tab">
+            <div class="bg-white rounded-2xl border border-gray-100 overflow-hidden">
                 <div class="overflow-x-auto">
                     <table class="data-table">
                         <thead><tr><th>Title</th><th>Client</th><th>Type</th><th>Priority</th><th>Assignee</th><th>Due Date</th><th>Status</th><th>Actions</th></tr></thead>
                         <tbody>
+                            <!-- Skeleton Rows -->
+                            @for($i = 0; $i < 5; $i++)
+                                <tr wire:loading wire:target="search,statusFilter,priorityFilter,clientFilter,tab">
+                                    <td><div class="skeleton h-4 w-32"></div></td>
+                                    <td><div class="skeleton h-4 w-24"></div></td>
+                                    <td><div class="skeleton h-5 w-16 rounded-full"></div></td>
+                                    <td><div class="skeleton h-5 w-16 rounded-full"></div></td>
+                                    <td><div class="skeleton h-4 w-24"></div></td>
+                                    <td><div class="skeleton h-4 w-20"></div></td>
+                                    <td><div class="skeleton h-5 w-20 rounded-full"></div></td>
+                                    <td>
+                                        <div class="flex gap-1">
+                                            <div class="skeleton h-8 w-8 rounded-lg"></div>
+                                            <div class="skeleton h-8 w-8 rounded-lg"></div>
+                                            <div class="skeleton h-8 w-8 rounded-lg"></div>
+                                        </div>
+                                    </td>
+                                </tr>
+                            @endfor
+
                             @forelse($this->tasks as $t)
-                            <tr>
+                            <tr wire:loading.remove wire:target="search,statusFilter,priorityFilter,clientFilter,tab">
                                 <td class="font-medium">{{ $t->title }}</td>
                                 <td class="text-gray-500">{{ $t->client_name ?? '—' }}</td>
                                 <td><span class="badge badge-{{ $t->type }}">{{ ucfirst($t->type) }}</span></td>
@@ -406,7 +407,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                 <td class="flex gap-1"><button wire:click="openDetail({{ $t->id }})" class="btn btn-ghost btn-sm btn-icon"><i class="fas fa-eye text-xs"></i></button><button wire:click="openForm({{ $t->id }})" class="btn btn-ghost btn-sm btn-icon"><i class="fas fa-pen text-xs"></i></button><button type="button" wire:click="$dispatch('open-confirm', { title: 'Delete Task?', message: 'This task and its checklist will be permanently removed.', type: 'danger', action: 'deleteTask', params: [{{ $t->id }}] })" class="btn btn-ghost btn-sm btn-icon text-red-500" aria-label="Delete task"><i class="fas fa-trash text-xs"></i></button></td>
                             </tr>
                             @empty
-                            <tr><td colspan="8">
+                            <tr wire:loading.remove wire:target="search,statusFilter,priorityFilter,clientFilter,tab"><td colspan="8">
                                 <div class="py-16 text-center">
                                     <div class="flex h-14 w-14 mx-auto items-center justify-center rounded-2xl bg-gray-100 mb-4"><i class="fas fa-tasks text-2xl text-gray-300"></i></div>
                                     <p class="text-gray-500 font-medium text-sm">No tasks found</p>
@@ -418,7 +419,6 @@ new #[Layout('components.layouts.app')] class extends Component
                     </table>
                 </div>
                 <div class="px-4 py-3 border-t border-gray-100">{{ $this->tasks->links() }}</div>
-                </div>
             </div>
 
             {{-- TaskForm Modal --}}

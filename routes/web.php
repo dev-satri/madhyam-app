@@ -2,6 +2,8 @@
 
 use App\Http\Controllers\DataBackupController;
 use App\Livewire\Actions\Logout;
+use App\Models\Invoice;
+use App\Services\InvoicePdfService;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
@@ -195,4 +197,42 @@ Route::middleware('auth:client')->prefix('client')->group(function () {
     });
 
     Route::post('logout', Logout::class)->name('client.logout');
+});
+
+/*
+|--------------------------------------------------------------------------
+| Invoice PDF Routes (accessible by both staff & client guards)
+|--------------------------------------------------------------------------
+*/
+Route::middleware('auth:web,client')->group(function () {
+    Route::get('invoices/{id}/pdf', function (int $id) {
+        $invoice = Invoice::with('client', 'payments')->find($id);
+        abort_unless($invoice, 404);
+
+        // Client can only view their own invoices
+        if (Auth::guard('client')->check()) {
+            $account = Auth::guard('client')->user();
+            abort_unless($invoice->client_id === $account->client_id, 403);
+        }
+
+        $pdfService = app(InvoicePdfService::class);
+        $pdf = $pdfService->generatePdf($invoice);
+
+        return $pdf->download($pdfService->getFileName($invoice));
+    })->name('invoices.pdf');
+
+    Route::get('invoices/{id}/pdf/view', function (int $id) {
+        $invoice = Invoice::with('client', 'payments')->find($id);
+        abort_unless($invoice, 404);
+
+        if (Auth::guard('client')->check()) {
+            $account = Auth::guard('client')->user();
+            abort_unless($invoice->client_id === $account->client_id, 403);
+        }
+
+        $pdfService = app(InvoicePdfService::class);
+        $pdf = $pdfService->generatePdf($invoice);
+
+        return $pdf->inline($pdfService->getFileName($invoice));
+    })->name('invoices.pdf.view');
 });

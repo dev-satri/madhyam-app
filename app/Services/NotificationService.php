@@ -7,6 +7,7 @@ use App\Models\Notification;
 use App\Models\Task;
 use App\Models\User;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 
 class NotificationService
 {
@@ -53,7 +54,23 @@ class NotificationService
 
     public function emailNotify(string $to, string $subject, string $body): void
     {
-        Log::info('emailNotify (stub)', compact('to', 'subject', 'body'));
+        if (! $to) {
+            return;
+        }
+
+        try {
+            Mail::raw($body, function ($message) use ($to, $subject) {
+                $message->to($to)
+                    ->subject($subject)
+                    ->from(config('mail.from.address', 'noreply@madhyam.com'), config('mail.from.name', 'Madhyam'));
+            });
+        } catch (\Exception $e) {
+            Log::error('Failed to send email', [
+                'to' => $to,
+                'subject' => $subject,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     public function notifyNewMember(string $name, string $email, string $role): Notification

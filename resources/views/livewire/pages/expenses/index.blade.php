@@ -298,57 +298,141 @@ new #[Layout('components.layouts.app')] class extends Component
                 <div class="stat-card"><div class="stat-icon bg-purple-100 text-purple-600"><i class="fas fa-layer-group"></i></div><div class="stat-value">{{ $this->stats['categories'] }}</div><div class="stat-label">Categories</div></div>
             </div>
 
-            {{-- Category Breakdown --}}
+            {{-- Category Breakdown: single stacked bar + legend --}}
             @if(count($this->categoryBreakdown))
-                <div class="bg-white rounded-2xl border border-gray-100 p-5">
-                    <h3 class="font-bold text-sm mb-4">Category Breakdown</h3>
-                    <div class="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+                @php
+                    $cbTotal = collect($this->categoryBreakdown)->sum('total');
+                    $cbHex = [
+                        'salary' => '#3b82f6', 'office' => '#f59e0b', 'operations' => '#22c55e',
+                        'software' => '#a855f7', 'equipment' => '#ef4444', 'travel' => '#06b6d4',
+                        'marketing' => '#ec4899', 'other' => '#94a3b8',
+                    ];
+                @endphp
+                <div class="bg-white rounded-2xl border border-gray-100 p-6">
+                    <div class="flex items-baseline justify-between mb-4">
+                        <div>
+                            <h3 class="font-bold text-sm text-gray-900">Where the money went</h3>
+                            <p class="text-xs text-gray-400 mt-0.5">{{ $this->monthFilter ? \Illuminate\Support\Carbon::createFromFormat('Y-m', $this->monthFilter)->format('F Y') : now()->format('F Y') }} · {{ count($this->categoryBreakdown) }} categor{{ count($this->categoryBreakdown) === 1 ? 'y' : 'ies' }}</p>
+                        </div>
+                        <div class="text-right">
+                            <div class="text-xs uppercase tracking-wider text-gray-400">Total</div>
+                            <div class="text-lg font-bold text-gray-900">{{ fmtCurrency($cbTotal) }}</div>
+                        </div>
+                    </div>
+                    {{-- The stacked bar --}}
+                    <div class="flex h-3 w-full overflow-hidden rounded-full bg-gray-100">
                         @foreach($this->categoryBreakdown as $cb)
-                            <div class="space-y-1">
-                                <div class="flex items-center justify-between">
-                                    <span class="flex items-center gap-2 text-sm font-medium">
-                                        <i class="fas {{ $cb['icon'] }} {{ $cb['color']['text'] }}"></i>
-                                        {{ $cb['label'] }}
-                                    </span>
-                                    <span class="text-xs font-semibold text-gray-600">{{ $cb['pct'] }}%</span>
-                                </div>
-                                <div class="progress-bar"><div class="progress-fill {{ $cb['color']['bg'] }}" style="width: {{ $cb['pct'] }}%"></div></div>
-                                <div class="text-xs text-gray-500 text-right">{{ fmtCurrency($cb['total']) }}</div>
-                            </div>
+                            <div class="h-full transition-all duration-300 hover:opacity-80" style="width: {{ $cb['pct'] }}%; background-color: {{ $cbHex[$cb['category']] ?? '#94a3b8' }};" title="{{ $cb['label'] }} · {{ $cb['pct'] }}%"></div>
+                        @endforeach
+                    </div>
+                    {{-- Legend --}}
+                    <div class="mt-5 grid gap-x-6 gap-y-3 sm:grid-cols-2 lg:grid-cols-4">
+                        @foreach($this->categoryBreakdown as $cb)
+                            <button type="button" wire:click="$set('categoryFilter', '{{ $cb['category'] }}')" class="group flex items-center justify-between text-left transition hover:bg-gray-50 rounded-lg -mx-2 px-2 py-1">
+                                <span class="flex items-center gap-2 min-w-0">
+                                    <span class="h-2.5 w-2.5 rounded-full flex-shrink-0" style="background-color: {{ $cbHex[$cb['category']] ?? '#94a3b8' }};"></span>
+                                    <span class="text-sm text-gray-700 font-medium truncate">{{ $cb['label'] }}</span>
+                                    <span class="text-[10px] text-gray-400">{{ $cb['pct'] }}%</span>
+                                </span>
+                                <span class="text-sm font-semibold text-gray-900 tabular-nums">{{ fmtCurrency($cb['total']) }}</span>
+                            </button>
                         @endforeach
                     </div>
                 </div>
             @endif
 
-            {{-- Filters --}}
-            <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 items-end">
-                <div><label class="form-label">Search</label><div class="relative"><i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs"></i><input type="search" wire:model.live.debounce.250ms="search" placeholder="Search description, vendor, item..." class="form-input pl-10 focus:ring-0"></div></div>
-                <div><label class="form-label">Category</label><select wire:model.live="categoryFilter" class="form-select">
-                    <option value="">All Categories</option>
-                    <option value="office">Office</option>
-                    <option value="operations">Operations</option>
-                    <option value="software">Software</option>
-                    <option value="equipment">Equipment</option>
-                    <option value="travel">Travel</option>
-                    <option value="marketing">Marketing</option>
-                    <option value="other">Other</option>
-                </select></div>
-                <div><label class="form-label">Status</label><select wire:model.live="statusFilter" class="form-select">
-                    <option value="">All Status</option>
-                    <option value="paid">Paid</option>
-                    <option value="pending">Pending</option>
-                </select></div>
-                <div><label class="form-label">Month</label><input type="month" wire:model.live="monthFilter" class="form-input"></div>
-                <div><label class="form-label">Client</label><select wire:model.live="clientFilter" class="form-select">
-                    <option value="">All Clients</option>
-                    @foreach($this->clients as $c)
-                        <option value="{{ $c->id }}">{{ $c->name }}</option>
-                    @endforeach
-                </select></div>
+            {{-- Search + Filter chip drawer --}}
+            <div x-data="{ open: {{ $this->hasActiveFilters ? 'true' : 'false' }} }" class="space-y-3">
+                <div class="flex flex-col sm:flex-row gap-3 sm:items-center">
+                    <div class="relative flex-1">
+                        <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs"></i>
+                        <input type="search" wire:model.live.debounce.250ms="search" placeholder="Search description, vendor, item..." class="form-input pl-10 focus:ring-0 w-full">
+                    </div>
+                    <button type="button" @click="open = !open" class="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:border-gray-300 hover:bg-gray-50">
+                        <i class="fas fa-sliders-h text-xs text-gray-400"></i>
+                        Filters
+                        @php
+                            $activeCount = ($this->categoryFilter ? 1 : 0) + ($this->statusFilter ? 1 : 0) + ($this->monthFilter ? 1 : 0) + ($this->clientFilter ? 1 : 0);
+                        @endphp
+                        @if($activeCount)
+                            <span class="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-[var(--brand)] px-1.5 text-[10px] font-bold text-white">{{ $activeCount }}</span>
+                        @endif
+                        <i class="fas fa-chevron-down text-[10px] text-gray-400 transition" :class="open && 'rotate-180'"></i>
+                    </button>
+                </div>
+
+                {{-- Active filter chips (always visible when set) --}}
+                @if($this->hasActiveFilters)
+                    <div class="flex flex-wrap items-center gap-2">
+                        @if($this->categoryFilter)
+                            <span class="inline-flex items-center gap-1.5 rounded-full bg-gray-100 py-1 pl-3 pr-1 text-xs font-medium text-gray-700">
+                                <span class="text-gray-400">Category:</span> {{ ucfirst($this->categoryFilter) }}
+                                <button type="button" wire:click="$set('categoryFilter', '')" class="inline-flex h-5 w-5 items-center justify-center rounded-full text-gray-400 hover:bg-gray-200 hover:text-gray-700"><i class="fas fa-times text-[9px]"></i></button>
+                            </span>
+                        @endif
+                        @if($this->statusFilter)
+                            <span class="inline-flex items-center gap-1.5 rounded-full bg-gray-100 py-1 pl-3 pr-1 text-xs font-medium text-gray-700">
+                                <span class="text-gray-400">Status:</span> {{ ucfirst($this->statusFilter) }}
+                                <button type="button" wire:click="$set('statusFilter', '')" class="inline-flex h-5 w-5 items-center justify-center rounded-full text-gray-400 hover:bg-gray-200 hover:text-gray-700"><i class="fas fa-times text-[9px]"></i></button>
+                            </span>
+                        @endif
+                        @if($this->monthFilter)
+                            <span class="inline-flex items-center gap-1.5 rounded-full bg-gray-100 py-1 pl-3 pr-1 text-xs font-medium text-gray-700">
+                                <span class="text-gray-400">Month:</span> {{ \Illuminate\Support\Carbon::createFromFormat('Y-m', $this->monthFilter)->format('M Y') }}
+                                <button type="button" wire:click="$set('monthFilter', '')" class="inline-flex h-5 w-5 items-center justify-center rounded-full text-gray-400 hover:bg-gray-200 hover:text-gray-700"><i class="fas fa-times text-[9px]"></i></button>
+                            </span>
+                        @endif
+                        @if($this->clientFilter)
+                            @php $selectedClient = collect($this->clients)->firstWhere('id', $this->clientFilter); @endphp
+                            <span class="inline-flex items-center gap-1.5 rounded-full bg-gray-100 py-1 pl-3 pr-1 text-xs font-medium text-gray-700">
+                                <span class="text-gray-400">Client:</span> {{ $selectedClient->name ?? '#' . $this->clientFilter }}
+                                <button type="button" wire:click="$set('clientFilter', 0)" class="inline-flex h-5 w-5 items-center justify-center rounded-full text-gray-400 hover:bg-gray-200 hover:text-gray-700"><i class="fas fa-times text-[9px]"></i></button>
+                            </span>
+                        @endif
+                        <button type="button" wire:click="clearFilters" class="text-xs font-medium text-gray-400 hover:text-gray-700 ml-1">Clear all</button>
+                    </div>
+                @endif
+
+                {{-- Collapsible filter drawer --}}
+                <div x-show="open" x-cloak x-transition class="rounded-2xl border border-gray-100 bg-white p-5">
+                    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                        <div>
+                            <label class="form-label">Category</label>
+                            <select wire:model.live="categoryFilter" class="form-select">
+                                <option value="">All Categories</option>
+                                <option value="office">Office</option>
+                                <option value="operations">Operations</option>
+                                <option value="software">Software</option>
+                                <option value="equipment">Equipment</option>
+                                <option value="travel">Travel</option>
+                                <option value="marketing">Marketing</option>
+                                <option value="other">Other</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="form-label">Status</label>
+                            <select wire:model.live="statusFilter" class="form-select">
+                                <option value="">All Status</option>
+                                <option value="paid">Paid</option>
+                                <option value="pending">Pending</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="form-label">Month</label>
+                            <input type="month" wire:model.live="monthFilter" class="form-input">
+                        </div>
+                        <div>
+                            <label class="form-label">Client</label>
+                            <select wire:model.live="clientFilter" class="form-select">
+                                <option value="">All Clients</option>
+                                @foreach($this->clients as $c)
+                                    <option value="{{ $c->id }}">{{ $c->name }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                    </div>
+                </div>
             </div>
-            @if($this->hasActiveFilters)
-                <div class="flex justify-end"><button wire:click="clearFilters" class="btn btn-ghost btn-sm text-gray-500"><i class="fas fa-times text-sm"></i> Clear filters</button></div>
-            @endif
 
             {{-- Filter summary --}}
             @if($this->hasActiveFilters)
@@ -357,87 +441,136 @@ new #[Layout('components.layouts.app')] class extends Component
                 </div>
             @endif
 
-            {{-- Table --}}
-            <div class="overflow-x-auto">
-                <table class="data-table w-full">
-                    <thead><tr><th>Date</th><th>Description</th><th>Category</th><th>Client</th><th class="text-right">Amount</th><th>Paid To</th><th>Method</th><th>Status</th><th>Actions</th></tr></thead>
-                    <tbody>
-                        @forelse($this->expenses as $e)
-                            <tr>
-                                <td class="text-sm whitespace-nowrap">{{ fmtDate($e->date) }}</td>
-                                <td>
-                                    <div class="font-medium text-sm">{{ $e->description ?: '-' }}</div>
-                                    @php
-                                        $metaLine = match($e->category) {
-                                            'office' => $e->location ?? '-',
-                                            'equipment' => $e->item_name ?? '-',
-                                            'travel' => $e->destination ?? '-',
-                                            default => '',
-                                        };
-                                    @endphp
-                                    @if($metaLine)
-                                        <div class="text-xs text-gray-400">{{ $metaLine }}</div>
-                                    @endif
-                                </td>
-                                <td><span class="badge {{ match($e->category) {
-                                    'office' => 'bg-amber-100 text-amber-700',
-                                    'operations' => 'bg-green-100 text-green-700',
-                                    'software' => 'bg-purple-100 text-purple-700',
-                                    'equipment' => 'bg-red-100 text-red-700',
-                                    'travel' => 'bg-cyan-100 text-cyan-700',
-                                    'marketing' => 'bg-pink-100 text-pink-700',
-                                    default => 'bg-gray-100 text-gray-700',
-                                } }}"><i class="fas {{ match($e->category) {
-                                    'office' => 'fa-building',
-                                    'operations' => 'fa-cogs',
-                                    'software' => 'fa-laptop-code',
-                                    'equipment' => 'fa-tools',
-                                    'travel' => 'fa-plane',
-                                    'marketing' => 'fa-bullhorn',
-                                    default => 'fa-ellipsis-h',
-                                } }} text-[10px]"></i> {{ ucfirst($e->category) }}</span></td>
-                                <td class="text-sm">{{ $e->client_name ?? '-' }}</td>
-                                <td class="text-right font-semibold">{{ fmtCurrency($e->amount) }}</td>
-                                <td class="text-sm text-gray-600">{{ $e->paid_to ?? '-' }}</td>
-                                <td><i class="fas {{ match($e->payment_method) {
-                                    'cash' => 'fa-money-bill-wave',
-                                    'bank' => 'fa-university',
-                                    'card' => 'fa-credit-card',
-                                    'cheque' => 'fa-file-invoice',
-                                    default => 'fa-wallet',
-                                } }} text-gray-400 text-sm"></i></td>
-                                <td>
-                                    <button wire:click="toggleStatus({{ $e->id }})" class="badge {{ $e->status === 'paid' ? 'badge-paid' : 'badge-pending' }} cursor-pointer hover:opacity-80">
-                                        {{ ucfirst($e->status) }}
-                                    </button>
-                                </td>
-                                <td>
-                                    <div class="flex items-center gap-1">
-                                        <button wire:click="openForm({{ $e->id }})" class="btn btn-icon btn-ghost" title="Edit"><i class="fas fa-pen text-gray-400 hover:text-[var(--brand)] text-xs"></i></button>
-                                        <button type="button" wire:click="$dispatch('open-confirm', { title: 'Delete Expense?', message: 'This expense entry will be permanently removed.', type: 'danger', action: 'deleteExpense', params: [{{ $e->id }}] })" class="btn btn-icon btn-ghost" aria-label="Delete expense" title="Delete"><i class="fas fa-trash text-gray-400 hover:text-red-500 text-xs"></i></button>
-                                    </div>
-                                </td>
+            {{-- Slim table --}}
+            <div class="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+                <div class="overflow-x-auto">
+                    <table class="w-full">
+                        <thead>
+                            <tr class="border-b border-gray-100 bg-gray-50/60">
+                                <th class="text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500 px-5 py-3">Date</th>
+                                <th class="text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500 px-5 py-3">Expense</th>
+                                <th class="text-right text-[11px] font-semibold uppercase tracking-wider text-gray-500 px-5 py-3">Amount</th>
+                                <th class="w-24"></th>
                             </tr>
-                        @empty
-                            <tr><td colspan="9">
-                                <div class="py-16 text-center">
-                                    <div class="flex h-14 w-14 mx-auto items-center justify-center rounded-2xl bg-gray-100 mb-4"><i class="fas fa-receipt text-2xl text-gray-300"></i></div>
-                                    <p class="text-gray-500 font-medium text-sm">No expenses found</p>
-                                    <p class="text-gray-400 text-xs mt-1">Track your first expense to get started</p>
-                                </div>
-                            </td></tr>
-                        @endforelse
-                    </tbody>
-                    @if($this->expenses->count())
-                        <tfoot>
-                            <tr class="font-bold bg-gray-50">
-                                <td colspan="4" class="text-sm">Total ({{ $this->expenses->total() }} expenses)</td>
-                                <td class="text-right text-green-600">{{ fmtCurrency($this->expenses->sum('amount')) }}</td>
-                                <td colspan="4"></td>
-                            </tr>
-                        </tfoot>
-                    @endif
-                </table>
+                        </thead>
+                        <tbody class="divide-y divide-gray-100">
+                            @php
+                                $catHex = [
+                                    'salary' => '#3b82f6', 'office' => '#f59e0b', 'operations' => '#22c55e',
+                                    'software' => '#a855f7', 'equipment' => '#ef4444', 'travel' => '#06b6d4',
+                                    'marketing' => '#ec4899', 'other' => '#94a3b8',
+                                ];
+                                $catIcons = [
+                                    'salary' => 'fa-users', 'office' => 'fa-building', 'operations' => 'fa-cogs',
+                                    'software' => 'fa-laptop-code', 'equipment' => 'fa-tools', 'travel' => 'fa-plane',
+                                    'marketing' => 'fa-bullhorn', 'other' => 'fa-ellipsis-h',
+                                ];
+                                $methodIcons = [
+                                    'cash' => 'fa-money-bill-wave', 'bank' => 'fa-university',
+                                    'card' => 'fa-credit-card', 'cheque' => 'fa-file-invoice',
+                                ];
+                            @endphp
+                            @forelse($this->expenses as $e)
+                                @php
+                                    $metaLine = match($e->category) {
+                                        'office' => $e->location,
+                                        'equipment' => $e->item_name,
+                                        'travel' => $e->destination,
+                                        default => null,
+                                    };
+                                    $catColor = $catHex[$e->category] ?? '#94a3b8';
+                                    $catIcon = $catIcons[$e->category] ?? 'fa-ellipsis-h';
+                                    $methodIcon = $methodIcons[$e->payment_method] ?? 'fa-wallet';
+                                @endphp
+                                <tr x-data="{ open: false }" class="group hover:bg-gray-50/50 transition">
+                                    <td class="px-5 py-4 whitespace-nowrap align-top">
+                                        <div class="text-sm font-medium text-gray-900">{{ \Illuminate\Support\Carbon::parse($e->date)->format('d M') }}</div>
+                                        <div class="text-[11px] text-gray-400">{{ \Illuminate\Support\Carbon::parse($e->date)->format('Y') }}</div>
+                                    </td>
+                                    <td class="px-5 py-4">
+                                        <div class="flex items-start gap-3">
+                                            <span class="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl" style="background-color: {{ $catColor }}1a; color: {{ $catColor }};">
+                                                <i class="fas {{ $catIcon }} text-xs"></i>
+                                            </span>
+                                            <div class="min-w-0 flex-1">
+                                                <div class="flex items-center gap-2 flex-wrap">
+                                                    <button type="button" @click="open = !open" class="text-sm font-semibold text-gray-900 hover:text-[var(--brand)] text-left truncate">{{ $e->description ?: 'Untitled expense' }}</button>
+                                                    <span class="text-[10px] font-semibold uppercase tracking-wider" style="color: {{ $catColor }};">{{ $e->category }}</span>
+                                                </div>
+                                                <div class="mt-1 flex items-center gap-3 text-xs text-gray-500 flex-wrap">
+                                                    @if($e->paid_to)
+                                                        <span class="inline-flex items-center gap-1"><i class="fas fa-user text-[9px] text-gray-400"></i>{{ $e->paid_to }}</span>
+                                                    @endif
+                                                    @if($e->client_name)
+                                                        <span class="inline-flex items-center gap-1"><i class="fas fa-briefcase text-[9px] text-gray-400"></i>{{ $e->client_name }}</span>
+                                                    @endif
+                                                    <span class="inline-flex items-center gap-1"><i class="fas {{ $methodIcon }} text-[9px] text-gray-400"></i>{{ ucfirst($e->payment_method) }}</span>
+                                                    @if($metaLine)
+                                                        <span class="inline-flex items-center gap-1 text-gray-400"><i class="fas fa-map-marker-alt text-[9px]"></i>{{ $metaLine }}</span>
+                                                    @endif
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td class="px-5 py-4 text-right align-top whitespace-nowrap">
+                                        <div class="text-sm font-bold text-gray-900 tabular-nums">{{ fmtCurrency($e->amount) }}</div>
+                                        <button wire:click="toggleStatus({{ $e->id }})" class="mt-1 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider transition hover:opacity-80 {{ $e->status === 'paid' ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700' }}">
+                                            <span class="h-1.5 w-1.5 rounded-full {{ $e->status === 'paid' ? 'bg-green-500' : 'bg-amber-500' }}"></span>
+                                            {{ $e->status }}
+                                        </button>
+                                    </td>
+                                    <td class="px-5 py-4 align-top">
+                                        <div class="flex items-center justify-end gap-1">
+                                            <button wire:click="openForm({{ $e->id }})" class="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 transition hover:border-gray-300 hover:bg-gray-50" title="Edit">
+                                                <i class="fas fa-pen text-[10px]"></i>
+                                                <span class="hidden sm:inline">Edit</span>
+                                            </button>
+                                            <div x-data="{ menuOpen: false }" class="relative">
+                                                <button type="button" @click="menuOpen = !menuOpen" class="inline-flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 transition hover:bg-gray-100 hover:text-gray-700" aria-label="More actions">
+                                                    <i class="fas fa-ellipsis-v text-xs"></i>
+                                                </button>
+                                                <div x-show="menuOpen" x-cloak @click.outside="menuOpen = false" @keydown.escape.window="menuOpen = false" x-transition style="display:none;" class="absolute right-0 top-full z-20 mt-1 w-44 overflow-hidden rounded-xl border border-gray-100 bg-white py-1 shadow-lg">
+                                                    <button type="button" wire:click="toggleStatus({{ $e->id }})" @click="menuOpen = false" class="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-gray-700 hover:bg-gray-50">
+                                                        <i class="fas {{ $e->status === 'paid' ? 'fa-undo' : 'fa-check' }} w-3 text-gray-400"></i>
+                                                        Mark as {{ $e->status === 'paid' ? 'pending' : 'paid' }}
+                                                    </button>
+                                                    <button type="button" wire:click="openForm({{ $e->id }})" @click="menuOpen = false" class="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-gray-700 hover:bg-gray-50">
+                                                        <i class="fas fa-pen w-3 text-gray-400"></i>
+                                                        Edit expense
+                                                    </button>
+                                                    <div class="my-1 border-t border-gray-100"></div>
+                                                    <button type="button" @click="menuOpen = false" wire:click="$dispatch('open-confirm', { title: 'Delete Expense?', message: 'This expense entry will be permanently removed.', type: 'danger', action: 'deleteExpense', params: [{{ $e->id }}] })" class="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-red-600 hover:bg-red-50">
+                                                        <i class="fas fa-trash w-3"></i>
+                                                        Delete
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </td>
+                                </tr>
+                            @empty
+                                <tr>
+                                    <td colspan="4">
+                                        <div class="py-16 text-center">
+                                            <div class="flex h-14 w-14 mx-auto items-center justify-center rounded-2xl bg-gray-100 mb-4"><i class="fas fa-receipt text-2xl text-gray-300"></i></div>
+                                            <p class="text-gray-500 font-medium text-sm">No expenses found</p>
+                                            <p class="text-gray-400 text-xs mt-1">{{ $this->hasActiveFilters ? 'Try adjusting your filters' : 'Track your first expense to get started' }}</p>
+                                        </div>
+                                    </td>
+                                </tr>
+                            @endforelse
+                        </tbody>
+                        @if($this->expenses->count())
+                            <tfoot>
+                                <tr class="border-t border-gray-100 bg-gray-50/60">
+                                    <td colspan="2" class="px-5 py-3 text-xs font-medium text-gray-500">Total ({{ $this->expenses->total() }} expenses on this page)</td>
+                                    <td class="px-5 py-3 text-right text-sm font-bold text-gray-900 tabular-nums">{{ fmtCurrency($this->expenses->sum('amount')) }}</td>
+                                    <td></td>
+                                </tr>
+                            </tfoot>
+                        @endif
+                    </table>
+                </div>
             </div>
 
             <div class="mt-4">

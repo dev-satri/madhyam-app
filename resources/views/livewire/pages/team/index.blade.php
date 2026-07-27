@@ -496,21 +496,8 @@ new #[Layout('components.layouts.app')] class extends Component
                 @endif
             </div>
 
-            {{-- Skeleton loader --}}
-            <div wire:loading.delay class="space-y-4 p-6">
-                <div class="h-8 bg-gray-200 rounded animate-pulse w-1/3"></div>
-                <div class="h-4 bg-gray-200 rounded animate-pulse w-2/3"></div>
-                <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    <div class="h-20 bg-gray-200 rounded-xl animate-pulse"></div>
-                    <div class="h-20 bg-gray-200 rounded-xl animate-pulse"></div>
-                    <div class="h-20 bg-gray-200 rounded-xl animate-pulse"></div>
-                    <div class="h-20 bg-gray-200 rounded-xl animate-pulse"></div>
-                </div>
-                <div class="h-64 bg-gray-200 rounded-2xl animate-pulse"></div>
-            </div>
-
             {{-- Role Count Cards --}}
-            <div wire:loading.remove.delay class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3">
+            <div wire:loading.class="opacity-60" wire:target="activeTab" class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3">
                 @foreach($this->roleCounts as $role => $count)
                     <div class="stat-card text-center">
                         <div class="stat-value text-lg">{{ $count }}</div>
@@ -547,8 +534,29 @@ new #[Layout('components.layouts.app')] class extends Component
                     <table class="data-table w-full">
                         <thead><tr><th>Member</th><th>Role</th><th>Department</th><th>Phone</th><th>Joined</th><th>Status</th><th>Actions</th></tr></thead>
                         <tbody>
+                            <!-- Skeleton Rows -->
+                            @for($i = 0; $i < 5; $i++)
+                                <tr wire:loading wire:target="search,roleFilter,statusFilter,activeTab">
+                                    <td>
+                                        <div class="flex items-center gap-3">
+                                            <div class="skeleton skeleton-avatar"></div>
+                                            <div>
+                                                <div class="skeleton h-4 w-24 mb-1"></div>
+                                                <div class="skeleton h-3 w-32"></div>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td><div class="skeleton h-5 w-20 rounded-full"></div></td>
+                                    <td><div class="skeleton h-4 w-24"></div></td>
+                                    <td><div class="skeleton h-4 w-24"></div></td>
+                                    <td><div class="skeleton h-4 w-20"></div></td>
+                                    <td><div class="skeleton h-5 w-16 rounded-full"></div></td>
+                                    <td><div class="skeleton h-8 w-8 rounded-lg"></div></td>
+                                </tr>
+                            @endfor
+
                             @forelse($this->members as $m)
-                                <tr>
+                                <tr wire:loading.remove wire:target="search,roleFilter,statusFilter,activeTab">
                                     <td>
                                         <div class="flex items-center gap-3">
                                             <div class="w-9 h-9 rounded-full bg-gray-200 flex items-center justify-center text-xs font-bold">{{ strtoupper(substr($m->name, 0, 2)) }}</div>
@@ -588,7 +596,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                     </td>
                                 </tr>
                             @empty
-                                <tr><td colspan="7">
+                                <tr wire:loading.remove wire:target="search,roleFilter,statusFilter,activeTab"><td colspan="7">
                                     <div class="py-16 text-center">
                                         <div class="flex h-14 w-14 mx-auto items-center justify-center rounded-2xl bg-gray-100 mb-4"><i class="fas fa-users text-2xl text-gray-300"></i></div>
                                         <p class="text-gray-500 font-medium text-sm">No members found</p>
@@ -613,8 +621,18 @@ new #[Layout('components.layouts.app')] class extends Component
                     <table class="data-table w-full">
                         <thead><tr><th>Department</th><th>Description</th><th>Members</th><th>Actions</th></tr></thead>
                         <tbody>
+                            <!-- Skeleton Rows -->
+                            @for($i = 0; $i < 4; $i++)
+                                <tr wire:loading wire:target="activeTab">
+                                    <td><div class="skeleton h-4 w-24"></div></td>
+                                    <td><div class="skeleton h-4 w-48"></div></td>
+                                    <td><div class="skeleton h-4 w-12"></div></td>
+                                    <td><div class="skeleton h-8 w-8 rounded-lg"></div></td>
+                                </tr>
+                            @endfor
+
                             @forelse($this->departments as $d)
-                                <tr>
+                                <tr wire:loading.remove wire:target="activeTab">
                                     <td class="font-medium">{{ $d->name }}</td>
                                     <td class="text-sm text-gray-600">{{ $d->description ?? '-' }}</td>
                                     <td class="text-sm">{{ $d->member_count }}</td>
@@ -628,7 +646,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                     </td>
                                 </tr>
                             @empty
-                                <tr><td colspan="4">
+                                <tr wire:loading.remove wire:target="activeTab"><td colspan="4">
                                     <div class="py-16 text-center">
                                         <div class="flex h-14 w-14 mx-auto items-center justify-center rounded-2xl bg-gray-100 mb-4"><i class="fas fa-sitemap text-2xl text-gray-300"></i></div>
                                         <p class="text-gray-500 font-medium text-sm">No departments found</p>
@@ -643,7 +661,8 @@ new #[Layout('components.layouts.app')] class extends Component
 
             {{-- Roles Tab --}}
             @if($activeTab === 'roles')
-                <div class="flex justify-between items-center">
+                <div wire:loading.class="opacity-60" wire:target="activeTab" class="space-y-6">
+                    <div class="flex justify-between items-center">
                     <p class="text-sm text-gray-500">Built-in roles cannot be deleted. Create custom roles with specific feature and data access.</p>
                     @if($this->canEditMember)
                         <button wire:click="openRoleForm" class="btn btn-primary btn-sm"><i class="fas fa-plus text-sm"></i> Add Role</button>
@@ -715,6 +734,7 @@ new #[Layout('components.layouts.app')] class extends Component
                             <p class="text-xs text-gray-300 mt-1">Create roles with specific feature access</p>
                         </div>
                     @endif
+                </div>
                 </div>
             @endif
             @if($showMemberForm)

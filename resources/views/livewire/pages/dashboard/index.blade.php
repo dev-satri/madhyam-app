@@ -250,7 +250,7 @@ new #[Layout('components.layouts.app')] class extends Component
                 };
             }
         </script>
-        <div class="space-y-6" x-data="dashboardInit()">
+        <div class="space-y-6" x-data="dashboardInit()" wire:loading.class="opacity-60" wire:target="setRange, loadData">
             {{-- Backup Reminder --}}
             @if($backupReminder)
             <div class="flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
@@ -268,29 +268,20 @@ new #[Layout('components.layouts.app')] class extends Component
                 </div>
                 <div class="flex items-center gap-2">
                     <div class="inline-flex rounded-lg border border-gray-200 bg-white p-0.5">
-                        <button wire:click="setRange('today')" class="px-3 py-1.5 text-xs font-semibold rounded-md {{ $range === 'today' ? 'bg-[var(--brand)] text-white' : 'text-gray-500 hover:bg-gray-50' }}">Today</button>
-                        <button wire:click="setRange('week')" class="px-3 py-1.5 text-xs font-semibold rounded-md {{ $range === 'week' ? 'bg-[var(--brand)] text-white' : 'text-gray-500 hover:bg-gray-50' }}">Week</button>
-                        <button wire:click="setRange('month')" class="px-3 py-1.5 text-xs font-semibold rounded-md {{ $range === 'month' ? 'bg-[var(--brand)] text-white' : 'text-gray-500 hover:bg-gray-50' }}">Month</button>
+                        <button wire:click="setRange('today')" class="px-3 py-1.5 text-xs font-semibold rounded-md {{ $range === 'today' ? 'bg-[var(--brand)] text-white' : 'text-gray-500 hover:bg-gray-50' }}" wire:loading.attr="disabled" wire:target="setRange">Today</button>
+                        <button wire:click="setRange('week')" class="px-3 py-1.5 text-xs font-semibold rounded-md {{ $range === 'week' ? 'bg-[var(--brand)] text-white' : 'text-gray-500 hover:bg-gray-50' }}" wire:loading.attr="disabled" wire:target="setRange">Week</button>
+                        <button wire:click="setRange('month')" class="px-3 py-1.5 text-xs font-semibold rounded-md {{ $range === 'month' ? 'bg-[var(--brand)] text-white' : 'text-gray-500 hover:bg-gray-50' }}" wire:loading.attr="disabled" wire:target="setRange">Month</button>
                     </div>
-                    <button wire:click="loadData" class="btn btn-secondary btn-sm"><i class="fas fa-sync-alt text-xs"></i> Refresh</button>
+                    <button wire:click="loadData" class="btn btn-secondary btn-sm" wire:loading.attr="disabled" wire:target="loadData">
+                        <i wire:loading.remove wire:target="loadData" class="fas fa-sync-alt text-xs"></i>
+                        <i wire:loading wire:target="loadData" class="fas fa-spinner animate-spin text-xs"></i>
+                        Refresh
+                    </button>
                 </div>
-            </div>
-
-            {{-- Skeleton loader --}}
-            <div wire:loading.delay class="space-y-4 p-6">
-                <div class="h-8 bg-gray-200 rounded animate-pulse w-1/3"></div>
-                <div class="h-4 bg-gray-200 rounded animate-pulse w-2/3"></div>
-                <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    <div class="h-20 bg-gray-200 rounded-xl animate-pulse"></div>
-                    <div class="h-20 bg-gray-200 rounded-xl animate-pulse"></div>
-                    <div class="h-20 bg-gray-200 rounded-xl animate-pulse"></div>
-                    <div class="h-20 bg-gray-200 rounded-xl animate-pulse"></div>
-                </div>
-                <div class="h-64 bg-gray-200 rounded-2xl animate-pulse"></div>
             </div>
 
             {{-- Stat Cards --}}
-            <div wire:loading.remove.delay class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 @if(($stats['type'] ?? 'admin') === 'admin')
                 <div class="stat-card flex items-center gap-4">
                     <div class="stat-icon flex h-11 w-11 items-center justify-center rounded-xl bg-[rgba(var(--brand-rgb),0.08)] text-[var(--brand)]"><i class="fas fa-users text-lg"></i></div>

@@ -7,13 +7,13 @@ export default {
         './vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php',
         './storage/framework/views/*.php',
         './resources/views/**/*.blade.php',
-        './app/Livewire/**/*.php',
+        './app/Livewire/**/*.php'
     ],
 
     theme: {
         extend: {
             fontFamily: {
-                sans: ['Inter', ...defaultTheme.fontFamily.sans],
+                sans: ['Inter', ...defaultTheme.fontFamily.sans]
             },
             colors: {
                 brand: {
@@ -26,11 +26,11 @@ export default {
                     600: '#4f46e5',
                     700: '#4338ca',
                     800: '#3730a3',
-                    900: '#312e81',
-                },
-            },
-        },
+                    900: '#312e81'
+                }
+            }
+        }
     },
 
-    plugins: [forms],
+    plugins: [forms]
 };
