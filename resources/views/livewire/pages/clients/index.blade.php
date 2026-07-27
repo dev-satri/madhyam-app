@@ -586,7 +586,6 @@ new #[Layout('components.layouts.app')] class extends Component
             <div class="border-t border-gray-100 px-4 py-3">{{ $this->clients->links() }}</div>
         @endif
     </div>
-</div>
 
 {{-- ========== CLIENT FORM MODAL (Create / Edit) ========== --}}
 @if ($showForm)
