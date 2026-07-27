@@ -6,6 +6,7 @@ use Livewire\Attributes\On;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
 use App\Services\PackageService;
+use App\Models\Setting;
 use Carbon\Carbon;
 
 new #[Layout('components.layouts.app')] class extends Component
@@ -50,14 +51,36 @@ new #[Layout('components.layouts.app')] class extends Component
     // View toggle
     public string $viewMode = 'table'; // table or grid
 
+    // Package status filter
+    public string $pkgStatusFilter = 'all';
+
+    // Loading states
+    public bool $isSaving = false;
+
+    public string $currencySymbol = 'रु';
+    public string $currencyCode = 'NPR';
+
     public function mount(): void
     {
+        $this->setCurrency();
         $this->loadData();
+    }
+
+    private function setCurrency(): void
+    {
+        $code = Setting::current()->currency ?? 'NPR';
+        $this->currencyCode = $code;
+        $this->currencySymbol = match ($code) {
+            'USD' => '$',
+            'INR' => '₹',
+            'NPR' => 'रु',
+            default => '',
+        };
     }
 
     public function loadData(): void
     {
-        $this->packages = PackageService::getPackageStats();
+        $this->packages = PackageService::getPackageStats($this->pkgStatusFilter === 'all' ? null : $this->pkgStatusFilter);
         $this->allClientsUsage = PackageService::getAllClientsUsage();
     }
 
@@ -127,6 +150,18 @@ new #[Layout('components.layouts.app')] class extends Component
         }
     }
 
+    public function updatedPkgName(): void
+    {
+        if ($this->editingPkgId === 0) {
+            $this->pkgSlug = \Illuminate\Support\Str::slug($this->pkgName);
+        }
+    }
+
+    public function updatedPkgStatusFilter(): void
+    {
+        $this->loadData();
+    }
+
     public function savePkg(): void
     {
         $this->validate([
@@ -134,6 +169,8 @@ new #[Layout('components.layouts.app')] class extends Component
             'pkgSlug' => 'required|string|max:100|alpha_dash',
             'pkgAmount' => 'required|numeric|min:0',
         ]);
+
+        $this->isSaving = true;
 
         $features = array_filter(array_map('trim', explode("\n", $this->pkgFeatures)));
         $platforms = array_filter(array_map('trim', explode(',', $this->pkgPlatforms)));
@@ -175,6 +212,7 @@ new #[Layout('components.layouts.app')] class extends Component
         }
 
         $this->showPkgForm = false;
+        $this->isSaving = false;
         $this->loadData();
     }
 
@@ -447,7 +485,24 @@ new #[Layout('components.layouts.app')] class extends Component
             <h1 class="text-xl font-extrabold text-gray-900">Packages</h1>
             <p class="text-sm text-gray-500 mt-0.5">Manage subscription packages and track all client usage</p>
         </div>
-        <button wire:click="openPkgForm" class="btn btn-primary"><i class="fas fa-plus mr-1.5"></i> Add Package</button>
+        <div class="flex items-center gap-3">
+            <div class="flex rounded-lg border border-gray-200 bg-white p-0.5">
+                @foreach (['all' => 'All', 'active' => 'Active', 'inactive' => 'Inactive'] as $value => $label)
+                    <button
+                        wire:click="$set('pkgStatusFilter', '{{ $value }}')"
+                        class="px-3 py-1.5 text-xs font-semibold rounded-md transition-colors
+                            {{ $pkgStatusFilter === $value
+                                ? 'bg-[var(--brand)] text-white shadow-sm'
+                                : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50' }}"
+                    >
+                        {{ $label }}
+                    </button>
+                @endforeach
+            </div>
+            <button wire:click="openPkgForm" class="btn btn-primary">
+                <i class="fas fa-plus mr-1.5"></i> Add Package
+            </button>
+        </div>
     </div>
 
     {{-- Package Cards --}}
@@ -475,11 +530,11 @@ new #[Layout('components.layouts.app')] class extends Component
                         >{{ ucfirst($pkg['status']) }}</span
                     >
                 </div>
-                <p class="text-2xl font-extrabold text-gray-900">NPR {{ number_format($pkg['monthly_amount']) }}<span class="text-xs font-normal text-gray-400">/mo</span></p>
+                <p class="text-2xl font-extrabold text-gray-900">{{ $currencySymbol }} {{ number_format($pkg['monthly_amount']) }}<span class="text-xs font-normal text-gray-400">/mo</span></p>
                 <div class="flex items-center gap-4 mt-3 text-xs text-gray-500">
                     <span><i class="fas fa-users mr-1 text-[var(--brand)]"></i>{{ $pkg['client_count'] }}</span>
                     <span
-                        ><i class="fas fa-dollar-sign mr-1 text-green-500"></i
+                        ><i class="fas fa-coins mr-1 text-green-500"></i
                         >{{ number_format($pkg['total_revenue']) }}</span
                     >
                     @if ($overLimitCount > 0)
@@ -1124,8 +1179,11 @@ new #[Layout('components.layouts.app')] class extends Component
                                 type="text"
                                 wire:model="pkgSlug"
                                 class="form-input w-full text-sm"
-                                placeholder="e.g. premium"
+                                placeholder="auto-generated-from-name"
                             />
+                            @if (!$editingPkgId && $pkgName)
+                                <p class="text-[11px] text-gray-400 mt-1">Auto-generated from name. Edit if needed.</p>
+                            @endif
                             @error ('pkgSlug')
                                 <span class="text-red-500 text-xs mt-1 block">{{ $message }}</span>
                             @enderror
@@ -1133,7 +1191,9 @@ new #[Layout('components.layouts.app')] class extends Component
                     </div>
                     <div class="grid grid-cols-2 gap-4">
                         <div>
-                            <label class="block text-xs font-semibold text-gray-600 mb-1">Monthly Price (NPR) *</label>
+                            <label class="block text-xs font-semibold text-gray-600 mb-1"
+                                >Monthly Price ({{ $currencyCode }}) *</label
+                            >
                             <input type="number" wire:model="pkgAmount" class="form-input w-full text-sm" min="0" />
                             @error ('pkgAmount')
                                 <span class="text-red-500 text-xs mt-1 block">{{ $message }}</span>
@@ -1318,8 +1378,18 @@ new #[Layout('components.layouts.app')] class extends Component
                     </div>
                     <div class="flex justify-end gap-3 pt-4 border-t border-gray-100">
                         <button wire:click="$set('showPkgForm', false)" class="btn btn-secondary btn-sm">Cancel</button>
-                        <button wire:click="savePkg" class="btn btn-primary btn-sm">
-                            <i class="fas fa-save mr-1"></i> {{ $editingPkgId ? 'Update' : 'Create' }}
+                        <button
+                            wire:click="savePkg"
+                            wire:loading.attr="disabled"
+                            class="btn btn-primary btn-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            <span wire:loading.remove wire:target="savePkg">
+                                <i class="fas fa-save mr-1"></i> {{ $editingPkgId ? 'Update' : 'Create' }}
+                            </span>
+                            <span wire:loading wire:target="savePkg">
+                                <i class="fas fa-spinner fa-spin mr-1"></i>
+                                {{ $editingPkgId ? 'Updating...' : 'Creating...' }}
+                            </span>
                         </button>
                     </div>
                 </div>
@@ -1354,7 +1424,7 @@ new #[Layout('components.layouts.app')] class extends Component
                             >{{ $detailPackage['name'] ?? '' }}</span
                         >
                         <span class="text-sm font-semibold text-gray-900"
-                            >NPR {{ number_format($detailPackage['monthly_amount'] ?? 0) }}/mo</span
+                            >{{ $currencySymbol }} {{ number_format($detailPackage['monthly_amount'] ?? 0) }}/mo</span
                         >
                     </div>
                     <button
@@ -1373,7 +1443,7 @@ new #[Layout('components.layouts.app')] class extends Component
                             <p class="text-[10px] text-gray-500 mt-0.5">Clients</p>
                         </div>
                         <div class="bg-gray-50 rounded-xl p-3 text-center">
-                            <p class="text-2xl font-extrabold text-green-600">NPR {{ number_format($summary['total_revenue']) }}</p>
+                            <p class="text-2xl font-extrabold text-green-600">{{ $currencySymbol }} {{ number_format($summary['total_revenue']) }}</p>
                             <p class="text-[10px] text-gray-500 mt-0.5">Monthly Revenue</p>
                         </div>
                         <div class="bg-gray-50 rounded-xl p-3 text-center">
@@ -1471,7 +1541,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                         <td>
                                             <div>
                                                 <p class="font-semibold text-gray-900">{{ $client['client_name'] }}</p>
-                                                <p class="text-[10px] text-gray-400">NPR {{ number_format($client['amount']) }}/mo</p>
+                                                <p class="text-[10px] text-gray-400">{{ $currencySymbol }} {{ number_format($client['amount']) }}/mo</p>
                                             </div>
                                         </td>
                                         <td class="text-center">
@@ -1608,7 +1678,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                 class="badge badge-{{ $clientDetail['package_slug'] }}"
                                 >{{ $clientDetail['package_name'] }}</span
                             >
-                            <p class="text-lg font-extrabold text-gray-900 mt-1">NPR {{ number_format($clientDetail['amount']) }}<span class="text-xs font-normal text-gray-400">/mo</span></p>
+                            <p class="text-lg font-extrabold text-gray-900 mt-1">{{ $currencySymbol }} {{ number_format($clientDetail['amount']) }}<span class="text-xs font-normal text-gray-400">/mo</span></p>
                             @if ($clientDetail['priority_support'])
                                 <span
                                     class="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 mt-1 inline-block"

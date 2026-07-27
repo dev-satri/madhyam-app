@@ -599,9 +599,13 @@ class PackageService
         return $used > $limit;
     }
 
-    public static function getPackageStats(): array
+    public static function getPackageStats(?string $status = null): array
     {
-        $packages = DB::table('packages')->where('status', 'active')->get();
+        $query = DB::table('packages');
+        if ($status !== null) {
+            $query->where('status', $status);
+        }
+        $packages = $query->orderBy('name')->get();
         $stats = [];
 
         foreach ($packages as $pkg) {
