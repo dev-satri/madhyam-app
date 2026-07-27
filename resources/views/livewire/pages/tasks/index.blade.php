@@ -328,7 +328,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function deleteTask(int $id): void
     {
-        DB::table('tasks')->where('id', $id)->delete();
+        Task::findOrFail($id)->delete();
         app(ActivityLogger::class)->record(Auth::user(), "Deleted task #{$id}");
         $this->resetPage();
         $this->dispatch('toast', message: 'Task deleted', type: 'success');

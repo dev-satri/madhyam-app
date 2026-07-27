@@ -7,6 +7,7 @@ use Livewire\Attributes\Computed;
 use Livewire\WithPagination;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
+use App\Models\Salary;
 use App\Services\SalaryCalculator;
 
 new #[Layout('components.layouts.app')] class extends Component
@@ -358,7 +359,7 @@ new #[Layout('components.layouts.app')] class extends Component
     public function deleteSalary(int $id): void
     {
         if (!$this->isManager()) return;
-        DB::table('salaries')->where('id', $id)->delete();
+        Salary::findOrFail($id)->delete();
         $this->dispatch('toast', message: 'Salary record deleted', type: 'success');
     }
 

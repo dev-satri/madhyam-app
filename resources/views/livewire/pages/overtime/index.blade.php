@@ -7,6 +7,7 @@ use Livewire\Attributes\Computed;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
 use Livewire\WithPagination;
+use App\Models\OvertimeLog;
 
 new #[Layout('components.layouts.app')] class extends Component
 {
@@ -234,7 +235,7 @@ new #[Layout('components.layouts.app')] class extends Component
     {
         $log = DB::table('overtime_logs')->where('id', $id)->first();
         if ($log) {
-            DB::table('overtime_logs')->where('id', $id)->delete();
+            OvertimeLog::findOrFail($id)->delete();
             // Recalculate salary for that member/month/year
             $date = \Carbon\Carbon::parse($log->date);
             $salary = \App\Models\Salary::where('member_id', $log->member_id)

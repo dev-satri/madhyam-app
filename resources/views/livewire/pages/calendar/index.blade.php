@@ -6,6 +6,7 @@ use Livewire\Attributes\On;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
+use App\Models\Content;
 use App\Services\PackageService;
 
 new #[Layout('components.layouts.app')] class extends Component
@@ -323,7 +324,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function deleteContent(int $id): void
     {
-        DB::table('contents')->where('id', $id)->delete();
+        Content::findOrFail($id)->delete();
         $this->loadMonthContent();
         $this->dispatch('contentUpdated');
         $this->dispatch('toast', message: 'Content deleted successfully', type: 'success');

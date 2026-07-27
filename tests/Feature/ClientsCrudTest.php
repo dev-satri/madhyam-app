@@ -83,7 +83,7 @@ class ClientsCrudTest extends TestCase
             ->call('delete', $client->id)
             ->call('performDelete');
 
-        $this->assertDatabaseMissing('clients', ['id' => $client->id]);
+        $this->assertSoftDeleted('clients', ['id' => $client->id]);
     }
 
     public function test_validation_requires_name(): void

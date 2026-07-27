@@ -69,7 +69,7 @@ class CustomRoleTest extends TestCase
         Livewire::test('pages.settings.index')
             ->call('deleteRole', $roleId);
 
-        $this->assertDatabaseMissing('custom_roles', ['id' => $roleId]);
+        $this->assertSoftDeleted('custom_roles', ['id' => $roleId]);
         $this->assertDatabaseMissing('feature_access', ['role' => 'junior-editor']);
         $this->assertDatabaseMissing('data_access', ['role' => 'junior-editor']);
     }

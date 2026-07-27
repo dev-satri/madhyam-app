@@ -7,6 +7,7 @@ use Livewire\Attributes\Computed;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Response;
+use App\Models\Leave;
 use App\Models\Setting;
 
 new #[Layout('components.layouts.app')] class extends Component
@@ -180,7 +181,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function deleteLeave(int $id): void
     {
-        DB::table('leaves')->where('id', $id)->delete();
+        Leave::findOrFail($id)->delete();
         $this->dispatch('toast', message: 'Leave deleted', type: 'success');
     }
 

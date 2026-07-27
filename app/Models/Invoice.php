@@ -2,15 +2,17 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\InteractsWithTrash;
 use App\Models\Concerns\ScopesToClientAccount;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Carbon;
 
 class Invoice extends Model
 {
-    use ScopesToClientAccount;
+    use InteractsWithTrash, ScopesToClientAccount, SoftDeletes;
 
     protected $fillable = [
         'client_id', 'amount', 'status', 'payment_status',

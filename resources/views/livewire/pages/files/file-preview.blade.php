@@ -4,6 +4,7 @@ use Livewire\Volt\Component;
 use Livewire\Attributes\On;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use App\Models\File;
 
 new class extends Component
 {
@@ -30,11 +31,11 @@ new class extends Component
     {
         $file = $this->getFile();
         if ($file) {
+            DB::table('file_expiries')->where('file_id', $this->fileId)->delete();
+            File::findOrFail($this->fileId)->delete();
             if (Storage::exists($file->path)) {
                 Storage::delete($file->path);
             }
-            DB::table('files')->where('id', $this->fileId)->delete();
-            DB::table('file_expiries')->where('file_id', $this->fileId)->delete();
             $this->dispatch('toast', message: 'File deleted', type: 'success');
             $this->dispatch('file-deleted');
         }

@@ -6,6 +6,7 @@ use Livewire\Attributes\On;
 use Livewire\Attributes\Computed;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
+use App\Models\Expense;
 use Livewire\WithPagination;
 
 new #[Layout('components.layouts.app')] class extends Component
@@ -226,7 +227,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function deleteExpense(int $id): void
     {
-        DB::table('expenses')->where('id', $id)->delete();
+        Expense::findOrFail($id)->delete();
         $this->dispatch('toast', message: 'Expense deleted', type: 'success');
     }
 

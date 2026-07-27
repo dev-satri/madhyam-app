@@ -159,6 +159,8 @@ Route::middleware('auth:web')->group(function () {
         Volt::route('complaints', 'pages.complaints.index')->name('complaints');
     });
 
+    Volt::route('trash', 'pages.trash.index')->name('trash');
+
     // Profile is always available to authenticated staff (no feature gate)
     Volt::route('profile', 'pages.profile.index')->name('profile');
 

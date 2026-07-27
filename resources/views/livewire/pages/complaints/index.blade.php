@@ -8,6 +8,7 @@ use Livewire\WithPagination;
 use Livewire\WithFileUploads;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
+use App\Models\Complaint;
 use Illuminate\Support\Facades\Storage;
 
 new #[Layout('components.layouts.app')] class extends Component
@@ -313,7 +314,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function deleteComplaint(int $id): void
     {
-        DB::table('complaints')->where('id', $id)->delete();
+        Complaint::findOrFail($id)->delete();
         $this->closeDetail();
         $this->dispatch('toast', message: 'Complaint deleted', type: 'success');
     }

@@ -6,6 +6,7 @@ use Livewire\Attributes\On;
 use Livewire\Attributes\Computed;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
+use App\Models\CustomRole;
 use App\Services\RbacService;
 
 new #[Layout('components.layouts.app')] class extends Component
@@ -250,7 +251,7 @@ new #[Layout('components.layouts.app')] class extends Component
                 $this->dispatch('toast', message: 'Cannot delete role with members', type: 'error');
                 return;
             }
-            DB::table('custom_roles')->where('id', $id)->delete();
+            CustomRole::findOrFail($id)->delete();
             DB::table('feature_access')->where('role', $role->role_key)->delete();
             DB::table('data_access')->where('role', $role->role_key)->delete();
             $this->allRoles = DB::table('feature_access')->pluck('role')->toArray();

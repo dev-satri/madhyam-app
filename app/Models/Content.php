@@ -2,14 +2,16 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\InteractsWithTrash;
 use App\Models\Concerns\ScopesToClientAccount;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Content extends Model
 {
-    use ScopesToClientAccount;
+    use InteractsWithTrash, ScopesToClientAccount, SoftDeletes;
 
     protected $table = 'contents';
 

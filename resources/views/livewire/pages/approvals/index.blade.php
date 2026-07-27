@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
 use App\Services\ActivityLogger;
 use App\Services\NotificationService;
+use App\Models\Approval;
 
 new #[Layout('components.layouts.app')] class extends Component
 {
@@ -444,7 +445,7 @@ new #[Layout('components.layouts.app')] class extends Component
             $this->dispatch('toast', message: 'Unauthorized action', type: 'error');
             return;
         }
-        DB::table('approvals')->where('id', $id)->delete();
+        Approval::findOrFail($id)->delete();
         app(ActivityLogger::class)->record(Auth::user() ?? Auth::guard('client')->user(), "Deleted approval #{$id}");
         $this->resetPage();
         $this->dispatch('toast', message: 'Approval deleted', type: 'success');

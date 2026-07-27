@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
 use App\Mail\MemberWelcomeMail;
+use App\Models\CustomRole;
 use App\Services\RbacService;
 use Livewire\WithPagination;
 
@@ -440,7 +441,7 @@ new #[Layout('components.layouts.app')] class extends Component
                 $this->dispatch('toast', message: 'Cannot delete role with members', type: 'error');
                 return;
             }
-            DB::table('custom_roles')->where('id', $id)->delete();
+            CustomRole::findOrFail($id)->delete();
             DB::table('feature_access')->where('role', $role->role_key)->delete();
             DB::table('data_access')->where('role', $role->role_key)->delete();
             \Illuminate\Support\Facades\Cache::store('array')->forget("features:{$role->role_key}");

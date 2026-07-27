@@ -562,7 +562,7 @@ new #[Layout('components.layouts.app')] class extends Component
     {
         abort_if($this->isClientPortal(), 403);
         DB::table('invoice_payments')->where('invoice_id', $id)->delete();
-        DB::table('invoices')->where('id', $id)->delete();
+        Invoice::findOrFail($id)->delete();
         app(ActivityLogger::class)->record(Auth::user(), "Deleted invoice #{$id}");
         $this->dispatch('toast', message: 'Invoice deleted', type: 'success');
     }

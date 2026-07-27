@@ -85,7 +85,7 @@ class TaskBulkOperationsTest extends TestCase
         Livewire::test('pages.tasks.index')
             ->call('deleteTask', $taskId);
 
-        $this->assertDatabaseMissing('tasks', ['id' => $taskId]);
+        $this->assertSoftDeleted('tasks', ['id' => $taskId]);
     }
 
     public function test_bulk_properties_exist(): void

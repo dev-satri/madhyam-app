@@ -2,11 +2,15 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\InteractsWithTrash;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Expense extends Model
 {
+    use InteractsWithTrash, SoftDeletes;
+
     protected $fillable = [
         'category', 'description', 'amount', 'date',
         'client_id', 'paid_to', 'payment_method', 'status',

@@ -2,14 +2,18 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\InteractsWithTrash;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Storage;
 
 class File extends Model
 {
+    use InteractsWithTrash, SoftDeletes;
+
     protected $fillable = [
         'name', 'path', 'type', 'size', 'storage_type', 'external_url',
         'folder_id', 'client_id', 'tags', 'uploaded_by',

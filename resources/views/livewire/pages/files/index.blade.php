@@ -9,6 +9,8 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
 use App\Services\PackageService;
+use App\Models\Folder;
+use App\Models\File;
 
 new #[Layout('components.layouts.app')] class extends Component
 {
@@ -279,7 +281,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function deleteFolder(int $id): void
     {
-        DB::table('folders')->where('id', $id)->delete();
+        Folder::findOrFail($id)->delete();
         $this->dispatch('toast', message: 'Folder deleted', type: 'success');
     }
 
@@ -486,12 +488,12 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function deleteFile(int $id): void
     {
+        DB::table('file_expiries')->where('file_id', $id)->delete();
         $file = DB::table('files')->where('id', $id)->first();
+        File::findOrFail($id)->delete();
         if ($file && Storage::exists($file->path)) {
             Storage::delete($file->path);
         }
-        DB::table('files')->where('id', $id)->delete();
-        DB::table('file_expiries')->where('file_id', $id)->delete();
         $this->dispatch('toast', message: 'File deleted', type: 'success');
     }
 

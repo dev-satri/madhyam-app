@@ -34,3 +34,6 @@ Schedule::command('shoot:reminder')->dailyAt('07:00');
 
 // Client expiry followup: daily at 10:30 AM
 Schedule::command('client:expiry-followup')->dailyAt('10:30');
+
+// Purge expired trash items (older than 7 days): daily at 02:00 AM
+Schedule::command('trash:purge')->dailyAt('02:00');
