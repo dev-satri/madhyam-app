@@ -44,7 +44,7 @@ Thanks for choosing <strong>{{ config('app.name', 'Madhyam') }}</strong> as your
 @if (!empty($client->deliverables))
 <p style="font-size: 13px; color: #64748b; margin: 20px 0 8px 0; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">What's included</p>
 
-<p style="font-size: 14px; color: #334155; line-height: 1.6; margin: 0 0 16px 0;">{{ $client->deliverables }}</p>
+<p style="font-size: 14px; color: #334155; line-height: 1.6; margin: 0 0 16px 0;">{{ is_array($client->deliverables) ? implode("\n", $client->deliverables) : $client->deliverables }}</p>
 @endif
 
 ## What's next

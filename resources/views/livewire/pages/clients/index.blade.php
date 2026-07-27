@@ -137,9 +137,9 @@ new #[Layout('components.layouts.app')] class extends Component
         $this->contract_start = $client->contract_start?->format('Y-m-d');
         $this->contract_end = $client->contract_end?->format('Y-m-d');
         $this->amount = (float) $client->amount;
-        $this->deliverables = $client->deliverables ?? '';
-        $this->brand_guide = $client->brand_guide ?? '';
-        $this->social_links = $client->social_links ?? '';
+        $this->deliverables = is_array($client->deliverables) ? json_encode($client->deliverables, JSON_THROW_ON_ERROR) : ($client->deliverables ?? '');
+        $this->brand_guide = is_array($client->brand_guide) ? json_encode($client->brand_guide, JSON_THROW_ON_ERROR) : ($client->brand_guide ?? '');
+        $this->social_links = is_array($client->social_links) ? json_encode($client->social_links, JSON_THROW_ON_ERROR) : ($client->social_links ?? '');
         $this->notes = $client->notes ?? '';
         $this->status = $client->status;
         $this->showForm = true;
@@ -905,21 +905,21 @@ new #[Layout('components.layouts.app')] class extends Component
                             @if ($selectedClient->deliverables)
                                 <div>
                                     <p class="text-[11px] font-semibold uppercase tracking-wider text-gray-400 mb-2">Deliverables</p>
-                                    <p class="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{{ $selectedClient->deliverables }}</p>
+                                    <p class="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{{ is_array($selectedClient->deliverables) ? implode("\n", $selectedClient->deliverables) : $selectedClient->deliverables }}</p>
                                 </div>
                             @endif
 
                             @if ($selectedClient->brand_guide)
                                 <div>
                                     <p class="text-[11px] font-semibold uppercase tracking-wider text-gray-400 mb-2">Brand Guide</p>
-                                    <p class="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{{ $selectedClient->brand_guide }}</p>
+                                    <p class="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{{ is_array($selectedClient->brand_guide) ? implode("\n", $selectedClient->brand_guide) : $selectedClient->brand_guide }}</p>
                                 </div>
                             @endif
 
                             @if ($selectedClient->social_links)
                                 <div>
                                     <p class="text-[11px] font-semibold uppercase tracking-wider text-gray-400 mb-2">Social Links</p>
-                                    <p class="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{{ $selectedClient->social_links }}</p>
+                                    <p class="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{{ is_array($selectedClient->social_links) ? implode("\n", $selectedClient->social_links) : $selectedClient->social_links }}</p>
                                 </div>
                             @endif
 
