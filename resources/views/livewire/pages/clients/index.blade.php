@@ -587,187 +587,197 @@ new #[Layout('components.layouts.app')] class extends Component
         @endif
     </div>
 
-{{-- ========== CLIENT FORM MODAL (Create / Edit) ========== --}}
-@if ($showForm)
-    <div class="modal-overlay" x-data x-on:keydown.escape.window="$wire.set('showForm', false)">
-        <div class="modal-box max-w-3xl max-h-[90vh]" x-on:click.stop>
-            <div class="modal-header">
-                <h3 class="text-base font-bold text-gray-900">
-                    <i class="fas fa-{{ $formMode === 'edit' ? 'pen' : 'plus' }} text-[var(--brand)] mr-2"></i>
-                    {{ $formMode === 'edit' ? 'Edit Client' : 'Add New Client' }}
-                </h3>
-                <button
-                    wire:click="$set('showForm', false)"
-                    class="flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors"
-                >
-                    <i class="fas fa-times text-sm"></i>
-                </button>
-            </div>
+    {{-- ========== CLIENT FORM MODAL (Create / Edit) ========== --}}
+    @if ($showForm)
+        <div class="modal-overlay" x-data x-on:keydown.escape.window="$wire.set('showForm', false)">
+            <div class="modal-box max-w-3xl max-h-[90vh]" x-on:click.stop>
+                <div class="modal-header">
+                    <h3 class="text-base font-bold text-gray-900">
+                        <i class="fas fa-{{ $formMode === 'edit' ? 'pen' : 'plus' }} text-[var(--brand)] mr-2"></i>
+                        {{ $formMode === 'edit' ? 'Edit Client' : 'Add New Client' }}
+                    </h3>
+                    <button
+                        wire:click="$set('showForm', false)"
+                        class="flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors"
+                    >
+                        <i class="fas fa-times text-sm"></i>
+                    </button>
+                </div>
 
-            <div class="modal-body overflow-y-auto max-h-[calc(90vh-80px)]">
-                <form wire:submit="save">
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                            <label class="form-label">Client Name <span class="text-red-500">*</span></label>
-                            <input type="text" wire:model="name" class="form-input" placeholder="Enter client name" />
-                            @error ('name')
-                                <span class="text-xs text-red-500 mt-1 block">{{ $message }}</span>
-                            @enderror
-                            <span wire:error="name" class="text-red-500 text-xs mt-1 block"></span>
+                <div class="modal-body overflow-y-auto max-h-[calc(90vh-80px)]">
+                    <form wire:submit="save">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label class="form-label">Client Name <span class="text-red-500">*</span></label>
+                                <input
+                                    type="text"
+                                    wire:model="name"
+                                    class="form-input"
+                                    placeholder="Enter client name"
+                                />
+                                @error ('name')
+                                    <span class="text-xs text-red-500 mt-1 block">{{ $message }}</span>
+                                @enderror
+                                <span wire:error="name" class="text-red-500 text-xs mt-1 block"></span>
+                            </div>
+                            <div>
+                                <label class="form-label">Contact Person</label>
+                                <input
+                                    type="text"
+                                    wire:model="contact"
+                                    class="form-input"
+                                    placeholder="Contact person name"
+                                />
+                            </div>
+                            <div>
+                                <label class="form-label">Email</label>
+                                <input
+                                    type="email"
+                                    wire:model="email"
+                                    class="form-input"
+                                    placeholder="client@example.com"
+                                />
+                                @error ('email')
+                                    <span class="text-xs text-red-500 mt-1 block">{{ $message }}</span>
+                                @enderror
+                                <span wire:error="email" class="text-red-500 text-xs mt-1 block"></span>
+                            </div>
+                            <div>
+                                <label class="form-label">Phone</label>
+                                <input type="text" wire:model="phone" class="form-input" placeholder="+977-XXXXXXXXX" />
+                            </div>
+                            <div>
+                                <label class="form-label">Package <span class="text-red-500">*</span></label>
+                                <select wire:model="package_id" class="form-select">
+                                    <option value="">Select package...</option>
+                                    @foreach ($this->packages as $pkg)
+                                        <option value="{{ $pkg->id }}">
+                                            {{ $pkg->name }} — NPR {{ number_format($pkg->monthly_amount, 0) }}/mo
+                                        </option>
+                                    @endforeach
+                                </select>
+                                <span wire:error="package_id" class="text-red-500 text-xs mt-1 block"></span>
+                            </div>
+                            <div>
+                                <label class="form-label">Monthly Amount (NPR)</label>
+                                <input
+                                    type="number"
+                                    wire:model="amount"
+                                    step="0.01"
+                                    min="0"
+                                    class="form-input"
+                                    placeholder="0.00"
+                                />
+                            </div>
+                            <div>
+                                <label class="form-label">Contract Start</label>
+                                <input type="date" wire:model="contract_start" class="form-input" />
+                            </div>
+                            <div>
+                                <label class="form-label">Contract End</label>
+                                <input type="date" wire:model="contract_end" class="form-input" />
+                                @error ('contract_end')
+                                    <span class="text-xs text-red-500 mt-1 block">{{ $message }}</span>
+                                @enderror
+                            </div>
+                            <div>
+                                <label class="form-label">Status <span class="text-red-500">*</span></label>
+                                <select wire:model="status" class="form-select">
+                                    <option value="active">Active</option>
+                                    <option value="inactive">Inactive</option>
+                                    <option value="pending">Pending</option>
+                                </select>
+                            </div>
                         </div>
-                        <div>
-                            <label class="form-label">Contact Person</label>
-                            <input
-                                type="text"
-                                wire:model="contact"
-                                class="form-input"
-                                placeholder="Contact person name"
-                            />
-                        </div>
-                        <div>
-                            <label class="form-label">Email</label>
-                            <input
-                                type="email"
-                                wire:model="email"
-                                class="form-input"
-                                placeholder="client@example.com"
-                            />
-                            @error ('email')
-                                <span class="text-xs text-red-500 mt-1 block">{{ $message }}</span>
-                            @enderror
-                            <span wire:error="email" class="text-red-500 text-xs mt-1 block"></span>
-                        </div>
-                        <div>
-                            <label class="form-label">Phone</label>
-                            <input type="text" wire:model="phone" class="form-input" placeholder="+977-XXXXXXXXX" />
-                        </div>
-                        <div>
-                            <label class="form-label">Package <span class="text-red-500">*</span></label>
-                            <select wire:model="package_id" class="form-select">
-                                <option value="">Select package...</option>
-                                @foreach ($this->packages as $pkg)
-                                    <option value="{{ $pkg->id }}">
-                                        {{ $pkg->name }} — NPR {{ number_format($pkg->monthly_amount, 0) }}/mo
-                                    </option>
-                                @endforeach
-                            </select>
-                            <span wire:error="package_id" class="text-red-500 text-xs mt-1 block"></span>
-                        </div>
-                        <div>
-                            <label class="form-label">Monthly Amount (NPR)</label>
-                            <input
-                                type="number"
-                                wire:model="amount"
-                                step="0.01"
-                                min="0"
-                                class="form-input"
-                                placeholder="0.00"
-                            />
-                        </div>
-                        <div>
-                            <label class="form-label">Contract Start</label>
-                            <input type="date" wire:model="contract_start" class="form-input" />
-                        </div>
-                        <div>
-                            <label class="form-label">Contract End</label>
-                            <input type="date" wire:model="contract_end" class="form-input" />
-                            @error ('contract_end')
-                                <span class="text-xs text-red-500 mt-1 block">{{ $message }}</span>
-                            @enderror
-                        </div>
-                        <div>
-                            <label class="form-label">Status <span class="text-red-500">*</span></label>
-                            <select wire:model="status" class="form-select">
-                                <option value="active">Active</option>
-                                <option value="inactive">Inactive</option>
-                                <option value="pending">Pending</option>
-                            </select>
-                        </div>
-                    </div>
 
-                    <div class="mt-4 space-y-4">
-                        <div>
-                            <label class="form-label">Deliverables</label>
-                            <textarea
-                                wire:model="deliverables"
-                                class="form-textarea"
-                                rows="2"
-                                placeholder="List of deliverables..."
-                            ></textarea>
+                        <div class="mt-4 space-y-4">
+                            <div>
+                                <label class="form-label">Deliverables</label>
+                                <textarea
+                                    wire:model="deliverables"
+                                    class="form-textarea"
+                                    rows="2"
+                                    placeholder="List of deliverables..."
+                                ></textarea>
+                            </div>
+                            <div>
+                                <label class="form-label">Brand Guide</label>
+                                <textarea
+                                    wire:model="brand_guide"
+                                    class="form-textarea"
+                                    rows="2"
+                                    placeholder="Brand guidelines and notes..."
+                                ></textarea>
+                            </div>
+                            <div>
+                                <label class="form-label">Social Links</label>
+                                <textarea
+                                    wire:model="social_links"
+                                    class="form-textarea"
+                                    rows="2"
+                                    placeholder="One URL per line..."
+                                ></textarea>
+                            </div>
+                            <div>
+                                <label class="form-label">Notes</label>
+                                <textarea
+                                    wire:model="notes"
+                                    class="form-textarea"
+                                    rows="2"
+                                    placeholder="Additional notes..."
+                                ></textarea>
+                            </div>
                         </div>
-                        <div>
-                            <label class="form-label">Brand Guide</label>
-                            <textarea
-                                wire:model="brand_guide"
-                                class="form-textarea"
-                                rows="2"
-                                placeholder="Brand guidelines and notes..."
-                            ></textarea>
-                        </div>
-                        <div>
-                            <label class="form-label">Social Links</label>
-                            <textarea
-                                wire:model="social_links"
-                                class="form-textarea"
-                                rows="2"
-                                placeholder="One URL per line..."
-                            ></textarea>
-                        </div>
-                        <div>
-                            <label class="form-label">Notes</label>
-                            <textarea
-                                wire:model="notes"
-                                class="form-textarea"
-                                rows="2"
-                                placeholder="Additional notes..."
-                            ></textarea>
-                        </div>
-                    </div>
 
-                    <div class="mt-6 flex items-center justify-end gap-3 border-t border-gray-100 pt-5">
-                        <button
-                            type="button"
-                            wire:click="$set('showForm', false)"
-                            class="btn btn-secondary"
-                            wire:loading.attr="disabled"
-                        >
-                            Cancel
-                        </button>
-                        <button type="submit" class="btn btn-primary" wire:loading.attr="disabled" wire:target="save">
-                            <span wire:loading.remove wire:target="save"
-                                ><i class="fas fa-save text-xs"></i>
-                                {{ $formMode === 'edit' ? 'Update Client' : 'Create Client' }}</span
+                        <div class="mt-6 flex items-center justify-end gap-3 border-t border-gray-100 pt-5">
+                            <button
+                                type="button"
+                                wire:click="$set('showForm', false)"
+                                class="btn btn-secondary"
+                                wire:loading.attr="disabled"
                             >
-                            <span wire:loading wire:target="save"
-                                ><i class="fas fa-spinner fa-spin text-xs"></i> Saving...</span
+                                Cancel
+                            </button>
+                            <button
+                                type="submit"
+                                class="btn btn-primary"
+                                wire:loading.attr="disabled"
+                                wire:target="save"
                             >
-                        </button>
-                    </div>
-                </form>
+                                <span wire:loading.remove wire:target="save"
+                                    ><i class="fas fa-save text-xs"></i>
+                                    {{ $formMode === 'edit' ? 'Update Client' : 'Create Client' }}</span
+                                >
+                                <span wire:loading wire:target="save"
+                                    ><i class="fas fa-spinner fa-spin text-xs"></i> Saving...</span
+                                >
+                            </button>
+                        </div>
+                    </form>
+                </div>
             </div>
         </div>
-    </div>
-@endif
+    @endif
 
-{{-- ========== CLIENT DETAIL MODAL ========== --}}
-@if ($showDetail && $selectedClient)
-    <div class="modal-overlay" x-data x-on:keydown.escape.window="$wire.set('showDetail', false)">
-        <div class="modal-box max-w-5xl max-h-[90vh]" x-on:click.stop>
-            <div class="modal-header">
-                <div class="flex items-center gap-3 flex-1 min-w-0">
-                    <div
-                        class="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-[rgba(var(--brand-rgb),0.1)] text-sm font-bold text-[var(--brand)]"
-                    >
-                        {{ $selectedClient->initials }}
-                    </div>
-                    <div class="min-w-0">
-                        <h3 class="text-base font-bold text-gray-900 truncate">{{ $selectedClient->name }}</h3>
-                        <p class="text-xs text-gray-500 truncate">
-                            {{ $selectedClient->contact ?? 'No contact' }}
-                            @if ($selectedClient->email) ·{{ $selectedClient->email }} @endif
-                        </p>
-                    </div>
-                    @php
+    {{-- ========== CLIENT DETAIL MODAL ========== --}}
+    @if ($showDetail && $selectedClient)
+        <div class="modal-overlay" x-data x-on:keydown.escape.window="$wire.set('showDetail', false)">
+            <div class="modal-box max-w-5xl max-h-[90vh]" x-on:click.stop>
+                <div class="modal-header">
+                    <div class="flex items-center gap-3 flex-1 min-w-0">
+                        <div
+                            class="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-[rgba(var(--brand-rgb),0.1)] text-sm font-bold text-[var(--brand)]"
+                        >
+                            {{ $selectedClient->initials }}
+                        </div>
+                        <div class="min-w-0">
+                            <h3 class="text-base font-bold text-gray-900 truncate">{{ $selectedClient->name }}</h3>
+                            <p class="text-xs text-gray-500 truncate">
+                                {{ $selectedClient->contact ?? 'No contact' }}
+                                @if ($selectedClient->email) ·{{ $selectedClient->email }} @endif
+                            </p>
+                        </div>
+                        @php
                             $statusBadgeClass = match($selectedClient->status) {
                                 'active'   => 'bg-green-100 text-green-700',
                                 'inactive' => 'bg-gray-100 text-gray-600',
@@ -775,105 +785,105 @@ new #[Layout('components.layouts.app')] class extends Component
                                 default    => 'bg-gray-100 text-gray-600',
                             };
                         @endphp
-                    <span
-                        @class (['inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold', $statusBadgeClass])
-                    >
-                        {{ ucfirst($selectedClient->status) }}
-                    </span>
-                </div>
-                <button
-                    wire:click="$set('showDetail', false)"
-                    class="flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors"
-                >
-                    <i class="fas fa-times text-sm"></i>
-                </button>
-            </div>
-
-            <div class="modal-body overflow-y-auto max-h-[calc(90vh-80px)]">
-                {{-- 6-Stat Grid --}}
-                @php $stats = $this->getClientStats($selectedClient); @endphp
-                <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
-                    <div class="rounded-xl border border-gray-100 bg-gray-50 p-3 text-center">
-                        <p class="text-xl font-extrabold text-gray-900">{{ $stats['total_content'] }}</p>
-                        <p class="text-[11px] font-medium text-gray-500 mt-0.5">Total Content</p>
+                        <span
+                            @class (['inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold', $statusBadgeClass])
+                        >
+                            {{ ucfirst($selectedClient->status) }}
+                        </span>
                     </div>
-                    <div class="rounded-xl border border-gray-100 bg-gray-50 p-3 text-center">
-                        <p class="text-xl font-extrabold text-gray-900">{{ $stats['active_workflows'] }}</p>
-                        <p class="text-[11px] font-medium text-gray-500 mt-0.5">Active Workflows</p>
-                    </div>
-                    <div class="rounded-xl border border-gray-100 bg-gray-50 p-3 text-center">
-                        <p class="text-xl font-extrabold text-amber-600">{{ $stats['pending_approvals'] }}</p>
-                        <p class="text-[11px] font-medium text-gray-500 mt-0.5">Pending Approvals</p>
-                    </div>
-                    <div class="rounded-xl border border-gray-100 bg-gray-50 p-3 text-center">
-                        <p class="text-xl font-extrabold text-gray-900">{{ $stats['total_invoices'] }}</p>
-                        <p class="text-[11px] font-medium text-gray-500 mt-0.5">Total Invoices</p>
-                    </div>
-                    <div class="rounded-xl border border-gray-100 bg-green-50 p-3 text-center">
-                        <p class="text-xl font-extrabold text-green-600">NPR {{ number_format($stats['paid_amount'], 0) }}</p>
-                        <p class="text-[11px] font-medium text-gray-500 mt-0.5">Paid Amount</p>
-                    </div>
-                    <div class="rounded-xl border border-gray-100 bg-red-50 p-3 text-center">
-                        <p class="text-xl font-extrabold text-red-600">NPR {{ number_format($stats['outstanding'], 0) }}</p>
-                        <p class="text-[11px] font-medium text-gray-500 mt-0.5">Outstanding</p>
-                    </div>
-                </div>
-
-                {{-- Tabs --}}
-                <div class="tab-group mb-5">
                     <button
-                        wire:click="$set('detailTab', 'overview')"
-                        class="tab-btn {{ $detailTab === 'overview' ? 'active' : '' }}"
+                        wire:click="$set('showDetail', false)"
+                        class="flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors"
                     >
-                        <i class="fas fa-info-circle mr-1"></i> Overview
-                    </button>
-                    <button
-                        wire:click="$set('detailTab', 'workflows')"
-                        class="tab-btn {{ $detailTab === 'workflows' ? 'active' : '' }}"
-                    >
-                        <i class="fas fa-project-diagram mr-1"></i> Workflows
-                    </button>
-                    <button
-                        wire:click="$set('detailTab', 'content')"
-                        class="tab-btn {{ $detailTab === 'content' ? 'active' : '' }}"
-                    >
-                        <i class="fas fa-calendar-alt mr-1"></i> Content
-                    </button>
-                    <button
-                        wire:click="$set('detailTab', 'invoices')"
-                        class="tab-btn {{ $detailTab === 'invoices' ? 'active' : '' }}"
-                    >
-                        <i class="fas fa-receipt mr-1"></i> Invoices
+                        <i class="fas fa-times text-sm"></i>
                     </button>
                 </div>
 
-                {{-- Tab: Overview --}}
-                @if ($detailTab === 'overview')
-                    <div class="space-y-5">
-                        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-                            <div>
-                                <p class="text-[11px] font-semibold uppercase tracking-wider text-gray-400 mb-1">Package</p>
-                                <span class="badge badge-{{ $selectedClient->package }}">
-                                    {{ ucfirst($selectedClient->linkedPackage?->name ?? $selectedClient->package) }}
-                                </span>
-                            </div>
-                            <div>
-                                <p class="text-[11px] font-semibold uppercase tracking-wider text-gray-400 mb-1">Monthly Amount</p>
-                                <p class="text-sm font-semibold text-gray-900">NPR {{ number_format($selectedClient->amount, 2) }}</p>
-                            </div>
-                            <div>
-                                <p class="text-[11px] font-semibold uppercase tracking-wider text-gray-400 mb-1">Contract Start</p>
-                                <p class="text-sm text-gray-700">{{ $selectedClient->contract_start ? $selectedClient->contract_start->format('M d, Y') : '-' }}</p>
-                            </div>
-                            <div>
-                                <p class="text-[11px] font-semibold uppercase tracking-wider text-gray-400 mb-1">Contract End</p>
-                                <p class="text-sm text-gray-700">{{ $selectedClient->contract_end ? $selectedClient->contract_end->format('M d, Y') : '-' }}</p>
-                            </div>
+                <div class="modal-body overflow-y-auto max-h-[calc(90vh-80px)]">
+                    {{-- 6-Stat Grid --}}
+                    @php $stats = $this->getClientStats($selectedClient); @endphp
+                    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
+                        <div class="rounded-xl border border-gray-100 bg-gray-50 p-3 text-center">
+                            <p class="text-xl font-extrabold text-gray-900">{{ $stats['total_content'] }}</p>
+                            <p class="text-[11px] font-medium text-gray-500 mt-0.5">Total Content</p>
                         </div>
+                        <div class="rounded-xl border border-gray-100 bg-gray-50 p-3 text-center">
+                            <p class="text-xl font-extrabold text-gray-900">{{ $stats['active_workflows'] }}</p>
+                            <p class="text-[11px] font-medium text-gray-500 mt-0.5">Active Workflows</p>
+                        </div>
+                        <div class="rounded-xl border border-gray-100 bg-gray-50 p-3 text-center">
+                            <p class="text-xl font-extrabold text-amber-600">{{ $stats['pending_approvals'] }}</p>
+                            <p class="text-[11px] font-medium text-gray-500 mt-0.5">Pending Approvals</p>
+                        </div>
+                        <div class="rounded-xl border border-gray-100 bg-gray-50 p-3 text-center">
+                            <p class="text-xl font-extrabold text-gray-900">{{ $stats['total_invoices'] }}</p>
+                            <p class="text-[11px] font-medium text-gray-500 mt-0.5">Total Invoices</p>
+                        </div>
+                        <div class="rounded-xl border border-gray-100 bg-green-50 p-3 text-center">
+                            <p class="text-xl font-extrabold text-green-600">NPR {{ number_format($stats['paid_amount'], 0) }}</p>
+                            <p class="text-[11px] font-medium text-gray-500 mt-0.5">Paid Amount</p>
+                        </div>
+                        <div class="rounded-xl border border-gray-100 bg-red-50 p-3 text-center">
+                            <p class="text-xl font-extrabold text-red-600">NPR {{ number_format($stats['outstanding'], 0) }}</p>
+                            <p class="text-[11px] font-medium text-gray-500 mt-0.5">Outstanding</p>
+                        </div>
+                    </div>
 
-                        {{-- Expiry Status Bar --}}
-                        @if ($selectedClient->contract_end)
-                            @php
+                    {{-- Tabs --}}
+                    <div class="tab-group mb-5">
+                        <button
+                            wire:click="$set('detailTab', 'overview')"
+                            class="tab-btn {{ $detailTab === 'overview' ? 'active' : '' }}"
+                        >
+                            <i class="fas fa-info-circle mr-1"></i> Overview
+                        </button>
+                        <button
+                            wire:click="$set('detailTab', 'workflows')"
+                            class="tab-btn {{ $detailTab === 'workflows' ? 'active' : '' }}"
+                        >
+                            <i class="fas fa-project-diagram mr-1"></i> Workflows
+                        </button>
+                        <button
+                            wire:click="$set('detailTab', 'content')"
+                            class="tab-btn {{ $detailTab === 'content' ? 'active' : '' }}"
+                        >
+                            <i class="fas fa-calendar-alt mr-1"></i> Content
+                        </button>
+                        <button
+                            wire:click="$set('detailTab', 'invoices')"
+                            class="tab-btn {{ $detailTab === 'invoices' ? 'active' : '' }}"
+                        >
+                            <i class="fas fa-receipt mr-1"></i> Invoices
+                        </button>
+                    </div>
+
+                    {{-- Tab: Overview --}}
+                    @if ($detailTab === 'overview')
+                        <div class="space-y-5">
+                            <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                <div>
+                                    <p class="text-[11px] font-semibold uppercase tracking-wider text-gray-400 mb-1">Package</p>
+                                    <span class="badge badge-{{ $selectedClient->package }}">
+                                        {{ ucfirst($selectedClient->linkedPackage?->name ?? $selectedClient->package) }}
+                                    </span>
+                                </div>
+                                <div>
+                                    <p class="text-[11px] font-semibold uppercase tracking-wider text-gray-400 mb-1">Monthly Amount</p>
+                                    <p class="text-sm font-semibold text-gray-900">NPR {{ number_format($selectedClient->amount, 2) }}</p>
+                                </div>
+                                <div>
+                                    <p class="text-[11px] font-semibold uppercase tracking-wider text-gray-400 mb-1">Contract Start</p>
+                                    <p class="text-sm text-gray-700">{{ $selectedClient->contract_start ? $selectedClient->contract_start->format('M d, Y') : '-' }}</p>
+                                </div>
+                                <div>
+                                    <p class="text-[11px] font-semibold uppercase tracking-wider text-gray-400 mb-1">Contract End</p>
+                                    <p class="text-sm text-gray-700">{{ $selectedClient->contract_end ? $selectedClient->contract_end->format('M d, Y') : '-' }}</p>
+                                </div>
+                            </div>
+
+                            {{-- Expiry Status Bar --}}
+                            @if ($selectedClient->contract_end)
+                                @php
                                     $expiryBarClass = match($selectedClient->expiry_status) {
                                         'expired' => 'border-red-200 bg-red-50',
                                         'critical' => 'border-red-200 bg-red-50',
@@ -889,346 +899,348 @@ new #[Layout('components.layouts.app')] class extends Component
                                         default => 'text-gray-600',
                                     };
                                 @endphp
-                            <div class="rounded-xl border {{ $expiryBarClass }} p-3 flex items-center justify-between">
-                                <div class="flex items-center gap-2">
-                                    <i
-                                        class="fas fa-{{ $selectedClient->expiry_status === 'expired' ? 'times-circle' : ($selectedClient->expiry_status === 'active' ? 'check-circle' : 'exclamation-triangle') }} {{ $expiryTextClass }}"
-                                    ></i>
-                                    <span class="text-sm font-semibold {{ $expiryTextClass }}">
-                                        @if ($selectedClient->expiry_status === 'expired')
-                                            Contract expired {{ $selectedClient->daysUntilExpiry() }} day(s) ago
-                                        @elseif ($selectedClient->expiry_status === 'no-contract')
-                                            No contract end date set
-                                        @else
-                                            {{ $selectedClient->daysUntilExpiry() }} day(s) until contract expires
-                                        @endif
+                                <div
+                                    class="rounded-xl border {{ $expiryBarClass }} p-3 flex items-center justify-between"
+                                >
+                                    <div class="flex items-center gap-2">
+                                        <i
+                                            class="fas fa-{{ $selectedClient->expiry_status === 'expired' ? 'times-circle' : ($selectedClient->expiry_status === 'active' ? 'check-circle' : 'exclamation-triangle') }} {{ $expiryTextClass }}"
+                                        ></i>
+                                        <span class="text-sm font-semibold {{ $expiryTextClass }}">
+                                            @if ($selectedClient->expiry_status === 'expired')
+                                                Contract expired {{ $selectedClient->daysUntilExpiry() }} day(s) ago
+                                            @elseif ($selectedClient->expiry_status === 'no-contract')
+                                                No contract end date set
+                                            @else
+                                                {{ $selectedClient->daysUntilExpiry() }} day(s) until contract expires
+                                            @endif
+                                        </span>
+                                    </div>
+                                    <span
+                                        class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold {{ $selectedClient->expiry_badge_class }}"
+                                    >
+                                        {{ $selectedClient->expiry_label }}
                                     </span>
                                 </div>
-                                <span
-                                    class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold {{ $selectedClient->expiry_badge_class }}"
-                                >
-                                    {{ $selectedClient->expiry_label }}
-                                </span>
-                            </div>
-                        @endif
+                            @endif
 
-                        {{-- Package Limits (if linked) --}}
-                        @if ($selectedClient->linkedPackage)
-                            <div class="rounded-xl border border-gray-100 bg-gray-50 p-4">
-                                <p class="text-[11px] font-semibold uppercase tracking-wider text-gray-400 mb-3">Package Limits</p>
-                                <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
-                                    <div>
-                                        <p class="text-lg font-bold text-gray-900">{{ $selectedClient->linkedPackage->content_limit }}</p>
-                                        <p class="text-[11px] text-gray-500">Content/mo</p>
-                                    </div>
-                                    <div>
-                                        <p class="text-lg font-bold text-gray-900">{{ $selectedClient->linkedPackage->workflow_limit }}</p>
-                                        <p class="text-[11px] text-gray-500">Workflows</p>
-                                    </div>
-                                    <div>
-                                        <p class="text-lg font-bold text-gray-900">{{ number_format($selectedClient->linkedPackage->storage_limit_mb) }}MB</p>
-                                        <p class="text-[11px] text-gray-500">Storage</p>
-                                    </div>
-                                    <div>
-                                        <p class="text-lg font-bold text-gray-900">{{ $selectedClient->linkedPackage->revision_limit }}</p>
-                                        <p class="text-[11px] text-gray-500">Revisions</p>
+                            {{-- Package Limits (if linked) --}}
+                            @if ($selectedClient->linkedPackage)
+                                <div class="rounded-xl border border-gray-100 bg-gray-50 p-4">
+                                    <p class="text-[11px] font-semibold uppercase tracking-wider text-gray-400 mb-3">Package Limits</p>
+                                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+                                        <div>
+                                            <p class="text-lg font-bold text-gray-900">{{ $selectedClient->linkedPackage->content_limit }}</p>
+                                            <p class="text-[11px] text-gray-500">Content/mo</p>
+                                        </div>
+                                        <div>
+                                            <p class="text-lg font-bold text-gray-900">{{ $selectedClient->linkedPackage->workflow_limit }}</p>
+                                            <p class="text-[11px] text-gray-500">Workflows</p>
+                                        </div>
+                                        <div>
+                                            <p class="text-lg font-bold text-gray-900">{{ number_format($selectedClient->linkedPackage->storage_limit_mb) }}MB</p>
+                                            <p class="text-[11px] text-gray-500">Storage</p>
+                                        </div>
+                                        <div>
+                                            <p class="text-lg font-bold text-gray-900">{{ $selectedClient->linkedPackage->revision_limit }}</p>
+                                            <p class="text-[11px] text-gray-500">Revisions</p>
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
-                        @endif
+                            @endif
 
-                        <hr class="border-gray-100" />
+                            <hr class="border-gray-100" />
 
-                        @if ($selectedClient->deliverables)
-                            <div>
-                                <p class="text-[11px] font-semibold uppercase tracking-wider text-gray-400 mb-2">Deliverables</p>
-                                <p class="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{{ $selectedClient->deliverables }}</p>
-                            </div>
-                        @endif
+                            @if ($selectedClient->deliverables)
+                                <div>
+                                    <p class="text-[11px] font-semibold uppercase tracking-wider text-gray-400 mb-2">Deliverables</p>
+                                    <p class="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{{ $selectedClient->deliverables }}</p>
+                                </div>
+                            @endif
 
-                        @if ($selectedClient->brand_guide)
-                            <div>
-                                <p class="text-[11px] font-semibold uppercase tracking-wider text-gray-400 mb-2">Brand Guide</p>
-                                <p class="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{{ $selectedClient->brand_guide }}</p>
-                            </div>
-                        @endif
+                            @if ($selectedClient->brand_guide)
+                                <div>
+                                    <p class="text-[11px] font-semibold uppercase tracking-wider text-gray-400 mb-2">Brand Guide</p>
+                                    <p class="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{{ $selectedClient->brand_guide }}</p>
+                                </div>
+                            @endif
 
-                        @if ($selectedClient->social_links)
-                            <div>
-                                <p class="text-[11px] font-semibold uppercase tracking-wider text-gray-400 mb-2">Social Links</p>
-                                <p class="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{{ $selectedClient->social_links }}</p>
-                            </div>
-                        @endif
+                            @if ($selectedClient->social_links)
+                                <div>
+                                    <p class="text-[11px] font-semibold uppercase tracking-wider text-gray-400 mb-2">Social Links</p>
+                                    <p class="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{{ $selectedClient->social_links }}</p>
+                                </div>
+                            @endif
 
-                        @if ($selectedClient->notes)
-                            <div>
-                                <p class="text-[11px] font-semibold uppercase tracking-wider text-gray-400 mb-2">Notes</p>
-                                <p class="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{{ $selectedClient->notes }}</p>
-                            </div>
-                        @endif
+                            @if ($selectedClient->notes)
+                                <div>
+                                    <p class="text-[11px] font-semibold uppercase tracking-wider text-gray-400 mb-2">Notes</p>
+                                    <p class="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{{ $selectedClient->notes }}</p>
+                                </div>
+                            @endif
 
-                        @if (!$selectedClient->deliverables && !$selectedClient->brand_guide && !$selectedClient->social_links && !$selectedClient->notes)
-                            <div class="py-8 text-center">
-                                <i class="fas fa-file-alt text-2xl text-gray-200 mb-2"></i>
-                                <p class="text-gray-400 text-xs">No additional details added yet</p>
-                            </div>
-                        @endif
-                    </div>
-                @endif
-
-                {{-- Tab: Workflows --}}
-                @if ($detailTab === 'workflows')
-                    @php $workflows = $this->getClientWorkflows($selectedClient); @endphp
-                    @if ($workflows->isEmpty())
-                        <div class="py-12 text-center">
-                            <div
-                                class="flex h-12 w-12 mx-auto items-center justify-center rounded-2xl bg-gray-100 mb-3"
-                            >
-                                <i class="fas fa-project-diagram text-xl text-gray-300"></i>
-                            </div>
-                            <p class="text-gray-500 text-sm font-medium">No workflows yet</p>
-                            <p class="text-gray-400 text-xs mt-1">Workflows for this client will appear here</p>
-                        </div>
-                    @else
-                        <div class="overflow-x-auto rounded-xl border border-gray-100">
-                            <table class="data-table">
-                                <thead>
-                                    <tr>
-                                        <th>Title</th>
-                                        <th>Type</th>
-                                        <th>Stage</th>
-                                        <th>Deadline</th>
-                                        <th>Status</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    @foreach ($workflows as $wf)
-                                        <tr>
-                                            <td class="font-medium text-gray-900">{{ $wf->title }}</td>
-                                            <td class="text-gray-600">{{ $wf->type ?? '-' }}</td>
-                                            <td class="text-gray-600">{{ $wf->stage ?? '-' }}</td>
-                                            <td class="text-gray-600">
-                                                {{ $wf->deadline ? $wf->deadline->format('M d, Y') : '-' }}
-                                            </td>
-                                            <td>
-                                                <span
-                                                    class="badge badge-{{ $wf->status }}"
-                                                    >{{ ucfirst($wf->status) }}</span
-                                                >
-                                            </td>
-                                        </tr>
-                                    @endforeach
-                                </tbody>
-                            </table>
+                            @if (!$selectedClient->deliverables && !$selectedClient->brand_guide && !$selectedClient->social_links && !$selectedClient->notes)
+                                <div class="py-8 text-center">
+                                    <i class="fas fa-file-alt text-2xl text-gray-200 mb-2"></i>
+                                    <p class="text-gray-400 text-xs">No additional details added yet</p>
+                                </div>
+                            @endif
                         </div>
                     @endif
-                @endif
 
-                {{-- Tab: Content --}}
-                @if ($detailTab === 'content')
-                    @php $contents = $this->getClientContents($selectedClient); @endphp
-                    @if ($contents->isEmpty())
-                        <div class="py-12 text-center">
-                            <div
-                                class="flex h-12 w-12 mx-auto items-center justify-center rounded-2xl bg-gray-100 mb-3"
-                            >
-                                <i class="fas fa-calendar-alt text-xl text-gray-300"></i>
+                    {{-- Tab: Workflows --}}
+                    @if ($detailTab === 'workflows')
+                        @php $workflows = $this->getClientWorkflows($selectedClient); @endphp
+                        @if ($workflows->isEmpty())
+                            <div class="py-12 text-center">
+                                <div
+                                    class="flex h-12 w-12 mx-auto items-center justify-center rounded-2xl bg-gray-100 mb-3"
+                                >
+                                    <i class="fas fa-project-diagram text-xl text-gray-300"></i>
+                                </div>
+                                <p class="text-gray-500 text-sm font-medium">No workflows yet</p>
+                                <p class="text-gray-400 text-xs mt-1">Workflows for this client will appear here</p>
                             </div>
-                            <p class="text-gray-500 text-sm font-medium">No content yet</p>
-                            <p class="text-gray-400 text-xs mt-1">Content for this client will appear here</p>
-                        </div>
-                    @else
-                        <div class="overflow-x-auto rounded-xl border border-gray-100">
-                            <table class="data-table">
-                                <thead>
-                                    <tr>
-                                        <th>Title</th>
-                                        <th>Platform</th>
-                                        <th>Type</th>
-                                        <th>Date</th>
-                                        <th>Status</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    @foreach ($contents as $c)
+                        @else
+                            <div class="overflow-x-auto rounded-xl border border-gray-100">
+                                <table class="data-table">
+                                    <thead>
                                         <tr>
-                                            <td class="font-medium text-gray-900">{{ $c->title }}</td>
-                                            <td>
-                                                <span
-                                                    class="badge badge-{{ $c->platform }}"
-                                                    >{{ ucfirst($c->platform) }}</span
-                                                >
-                                            </td>
-                                            <td class="text-gray-600">{{ $c->type ?? '-' }}</td>
-                                            <td class="text-gray-600">
-                                                {{ $c->date ? $c->date->format('M d, Y') : '-' }}
-                                            </td>
-                                            <td>
-                                                <span
-                                                    class="badge badge-{{ $c->status }}"
-                                                    >{{ ucfirst($c->status) }}</span
-                                                >
-                                            </td>
+                                            <th>Title</th>
+                                            <th>Type</th>
+                                            <th>Stage</th>
+                                            <th>Deadline</th>
+                                            <th>Status</th>
                                         </tr>
-                                    @endforeach
-                                </tbody>
-                            </table>
-                        </div>
-                    @endif
-                @endif
-
-                {{-- Tab: Invoices --}}
-                @if ($detailTab === 'invoices')
-                    @php $invoices = $this->getClientInvoices($selectedClient); @endphp
-                    @if ($invoices->isEmpty())
-                        <div class="py-12 text-center">
-                            <div
-                                class="flex h-12 w-12 mx-auto items-center justify-center rounded-2xl bg-gray-100 mb-3"
-                            >
-                                <i class="fas fa-receipt text-xl text-gray-300"></i>
+                                    </thead>
+                                    <tbody>
+                                        @foreach ($workflows as $wf)
+                                            <tr>
+                                                <td class="font-medium text-gray-900">{{ $wf->title }}</td>
+                                                <td class="text-gray-600">{{ $wf->type ?? '-' }}</td>
+                                                <td class="text-gray-600">{{ $wf->stage ?? '-' }}</td>
+                                                <td class="text-gray-600">
+                                                    {{ $wf->deadline ? $wf->deadline->format('M d, Y') : '-' }}
+                                                </td>
+                                                <td>
+                                                    <span
+                                                        class="badge badge-{{ $wf->status }}"
+                                                        >{{ ucfirst($wf->status) }}</span
+                                                    >
+                                                </td>
+                                            </tr>
+                                        @endforeach
+                                    </tbody>
+                                </table>
                             </div>
-                            <p class="text-gray-500 text-sm font-medium">No invoices yet</p>
-                            <p class="text-gray-400 text-xs mt-1">Invoices for this client will appear here</p>
-                        </div>
-                    @else
-                        <div class="overflow-x-auto rounded-xl border border-gray-100">
-                            <table class="data-table">
-                                <thead>
-                                    <tr>
-                                        <th>Amount</th>
-                                        <th>Status</th>
-                                        <th>Payment Status</th>
-                                        <th>Due Date</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    @foreach ($invoices as $inv)
-                                        <tr>
-                                            <td class="font-semibold text-gray-900">
-                                                NPR {{ number_format($inv->amount, 2) }}
-                                            </td>
-                                            <td>
-                                                <span
-                                                    class="badge badge-{{ $inv->status }}"
-                                                    >{{ ucfirst($inv->status) }}</span
-                                                >
-                                            </td>
-                                            <td>
-                                                <span
-                                                    class="badge badge-{{ $inv->payment_status }}"
-                                                    >{{ ucfirst($inv->payment_status) }}</span
-                                                >
-                                            </td>
-                                            <td class="text-gray-600">
-                                                {{ $inv->due_date ? $inv->due_date->format('M d, Y') : '-' }}
-                                            </td>
-                                        </tr>
-                                    @endforeach
-                                </tbody>
-                            </table>
-                        </div>
+                        @endif
                     @endif
-                @endif
-            </div>
-        </div>
-    </div>
-@endif
 
-{{-- ========== STATUS CHANGE CONFIRMATION DIALOG ========== --}}
-@if ($showStatusConfirm)
-    <div class="confirm-overlay" x-data x-on:keydown.escape.window="$wire.cancelStatusChange()">
-        <div class="confirm-box">
-            <div
-                class="confirm-icon {{ $newStatus === 'active' ? 'bg-green-100 text-green-600' : ($newStatus === 'inactive' ? 'bg-gray-100 text-gray-600' : 'bg-blue-100 text-blue-600') }}"
-            >
-                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
-                </svg>
-            </div>
-            <h3 class="mb-2 text-lg font-bold text-gray-900">Change Client Status</h3>
-            <p class="mb-6 text-sm text-gray-500">Change status from <strong class="text-gray-700">{{ ucfirst($currentStatus) }}</strong> to <strong class="text-gray-700">{{ ucfirst($newStatus) }}</strong>?</p>
-            <div class="flex gap-3">
-                <button
-                    wire:click="cancelStatusChange"
-                    class="flex-1 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors"
-                >
-                    Cancel
-                </button>
-                <button
-                    wire:click="performStatusChange"
-                    class="flex-1 rounded-xl {{ $newStatus === 'active' ? 'bg-green-600 hover:bg-green-700' : ($newStatus === 'inactive' ? 'bg-gray-600 hover:bg-gray-700' : 'bg-blue-600 hover:bg-blue-700') }} px-4 py-2.5 text-sm font-semibold text-white transition-colors"
-                >
-                    <i class="fas fa-check text-xs mr-1"></i> Confirm
-                </button>
-            </div>
-        </div>
-    </div>
-@endif
+                    {{-- Tab: Content --}}
+                    @if ($detailTab === 'content')
+                        @php $contents = $this->getClientContents($selectedClient); @endphp
+                        @if ($contents->isEmpty())
+                            <div class="py-12 text-center">
+                                <div
+                                    class="flex h-12 w-12 mx-auto items-center justify-center rounded-2xl bg-gray-100 mb-3"
+                                >
+                                    <i class="fas fa-calendar-alt text-xl text-gray-300"></i>
+                                </div>
+                                <p class="text-gray-500 text-sm font-medium">No content yet</p>
+                                <p class="text-gray-400 text-xs mt-1">Content for this client will appear here</p>
+                            </div>
+                        @else
+                            <div class="overflow-x-auto rounded-xl border border-gray-100">
+                                <table class="data-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Title</th>
+                                            <th>Platform</th>
+                                            <th>Type</th>
+                                            <th>Date</th>
+                                            <th>Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach ($contents as $c)
+                                            <tr>
+                                                <td class="font-medium text-gray-900">{{ $c->title }}</td>
+                                                <td>
+                                                    <span
+                                                        class="badge badge-{{ $c->platform }}"
+                                                        >{{ ucfirst($c->platform) }}</span
+                                                    >
+                                                </td>
+                                                <td class="text-gray-600">{{ $c->type ?? '-' }}</td>
+                                                <td class="text-gray-600">
+                                                    {{ $c->date ? $c->date->format('M d, Y') : '-' }}
+                                                </td>
+                                                <td>
+                                                    <span
+                                                        class="badge badge-{{ $c->status }}"
+                                                        >{{ ucfirst($c->status) }}</span
+                                                    >
+                                                </td>
+                                            </tr>
+                                        @endforeach
+                                    </tbody>
+                                </table>
+                            </div>
+                        @endif
+                    @endif
 
-{{-- ========== DELETE CONFIRMATION DIALOG ========== --}}
-@if ($showDeleteConfirm)
-    <div class="confirm-overlay" x-data x-on:keydown.escape.window="$wire.cancelDelete()">
-        <div class="confirm-box">
-            <div class="confirm-icon danger">
-                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                </svg>
-            </div>
-            <h3 class="mb-2 text-lg font-bold text-gray-900">Delete Client</h3>
-            <p class="mb-6 text-sm text-gray-500">Are you sure you want to delete this client? All associated data will be permanently removed. This action cannot be undone.</p>
-            <div class="flex gap-3">
-                <button
-                    wire:click="cancelDelete"
-                    class="flex-1 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors"
-                >
-                    Cancel
-                </button>
-                <button
-                    wire:click="performDelete"
-                    class="flex-1 rounded-xl bg-red-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-red-700 transition-colors"
-                >
-                    <i class="fas fa-trash text-xs mr-1"></i> Delete
-                </button>
-            </div>
-        </div>
-    </div>
-@endif
-
-{{-- ========== CLIENT CREDENTIALS MODAL ========== --}}
-@if ($showCredentialsModal)
-    <div class="confirm-overlay" x-data x-on:keydown.escape.window="$wire.set('showCredentialsModal', false)">
-        <div class="confirm-box max-w-md">
-            <div class="confirm-icon bg-green-100 text-green-600">
-                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
-                </svg>
-            </div>
-            <h3 class="mb-2 text-lg font-bold text-gray-900">Client Portal Credentials</h3>
-            <p class="mb-4 text-sm text-gray-500">A client portal account has been created and login credentials have been sent to the client's email.</p>
-
-            <div class="rounded-xl border border-amber-200 bg-amber-50 p-4 mb-4">
-                <p class="text-xs font-semibold text-amber-700 uppercase tracking-wider mb-2">
-                    <i class="fas fa-exclamation-triangle mr-1"></i> Save These Credentials
-                </p>
-                <div class="space-y-2">
-                    <div>
-                        <p class="text-[11px] font-medium text-gray-500">Login Email</p>
-                        <p class="text-sm font-mono font-semibold text-gray-900 select-all">{{ $generatedEmail }}</p>
-                    </div>
-                    <div>
-                        <p class="text-[11px] font-medium text-gray-500">Password</p>
-                        <p class="text-sm font-mono font-semibold text-gray-900 select-all">{{ $generatedPassword }}</p>
-                    </div>
+                    {{-- Tab: Invoices --}}
+                    @if ($detailTab === 'invoices')
+                        @php $invoices = $this->getClientInvoices($selectedClient); @endphp
+                        @if ($invoices->isEmpty())
+                            <div class="py-12 text-center">
+                                <div
+                                    class="flex h-12 w-12 mx-auto items-center justify-center rounded-2xl bg-gray-100 mb-3"
+                                >
+                                    <i class="fas fa-receipt text-xl text-gray-300"></i>
+                                </div>
+                                <p class="text-gray-500 text-sm font-medium">No invoices yet</p>
+                                <p class="text-gray-400 text-xs mt-1">Invoices for this client will appear here</p>
+                            </div>
+                        @else
+                            <div class="overflow-x-auto rounded-xl border border-gray-100">
+                                <table class="data-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Amount</th>
+                                            <th>Status</th>
+                                            <th>Payment Status</th>
+                                            <th>Due Date</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach ($invoices as $inv)
+                                            <tr>
+                                                <td class="font-semibold text-gray-900">
+                                                    NPR {{ number_format($inv->amount, 2) }}
+                                                </td>
+                                                <td>
+                                                    <span
+                                                        class="badge badge-{{ $inv->status }}"
+                                                        >{{ ucfirst($inv->status) }}</span
+                                                    >
+                                                </td>
+                                                <td>
+                                                    <span
+                                                        class="badge badge-{{ $inv->payment_status }}"
+                                                        >{{ ucfirst($inv->payment_status) }}</span
+                                                    >
+                                                </td>
+                                                <td class="text-gray-600">
+                                                    {{ $inv->due_date ? $inv->due_date->format('M d, Y') : '-' }}
+                                                </td>
+                                            </tr>
+                                        @endforeach
+                                    </tbody>
+                                </table>
+                            </div>
+                        @endif
+                    @endif
                 </div>
             </div>
-
-            <button
-                wire:click="$set('showCredentialsModal', false)"
-                class="w-full rounded-xl bg-[var(--brand)] px-4 py-2.5 text-sm font-semibold text-white hover:opacity-90 transition-colors"
-            >
-                Got it
-            </button>
         </div>
-    </div>
-@endif
+    @endif
+
+    {{-- ========== STATUS CHANGE CONFIRMATION DIALOG ========== --}}
+    @if ($showStatusConfirm)
+        <div class="confirm-overlay" x-data x-on:keydown.escape.window="$wire.cancelStatusChange()">
+            <div class="confirm-box">
+                <div
+                    class="confirm-icon {{ $newStatus === 'active' ? 'bg-green-100 text-green-600' : ($newStatus === 'inactive' ? 'bg-gray-100 text-gray-600' : 'bg-blue-100 text-blue-600') }}"
+                >
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+                    </svg>
+                </div>
+                <h3 class="mb-2 text-lg font-bold text-gray-900">Change Client Status</h3>
+                <p class="mb-6 text-sm text-gray-500">Change status from <strong class="text-gray-700">{{ ucfirst($currentStatus) }}</strong> to <strong class="text-gray-700">{{ ucfirst($newStatus) }}</strong>?</p>
+                <div class="flex gap-3">
+                    <button
+                        wire:click="cancelStatusChange"
+                        class="flex-1 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors"
+                    >
+                        Cancel
+                    </button>
+                    <button
+                        wire:click="performStatusChange"
+                        class="flex-1 rounded-xl {{ $newStatus === 'active' ? 'bg-green-600 hover:bg-green-700' : ($newStatus === 'inactive' ? 'bg-gray-600 hover:bg-gray-700' : 'bg-blue-600 hover:bg-blue-700') }} px-4 py-2.5 text-sm font-semibold text-white transition-colors"
+                    >
+                        <i class="fas fa-check text-xs mr-1"></i> Confirm
+                    </button>
+                </div>
+            </div>
+        </div>
+    @endif
+
+    {{-- ========== DELETE CONFIRMATION DIALOG ========== --}}
+    @if ($showDeleteConfirm)
+        <div class="confirm-overlay" x-data x-on:keydown.escape.window="$wire.cancelDelete()">
+            <div class="confirm-box">
+                <div class="confirm-icon danger">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                </div>
+                <h3 class="mb-2 text-lg font-bold text-gray-900">Delete Client</h3>
+                <p class="mb-6 text-sm text-gray-500">Are you sure you want to delete this client? All associated data will be permanently removed. This action cannot be undone.</p>
+                <div class="flex gap-3">
+                    <button
+                        wire:click="cancelDelete"
+                        class="flex-1 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors"
+                    >
+                        Cancel
+                    </button>
+                    <button
+                        wire:click="performDelete"
+                        class="flex-1 rounded-xl bg-red-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-red-700 transition-colors"
+                    >
+                        <i class="fas fa-trash text-xs mr-1"></i> Delete
+                    </button>
+                </div>
+            </div>
+        </div>
+    @endif
+
+    {{-- ========== CLIENT CREDENTIALS MODAL ========== --}}
+    @if ($showCredentialsModal)
+        <div class="confirm-overlay" x-data x-on:keydown.escape.window="$wire.set('showCredentialsModal', false)">
+            <div class="confirm-box max-w-md">
+                <div class="confirm-icon bg-green-100 text-green-600">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+                    </svg>
+                </div>
+                <h3 class="mb-2 text-lg font-bold text-gray-900">Client Portal Credentials</h3>
+                <p class="mb-4 text-sm text-gray-500">A client portal account has been created and login credentials have been sent to the client's email.</p>
+
+                <div class="rounded-xl border border-amber-200 bg-amber-50 p-4 mb-4">
+                    <p class="text-xs font-semibold text-amber-700 uppercase tracking-wider mb-2">
+                        <i class="fas fa-exclamation-triangle mr-1"></i> Save These Credentials
+                    </p>
+                    <div class="space-y-2">
+                        <div>
+                            <p class="text-[11px] font-medium text-gray-500">Login Email</p>
+                            <p class="text-sm font-mono font-semibold text-gray-900 select-all">{{ $generatedEmail }}</p>
+                        </div>
+                        <div>
+                            <p class="text-[11px] font-medium text-gray-500">Password</p>
+                            <p class="text-sm font-mono font-semibold text-gray-900 select-all">{{ $generatedPassword }}</p>
+                        </div>
+                    </div>
+                </div>
+
+                <button
+                    wire:click="$set('showCredentialsModal', false)"
+                    class="w-full rounded-xl bg-[var(--brand)] px-4 py-2.5 text-sm font-semibold text-white hover:opacity-90 transition-colors"
+                >
+                    Got it
+                </button>
+            </div>
+        </div>
+    @endif
 </div>
