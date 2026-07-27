@@ -33,11 +33,7 @@ class ClientSeeder extends Seeder
                 'contract_start' => now()->subDays(45)->toDateString(),
                 'contract_end' => now()->addDays(45)->toDateString(),
                 'status' => 'active',
-                'deliverables' => json_encode([
-                    'reels' => 12,
-                    'posts' => 8,
-                    'stories' => 4,
-                ]),
+                'deliverables' => null,
                 'brand_guide' => json_encode(['notes' => 'Warm tones, premium feel, earthy colors, serif fonts.']),
                 'social_links' => json_encode([
                     'instagram' => 'instagram.com/himalayancoffee',
@@ -55,11 +51,7 @@ class ClientSeeder extends Seeder
                 'contract_start' => now()->subDays(70)->toDateString(),
                 'contract_end' => now()->addDays(20)->toDateString(),
                 'status' => 'active',
-                'deliverables' => json_encode([
-                    'reels' => 8,
-                    'posts' => 4,
-                    'stories' => 2,
-                ]),
+                'deliverables' => null,
                 'brand_guide' => json_encode(['notes' => 'Adventure vibe, mountains, greens & blues, bold sans-serif.']),
                 'social_links' => json_encode([
                     'facebook' => 'facebook.com/treknepal',

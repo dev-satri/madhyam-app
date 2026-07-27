@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Client;
 use App\Models\Invoice;
+use App\Models\Package;
 use Illuminate\Mail\Markdown;
 use Tests\TestCase;
 
@@ -192,11 +193,22 @@ class EmailTemplateRenderTest extends TestCase
             'contact' => 'Ada Lovelace',
             'email' => 'ada@example.test',
             'amount' => 15000,
-            'deliverables' => '4 reels per month, weekly stories, monthly performance report',
         ]);
         $client->id = 1;
         $client->contract_start = now()->subMonth();
         $client->contract_end = now()->addMonths(11);
+
+        $package = new Package([
+            'name' => 'Growth Plan',
+            'slug' => 'growth',
+            'deliverable_limits' => [
+                ['type' => 'reels', 'limit' => 4],
+                ['type' => 'stories', 'limit' => 1],
+                ['type' => 'performance report', 'limit' => 1],
+            ],
+        ]);
+        $package->id = 1;
+        $client->setRelation('linkedPackage', $package);
 
         $html = $this->renderMarkdown('emails.client-welcome', [
             'client' => $client,
@@ -207,7 +219,9 @@ class EmailTemplateRenderTest extends TestCase
         $this->assertStringContainsString('Ada Lovelace', $html);
         $this->assertStringContainsString('Growth Plan', $html);
         $this->assertStringContainsString('NPR 15,000.00', $html);
-        $this->assertStringContainsString('4 reels per month', $html);
+        $this->assertStringContainsString('4 ×', $html);
+        $this->assertStringContainsString('Reels', $html);
+        $this->assertStringContainsString("What's included this month", $html);
         $this->assertStringContainsString('<table', $html);
     }
 

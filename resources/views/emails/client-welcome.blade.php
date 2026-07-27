@@ -41,10 +41,17 @@ Thanks for choosing <strong>{{ config('app.name', 'Madhyam') }}</strong> as your
 </tr>
 </table>
 
-@if (!empty($client->deliverables))
-<p style="font-size: 13px; color: #64748b; margin: 20px 0 8px 0; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">What's included</p>
+@php
+    $pkgLimits = $client->linkedPackage?->deliverable_limits ?? [];
+@endphp
+@if (!empty($pkgLimits))
+<p style="font-size: 13px; color: #64748b; margin: 20px 0 8px 0; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">What's included this month</p>
 
-<p style="font-size: 14px; color: #334155; line-height: 1.6; margin: 0 0 16px 0;">{{ is_array($client->deliverables) ? implode("\n", $client->deliverables) : $client->deliverables }}</p>
+<ul style="font-size: 14px; color: #334155; line-height: 1.8; margin: 0 0 16px 0; padding-left: 20px;">
+@foreach ($pkgLimits as $lim)
+    <li><strong>{{ $lim['limit'] }} ×</strong> {{ ucfirst($lim['type']) }}</li>
+@endforeach
+</ul>
 @endif
 
 ## What's next

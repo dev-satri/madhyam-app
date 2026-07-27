@@ -35,7 +35,6 @@ new #[Layout('components.layouts.app')] class extends Component
     public ?string $contract_start = null;
     public ?string $contract_end = null;
     public float $amount = 0;
-    public string $deliverables = '';
     public string $brand_guide = '';
     public string $social_links = '';
     public string $notes = '';
@@ -47,6 +46,12 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public bool $showDeleteConfirm = false;
     public int $deleteId = 0;
+
+    public bool $showStatusConfirm = false;
+    public int $statusClientId = 0;
+    public string $statusClientName = '';
+    public string $statusNewValue = '';
+    public string $statusOldValue = '';
 
     // Generated credentials shown after client creation
     public bool $showCredentialsModal = false;
@@ -61,6 +66,12 @@ new #[Layout('components.layouts.app')] class extends Component
     public function packages()
     {
         return Package::where('status', 'active')->orderBy('name')->get();
+    }
+
+    #[Computed]
+    public function selectedPackage(): ?Package
+    {
+        return $this->package_id ? Package::find($this->package_id) : null;
     }
 
     public function updatedSearch(): void
@@ -137,19 +148,26 @@ new #[Layout('components.layouts.app')] class extends Component
         $this->contract_start = $client->contract_start?->format('Y-m-d');
         $this->contract_end = $client->contract_end?->format('Y-m-d');
         $this->amount = (float) $client->amount;
-        $this->deliverables = is_array($client->deliverables) ? json_encode($client->deliverables, JSON_THROW_ON_ERROR) : ($client->deliverables ?? '');
-        $this->brand_guide = is_array($client->brand_guide) ? json_encode($client->brand_guide, JSON_THROW_ON_ERROR) : ($client->brand_guide ?? '');
-        $this->social_links = is_array($client->social_links) ? json_encode($client->social_links, JSON_THROW_ON_ERROR) : ($client->social_links ?? '');
+        $this->brand_guide = is_array($client->brand_guide) ? implode("\n", $client->brand_guide) : ($client->brand_guide ?? '');
+        $this->social_links = is_array($client->social_links) ? implode("\n", $client->social_links) : ($client->social_links ?? '');
         $this->notes = $client->notes ?? '';
         $this->status = $client->status;
         $this->showForm = true;
+    }
+
+    private function numberedListToArray(string $text): array
+    {
+        $lines = array_filter(array_map('trim', explode("\n", $text)), fn ($l) => $l !== '');
+        return array_map(fn ($line) => preg_replace('/^\d+\.\s*/', '', $line), $lines);
     }
 
     public function save(): void
     {
         $this->validate([
             'name'          => 'required|string|max:255|regex:/^[a-zA-Z\s\'\.\-]+$/',
+            'contact'       => 'nullable|string|max:255|regex:/^[a-zA-Z\s\'\.\-]*$/',
             'email'         => 'nullable|email|max:255',
+            'phone'         => 'nullable|string|max:20|regex:/^[\+]?[0-9\s\-]*$/',
             'package'       => 'required|string',
             'package_id'    => 'nullable|exists:packages,id',
             'status'        => 'required|string|in:active,inactive,pending',
@@ -157,7 +175,9 @@ new #[Layout('components.layouts.app')] class extends Component
             'contract_start'=> 'nullable|date',
             'contract_end'  => 'nullable|date|after_or_equal:contract_start',
         ], [
-            'name.regex' => 'Client name must contain only letters, spaces, hyphens, or apostrophes.',
+            'name.regex'   => 'Client name must contain only letters, spaces, hyphens, or apostrophes.',
+            'contact.regex'=> 'Contact name must contain only letters, spaces, hyphens, or apostrophes.',
+            'phone.regex'  => 'Phone number must contain only digits, spaces, hyphens, or a leading +.',
         ]);
 
         $data = [
@@ -170,9 +190,8 @@ new #[Layout('components.layouts.app')] class extends Component
             'contract_start' => $this->contract_start,
             'contract_end'   => $this->contract_end,
             'amount'         => $this->amount,
-            'deliverables'   => $this->deliverables,
-            'brand_guide'    => $this->brand_guide,
-            'social_links'   => $this->social_links,
+            'brand_guide'    => $this->numberedListToArray($this->brand_guide),
+            'social_links'   => $this->numberedListToArray($this->social_links),
             'notes'          => $this->notes,
             'status'         => $this->status,
         ];
@@ -267,8 +286,39 @@ new #[Layout('components.layouts.app')] class extends Component
         $client = Client::find($clientId);
         if (! $client || $client->status === $newStatus) return;
 
-        $client->update(['status' => $newStatus]);
-        $this->dispatch('toast', message: "Client status changed to {$newStatus}", type: 'success');
+        $this->statusClientId = $clientId;
+        $this->statusClientName = $client->name;
+        $this->statusOldValue = $client->status;
+        $this->statusNewValue = $newStatus;
+        $this->showStatusConfirm = true;
+    }
+
+    public function performStatusChange(): void
+    {
+        $clientId = $this->statusClientId;
+        $client = Client::find($clientId);
+        if ($client) {
+            $client->update(['status' => $this->statusNewValue]);
+            $this->dispatch('status-change-confirmed', id: $clientId);
+            $this->dispatch('toast', message: "Status changed to " . ucfirst($this->statusNewValue), type: 'success');
+        }
+        $this->showStatusConfirm = false;
+        $this->statusClientId = 0;
+        $this->statusClientName = '';
+        $this->statusNewValue = '';
+        $this->statusOldValue = '';
+        $this->dispatch('refreshClients');
+    }
+
+    public function cancelStatusChange(): void
+    {
+        $clientId = $this->statusClientId;
+        $this->showStatusConfirm = false;
+        $this->statusClientId = 0;
+        $this->statusClientName = '';
+        $this->statusNewValue = '';
+        $this->statusOldValue = '';
+        $this->dispatch('status-change-cancelled', id: $clientId);
     }
 
     public function delete(int $id): void
@@ -306,7 +356,6 @@ new #[Layout('components.layouts.app')] class extends Component
         $this->contract_start = null;
         $this->contract_end = null;
         $this->amount = 0;
-        $this->deliverables = '';
         $this->brand_guide = '';
         $this->social_links = '';
         $this->notes = '';
@@ -448,25 +497,40 @@ new #[Layout('components.layouts.app')] class extends Component
                                 >
                             </td>
                             <td>
-                                <select
-                                    wire:change="confirmStatus({{ $client->id }}, $event.target.value)"
-                                    class="text-xs font-semibold rounded-full px-3 py-1 border-0 cursor-pointer focus:ring-2 focus:ring-offset-1
-                                        {{ match($client->status) {
-                                            'active' => 'bg-green-100 text-green-700 focus:ring-green-300',
-                                            'inactive' => 'bg-gray-100 text-gray-600 focus:ring-gray-300',
-                                            'pending' => 'bg-blue-100 text-blue-700 focus:ring-blue-300',
-                                            default => 'bg-gray-100 text-gray-600 focus:ring-gray-300',
-                                        } }}"
+                                <span
+                                    x-data="{ prev: '{{ $client->status }}' }"
+                                    x-on:status-change-cancelled.window="
+                                        if ($event.detail?.id === {{ $client->id }}) {
+                                            const sel = $el.querySelector('select');
+                                            if (sel) { sel.value = prev; }
+                                        }
+                                    "
+                                    x-on:status-change-confirmed.window="
+                                        if ($event.detail?.id === {{ $client->id }}) {
+                                            prev = $el.querySelector('select').value;
+                                        }
+                                    "
                                 >
-                                    @foreach (['active', 'inactive', 'pending'] as $statusOption)
-                                        <option
-                                            value="{{ $statusOption }}"
-                                            {{ $client->status === $statusOption ? 'selected' : '' }}
-                                        >
-                                            {{ ucfirst($statusOption) }}
-                                        </option>
-                                    @endforeach
-                                </select>
+                                    <select
+                                        wire:change="confirmStatus({{ $client->id }}, $event.target.value)"
+                                        class="text-xs font-semibold rounded-full px-3 py-1 border-0 cursor-pointer focus:ring-2 focus:ring-offset-1
+                                            {{ match($client->status) {
+                                                'active' => 'bg-green-100 text-green-700 focus:ring-green-300',
+                                                'inactive' => 'bg-gray-100 text-gray-600 focus:ring-gray-300',
+                                                'pending' => 'bg-blue-100 text-blue-700 focus:ring-blue-300',
+                                                default => 'bg-gray-100 text-gray-600 focus:ring-gray-300',
+                                            } }}"
+                                    >
+                                        @foreach (['active', 'inactive', 'pending'] as $statusOption)
+                                            <option
+                                                value="{{ $statusOption }}"
+                                                {{ $client->status === $statusOption ? 'selected' : '' }}
+                                            >
+                                                {{ ucfirst($statusOption) }}
+                                            </option>
+                                        @endforeach
+                                    </select>
+                                </span>
                             </td>
                             <td>
                                 @php
@@ -579,6 +643,9 @@ new #[Layout('components.layouts.app')] class extends Component
                                     class="form-input"
                                     placeholder="Contact person name"
                                 />
+                                @error ('contact')
+                                    <span class="text-xs text-red-500 mt-1 block">{{ $message }}</span>
+                                @enderror
                             </div>
                             <div>
                                 <label class="form-label">Email</label>
@@ -596,10 +663,13 @@ new #[Layout('components.layouts.app')] class extends Component
                             <div>
                                 <label class="form-label">Phone</label>
                                 <input type="text" wire:model="phone" class="form-input" placeholder="+977-XXXXXXXXX" />
+                                @error ('phone')
+                                    <span class="text-xs text-red-500 mt-1 block">{{ $message }}</span>
+                                @enderror
                             </div>
                             <div>
                                 <label class="form-label">Package <span class="text-red-500">*</span></label>
-                                <select wire:model="package_id" class="form-select">
+                                <select wire:model.live="package_id" class="form-select">
                                     <option value="">Select package...</option>
                                     @foreach ($this->packages as $pkg)
                                         <option value="{{ $pkg->id }}">
@@ -643,31 +713,79 @@ new #[Layout('components.layouts.app')] class extends Component
 
                         <div class="mt-4 space-y-4">
                             <div>
-                                <label class="form-label">Deliverables</label>
-                                <textarea
-                                    wire:model="deliverables"
-                                    class="form-textarea"
-                                    rows="2"
-                                    placeholder="List of deliverables..."
-                                ></textarea>
+                                <div class="flex items-center justify-between mb-2">
+                                    <label class="form-label mb-0">Deliverables</label>
+                                    <span class="text-[11px] text-gray-400">from selected package</span>
+                                </div>
+                                @php $pkg = $this->selectedPackage; @endphp
+                                @if ($pkg && !empty($pkg->deliverable_limits))
+                                    <div class="rounded-xl border border-gray-100 bg-gray-50/50 p-3">
+                                        <p class="text-[11px] font-semibold uppercase tracking-wider text-gray-400 mb-2">
+                                            <i class="fas fa-box-open text-[10px] mr-1"></i>{{ $pkg->name }} includes
+                                        </p>
+                                        <div class="flex flex-wrap gap-2">
+                                            @foreach ($pkg->deliverable_limits as $lim)
+                                                <span
+                                                    class="inline-flex items-center gap-1.5 rounded-lg bg-white border border-gray-200 px-3 py-1.5 text-sm font-medium text-gray-800"
+                                                >
+                                                    <span
+                                                        class="text-[var(--brand)] font-bold"
+                                                        >{{ $lim['limit'] }}</span
+                                                    >
+                                                    <span class="text-gray-400">×</span>
+                                                    <span class="capitalize">{{ $lim['type'] }}</span>
+                                                    <span class="text-[10px] text-gray-400">/mo</span>
+                                                </span>
+                                            @endforeach
+                                        </div>
+                                    </div>
+                                @elseif ($pkg)
+                                    <div
+                                        class="rounded-xl border border-dashed border-gray-200 bg-gray-50/50 p-4 text-center"
+                                    >
+                                        <p class="text-xs text-gray-400">
+                                            <strong>{{ $pkg->name }}</strong> has no deliverable limits configured.
+                                        </p>
+                                        <a
+                                            href="{{ route('packages.index') }}"
+                                            class="mt-1 inline-block text-[11px] font-medium text-[var(--brand)] hover:underline"
+                                        >
+                                            Configure package →
+                                        </a>
+                                    </div>
+                                @else
+                                    <div
+                                        class="rounded-xl border border-dashed border-gray-200 bg-gray-50/50 p-4 text-center"
+                                    >
+                                        <p class="text-xs text-gray-400">Select a package above to see its deliverables.</p>
+                                    </div>
+                                @endif
                             </div>
                             <div>
                                 <label class="form-label">Brand Guide</label>
                                 <textarea
                                     wire:model="brand_guide"
                                     class="form-textarea"
-                                    rows="2"
-                                    placeholder="Brand guidelines and notes..."
+                                    rows="3"
+                                    placeholder="Use primary brand colors only&#10;Minimum font size 12px&#10;Include logo in all materials"
                                 ></textarea>
+                                <div class="flex items-center gap-1.5 mt-1.5">
+                                    <i class="fas fa-info-circle text-[10px] text-gray-300"></i>
+                                    <p class="text-[11px] text-gray-400">Brand guidelines and notes</p>
+                                </div>
                             </div>
                             <div>
                                 <label class="form-label">Social Links</label>
                                 <textarea
                                     wire:model="social_links"
                                     class="form-textarea"
-                                    rows="2"
-                                    placeholder="One URL per line..."
+                                    rows="3"
+                                    placeholder="https://instagram.com/brand&#10;https://facebook.com/brand&#10;https://tiktok.com/@brand"
                                 ></textarea>
+                                <div class="flex items-center gap-1.5 mt-1.5">
+                                    <i class="fas fa-info-circle text-[10px] text-gray-300"></i>
+                                    <p class="text-[11px] text-gray-400">One URL per line</p>
+                                </div>
                             </div>
                             <div>
                                 <label class="form-label">Notes</label>
@@ -902,24 +1020,81 @@ new #[Layout('components.layouts.app')] class extends Component
 
                             <hr class="border-gray-100" />
 
-                            @if ($selectedClient->deliverables)
+                            @if ($selectedClient->linkedPackage && !empty($selectedClient->linkedPackage->deliverable_limits))
                                 <div>
-                                    <p class="text-[11px] font-semibold uppercase tracking-wider text-gray-400 mb-2">Deliverables</p>
-                                    <p class="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{{ is_array($selectedClient->deliverables) ? implode("\n", $selectedClient->deliverables) : $selectedClient->deliverables }}</p>
+                                    <p class="text-[11px] font-semibold uppercase tracking-wider text-gray-400 mb-2">
+                                        Deliverables
+                                        <span class="text-gray-300 font-normal normal-case"
+                                            >— from {{ $selectedClient->linkedPackage->name }}</span
+                                        >
+                                    </p>
+                                    <div class="flex flex-wrap gap-2">
+                                        @foreach ($selectedClient->linkedPackage->deliverable_limits as $lim)
+                                            <span
+                                                class="inline-flex items-center gap-1.5 rounded-lg bg-[rgba(var(--brand-rgb),0.06)] border border-[rgba(var(--brand-rgb),0.12)] px-3 py-1.5 text-sm font-medium text-gray-800"
+                                            >
+                                                <span class="text-[var(--brand)] font-bold">{{ $lim['limit'] }}</span>
+                                                <span class="text-gray-400">×</span>
+                                                <span class="capitalize">{{ $lim['type'] }}</span>
+                                                <span class="text-[10px] text-gray-400">/mo</span>
+                                            </span>
+                                        @endforeach
+                                    </div>
                                 </div>
                             @endif
 
                             @if ($selectedClient->brand_guide)
                                 <div>
                                     <p class="text-[11px] font-semibold uppercase tracking-wider text-gray-400 mb-2">Brand Guide</p>
-                                    <p class="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{{ is_array($selectedClient->brand_guide) ? implode("\n", $selectedClient->brand_guide) : $selectedClient->brand_guide }}</p>
+                                    @php
+                                        $bItems = $selectedClient->brand_guide;
+                                        if (is_string($bItems)) {
+                                            $bItems = array_filter(array_map('trim', explode("\n", $bItems)), fn ($l) => $l !== '');
+                                        }
+                                    @endphp
+                                    @if (!empty($bItems))
+                                        <div class="space-y-1.5">
+                                            @foreach ($bItems as $item)
+                                                @php $cleanItem = preg_replace('/^\d+\.\s*/', '', (string) $item); @endphp
+                                                <div class="flex items-start gap-2">
+                                                    <i
+                                                        class="fas fa-check-circle text-[10px] text-green-500 mt-1 flex-shrink-0"
+                                                    ></i>
+                                                    <span class="text-sm text-gray-700">{{ $cleanItem }}</span>
+                                                </div>
+                                            @endforeach
+                                        </div>
+                                    @endif
                                 </div>
                             @endif
 
                             @if ($selectedClient->social_links)
                                 <div>
                                     <p class="text-[11px] font-semibold uppercase tracking-wider text-gray-400 mb-2">Social Links</p>
-                                    <p class="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{{ is_array($selectedClient->social_links) ? implode("\n", $selectedClient->social_links) : $selectedClient->social_links }}</p>
+                                    @php
+                                        $sItems = $selectedClient->social_links;
+                                        if (is_string($sItems)) {
+                                            $sItems = array_filter(array_map('trim', explode("\n", $sItems)), fn ($l) => $l !== '');
+                                        }
+                                    @endphp
+                                    @if (!empty($sItems))
+                                        <div class="space-y-1.5">
+                                            @foreach ($sItems as $item)
+                                                @php $cleanItem = preg_replace('/^\d+\.\s*/', '', (string) $item); @endphp
+                                                <a
+                                                    href="{{ Str::startsWith($cleanItem, 'http') ? $cleanItem : 'https://' . $cleanItem }}"
+                                                    target="_blank"
+                                                    rel="noopener"
+                                                    class="flex items-center gap-2 text-sm text-[var(--brand)] hover:underline group"
+                                                >
+                                                    <i
+                                                        class="fas fa-external-link-alt text-[10px] text-gray-400 group-hover:text-[var(--brand)]"
+                                                    ></i>
+                                                    {{ $cleanItem }}
+                                                </a>
+                                            @endforeach
+                                        </div>
+                                    @endif
                                 </div>
                             @endif
 
@@ -930,13 +1105,14 @@ new #[Layout('components.layouts.app')] class extends Component
                                 </div>
                             @endif
 
-                            @if (!$selectedClient->deliverables && !$selectedClient->brand_guide && !$selectedClient->social_links && !$selectedClient->notes)
+                            @if (!$selectedClient->brand_guide && !$selectedClient->social_links && !$selectedClient->notes && (!$selectedClient->linkedPackage || empty($selectedClient->linkedPackage->deliverable_limits)))
                                 <div class="py-8 text-center">
                                     <i class="fas fa-file-alt text-2xl text-gray-200 mb-2"></i>
                                     <p class="text-gray-400 text-xs">No additional details added yet</p>
                                 </div>
                             @endif
                         </div>
+
                     @endif
 
                     {{-- Tab: Workflows --}}
@@ -1092,6 +1268,63 @@ new #[Layout('components.layouts.app')] class extends Component
                             </div>
                         @endif
                     @endif
+                </div>
+            </div>
+        </div>
+    @endif
+
+    {{-- ========== STATUS CHANGE CONFIRMATION DIALOG ========== --}}
+    @if ($showStatusConfirm)
+        <div class="confirm-overlay" x-data x-on:keydown.escape.window="$wire.cancelStatusChange()">
+            <div class="confirm-box">
+                <div class="confirm-icon" style="background-color: rgba(var(--brand-rgb), 0.1); color: var(--brand)">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+                    </svg>
+                </div>
+                <h3 class="mb-2 text-lg font-bold text-gray-900">Change Client Status</h3>
+                <p class="mb-1 text-sm text-gray-500">
+                    Change status for <strong class="text-gray-700">{{ $statusClientName }}</strong>
+                </p>
+                <div class="flex items-center justify-center gap-3 my-4">
+                    <span
+                        class="inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold
+                        {{ match($statusOldValue) {
+                            'active' => 'bg-green-100 text-green-700',
+                            'inactive' => 'bg-gray-100 text-gray-600',
+                            'pending' => 'bg-blue-100 text-blue-700',
+                            default => 'bg-gray-100 text-gray-600',
+                        } }}"
+                    >
+                        {{ ucfirst($statusOldValue) }}
+                    </span>
+                    <i class="fas fa-arrow-right text-gray-400 text-xs"></i>
+                    <span
+                        class="inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold
+                        {{ match($statusNewValue) {
+                            'active' => 'bg-green-100 text-green-700',
+                            'inactive' => 'bg-gray-100 text-gray-600',
+                            'pending' => 'bg-blue-100 text-blue-700',
+                            default => 'bg-gray-100 text-gray-600',
+                        } }}"
+                    >
+                        {{ ucfirst($statusNewValue) }}
+                    </span>
+                </div>
+                <p class="mb-6 text-xs text-gray-400">Are you sure you want to change this client's status?</p>
+                <div class="flex gap-3">
+                    <button
+                        wire:click="cancelStatusChange"
+                        class="flex-1 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors"
+                    >
+                        Cancel
+                    </button>
+                    <button
+                        wire:click="performStatusChange"
+                        class="flex-1 rounded-xl bg-[var(--brand)] px-4 py-2.5 text-sm font-semibold text-white hover:opacity-90 transition-colors"
+                    >
+                        <i class="fas fa-check text-xs mr-1"></i> Confirm
+                    </button>
                 </div>
             </div>
         </div>
