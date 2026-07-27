@@ -480,12 +480,12 @@ new #[Layout('components.layouts.app')] class extends Component
 
 <div class="space-y-6" x-data="{ activeTab: 'all' }">
     {{-- Header --}}
-    <div class="flex items-center justify-between">
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
             <h1 class="text-xl font-extrabold text-gray-900">Packages</h1>
             <p class="text-sm text-gray-500 mt-0.5">Manage subscription packages and track all client usage</p>
         </div>
-        <div class="flex items-center gap-3">
+        <div class="flex items-center gap-3 flex-wrap">
             <div class="flex rounded-lg border border-gray-200 bg-white p-0.5">
                 @foreach (['all' => 'All', 'active' => 'Active', 'inactive' => 'Inactive'] as $value => $label)
                     <button
@@ -1160,7 +1160,7 @@ new #[Layout('components.layouts.app')] class extends Component
                     </button>
                 </div>
                 <div class="p-6 space-y-4">
-                    <div class="grid grid-cols-2 gap-4">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
                             <label class="block text-xs font-semibold text-gray-600 mb-1">Name *</label>
                             <input
@@ -1189,7 +1189,7 @@ new #[Layout('components.layouts.app')] class extends Component
                             @enderror
                         </div>
                     </div>
-                    <div class="grid grid-cols-2 gap-4">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
                             <label class="block text-xs font-semibold text-gray-600 mb-1"
                                 >Monthly Price ({{ $currencyCode }}) *</label
@@ -1327,7 +1327,7 @@ new #[Layout('components.layouts.app')] class extends Component
                     </div>
                     <div class="border-t border-gray-100 pt-4">
                         <h4 class="text-xs font-bold text-gray-700 uppercase tracking-wider mb-3">Monthly Limits</h4>
-                        <div class="grid grid-cols-2 gap-4">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div>
                                 <label class="block text-xs font-semibold text-gray-600 mb-1">Content Items</label>
                                 <input
@@ -1437,7 +1437,7 @@ new #[Layout('components.layouts.app')] class extends Component
                     </button>
                 </div>
                 <div class="p-6 space-y-6">
-                    <div class="grid grid-cols-2 sm:grid-cols-5 gap-4">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
                         <div class="bg-gray-50 rounded-xl p-3 text-center">
                             <p class="text-2xl font-extrabold text-gray-900">{{ $summary['client_count'] }}</p>
                             <p class="text-[10px] text-gray-500 mt-0.5">Clients</p>
@@ -1668,7 +1668,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
                 <div class="p-6 space-y-5">
                     {{-- Package & Contract --}}
-                    <div class="grid grid-cols-2 gap-4">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div class="bg-gray-50 rounded-xl p-4">
                             <div class="flex items-center gap-2 mb-2">
                                 <i class="fas fa-box text-[var(--brand)]"></i>
@@ -1724,7 +1724,7 @@ new #[Layout('components.layouts.app')] class extends Component
                     </div>
 
                     {{-- Usage Meters --}}
-                    <div class="grid grid-cols-2 gap-4">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         {{-- Content --}}
                         <div class="rounded-xl border border-gray-100 p-4">
                             <div class="flex items-center justify-between mb-2">
@@ -1839,7 +1839,7 @@ new #[Layout('components.layouts.app')] class extends Component
                             <h4 class="text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">
                                 <i class="fas fa-box-open mr-1 text-[var(--brand)]"></i>Deliverables this month
                             </h4>
-                            <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                                 @foreach ($clientDetail['deliverables'] as $d)
                                     @php
                                         $pct = $d['percent'];

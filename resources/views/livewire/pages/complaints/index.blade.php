@@ -393,7 +393,7 @@ new #[Layout('components.layouts.app')] class extends Component
             </div>
 
             {{-- Stats --}}
-            <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
                 <div class="stat-card"><div class="stat-icon bg-blue-100 text-blue-600"><i class="fas fa-layer-group"></i></div><div class="stat-value">{{ $this->stats['total'] }}</div><div class="stat-label">Total</div></div>
                 <div class="stat-card"><div class="stat-icon bg-red-100 text-red-600"><i class="fas fa-exclamation-circle"></i></div><div class="stat-value">{{ $this->stats['open'] }}</div><div class="stat-label">Open</div></div>
                 <div class="stat-card"><div class="stat-icon bg-amber-100 text-amber-600"><i class="fas fa-spinner"></i></div><div class="stat-value">{{ $this->stats['in_progress'] }}</div><div class="stat-label">In Progress</div></div>
@@ -425,60 +425,67 @@ new #[Layout('components.layouts.app')] class extends Component
                         $statusRing = match($c->status) { 'open' => 'ring-red-100', 'in-progress' => 'ring-amber-100', 'resolved' => 'ring-green-100', default => '' };
                         $replyCount = DB::table('complaint_replies')->where('complaint_id', $c->id)->count();
                         $hasFiles = DB::table('complaint_replies')->where('complaint_id', $c->id)->whereNotNull('file_path')->exists();
+                        // Primary action (single, contextual)
+                        $primary = null;
+                        if ($c->status === 'open' && !$this->isClientUser) {
+                            $primary = ['label' => 'Start', 'icon' => 'fa-play', 'class' => 'btn-primary', 'method' => 'openProgressModal'];
+                        } elseif ($c->status === 'in-progress' && !$this->isClientUser) {
+                            $primary = ['label' => 'Resolve', 'icon' => 'fa-check', 'class' => 'btn-success', 'method' => 'openResolveModal'];
+                        } elseif ($c->status === 'resolved' && $this->isManagerUser) {
+                            $primary = ['label' => 'Reopen', 'icon' => 'fa-undo', 'class' => 'btn-warning', 'method' => 'reopenComplaint'];
+                        }
+                        $canEdit = $this->canClientEdit($c->status);
                     @endphp
                     <div wire:click="openDetail({{ $c->id }})"
                          class="bg-white border border-gray-100 rounded-xl p-4 cursor-pointer hover:border-[var(--brand)] hover:shadow-md transition-all duration-150">
+                        {{-- Row 1: dot + title + badges + action bar --}}
                         <div class="flex items-start gap-3">
                             <div class="w-2.5 h-2.5 rounded-full {{ $statusDot }} mt-2 flex-shrink-0 ring-4 {{ $statusRing }}"></div>
                             <div class="flex-1 min-w-0">
                                 <div class="flex items-center gap-2 flex-wrap">
-                                    <h3 class="font-bold text-sm text-gray-900">{{ $c->title }}</h3>
+                                    <h3 class="font-bold text-sm text-gray-900 break-words">{{ $c->title }}</h3>
                                     <span class="badge {{ $priorityBadge }}">{{ ucfirst($c->priority) }}</span>
                                     <span class="badge badge-{{ $c->status }}">{{ ucfirst(str_replace('-', ' ', $c->status)) }}</span>
                                 </div>
-                                <div class="flex items-center gap-3 mt-1.5 text-xs text-gray-500">
-                                    <span><i class="fas fa-user mr-1"></i>{{ $c->client_name }}</span>
-                                    @if($c->assignee_name)
-                                        <span><i class="fas fa-user-tag mr-1"></i>{{ $c->assignee_name }}</span>
-                                    @endif
-                                    <span><i class="fas fa-clock mr-1"></i>{{ fmtDateTime($c->created_at) }}</span>
-                                </div>
-                                <p class="text-sm text-gray-600 mt-1.5 line-clamp-1">{{ $c->description }}</p>
                             </div>
-                            <div class="flex items-center gap-1.5 flex-shrink-0" x-data>
-                                @if($replyCount > 0)
-                                    <span class="inline-flex items-center gap-1 text-xs text-gray-400 mr-1">
-                                        <i class="fas fa-comment"></i>{{ $replyCount }}
-                                    </span>
-                                @endif
-                                @if($hasFiles)
-                                    <i class="fas fa-paperclip text-xs text-gray-400 mr-1"></i>
-                                @endif
-
-                                {{-- Action buttons (don't trigger card click) --}}
-                                @if($c->status === 'open' && !$this->isClientUser)
-                                    <button wire:click.stop="openProgressModal({{ $c->id }})" class="btn btn-sm btn-primary py-1 px-2 text-xs" title="Mark In Progress">
-                                        <i class="fas fa-play"></i>
+                            <div class="flex items-center gap-1.5 flex-shrink-0" x-data="{ open: false }" x-on:click.stop>
+                                @if($primary)
+                                    <button wire:click.stop="{{ $primary['method'] }}({{ $c->id }})" class="btn btn-sm {{ $primary['class'] }} px-3 py-1 text-xs">
+                                        <i class="fas {{ $primary['icon'] }} text-[10px] mr-1"></i>{{ $primary['label'] }}
                                     </button>
                                 @endif
-                                @if($c->status === 'in-progress' && !$this->isClientUser)
-                                    <button wire:click.stop="openResolveModal({{ $c->id }})" class="btn btn-sm btn-success py-1 px-2 text-xs" title="Resolve">
-                                        <i class="fas fa-check"></i>
-                                    </button>
+                                @if($canEdit)
+                                    <div class="relative">
+                                        <button type="button" x-on:click="open = !open" class="btn btn-ghost btn-icon btn-sm" aria-label="More actions" title="More">
+                                            <i class="fas fa-ellipsis-h text-xs text-gray-500"></i>
+                                        </button>
+                                        <div x-show="open" x-cloak x-on:click.outside="open = false" x-transition class="absolute right-0 mt-1 w-40 bg-white border border-gray-100 rounded-lg shadow-lg z-20 py-1">
+                                            <button type="button" wire:click.stop="openForm({{ $c->id }})" x-on:click="open = false" class="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2">
+                                                <i class="fas fa-pen text-xs text-gray-400"></i> Edit
+                                            </button>
+                                        </div>
+                                    </div>
                                 @endif
-                                @if($c->status === 'resolved' && $this->isManagerUser)
-                                    <button wire:click.stop="reopenComplaint({{ $c->id }})" class="btn btn-sm btn-warning py-1 px-2 text-xs" title="Reopen">
-                                        <i class="fas fa-undo"></i>
-                                    </button>
-                                @endif
-                                @if($this->canClientEdit($c->status))
-                                    <button wire:click.stop="openForm({{ $c->id }})" class="btn btn-sm btn-primary py-1 px-2 text-xs" title="Edit">
-                                        <i class="fas fa-pen"></i>
-                                    </button>
-                                @endif
-
                                 <i class="fas fa-chevron-right text-xs text-gray-300 ml-1"></i>
                             </div>
+                        </div>
+
+                        {{-- Row 2: description --}}
+                        <p class="text-sm text-gray-600 mt-2 line-clamp-2 pl-[22px]">{{ $c->description }}</p>
+
+                        {{-- Row 3: meta chips (wrap freely on any width) --}}
+                        <div class="flex flex-wrap items-center gap-x-3 gap-y-1.5 mt-2.5 pl-[22px] text-xs text-gray-500">
+                            <span class="inline-flex items-center gap-1"><i class="fas fa-user text-gray-300"></i>{{ $c->client_name }}</span>
+                            @if($c->assignee_name)
+                                <span class="inline-flex items-center gap-1"><i class="fas fa-user-tag text-gray-300"></i>{{ $c->assignee_name }}</span>
+                            @endif
+                            <span class="inline-flex items-center gap-1"><i class="fas fa-clock text-gray-300"></i>{{ fmtDateTime($c->created_at) }}</span>
+                            @if($replyCount > 0)
+                                <span class="inline-flex items-center gap-1"><i class="fas fa-comment text-gray-300"></i>{{ $replyCount }} {{ $replyCount === 1 ? 'reply' : 'replies' }}</span>
+                            @endif
+                            @if($hasFiles)
+                                <span class="inline-flex items-center gap-1"><i class="fas fa-paperclip text-gray-300"></i>attached</span>
+                            @endif
                         </div>
                     </div>
                 @empty
@@ -514,7 +521,7 @@ new #[Layout('components.layouts.app')] class extends Component
                         {{-- Body --}}
                         <div class="flex-1 overflow-y-auto px-6 py-5 space-y-5">
                             {{-- Info Grid --}}
-                            <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
+                            <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                                 <div><span class="text-gray-400 text-xs">Client</span><p class="font-medium">{{ $currentComplaint->client_name }}</p></div>
                                 <div><span class="text-gray-400 text-xs">Assigned To</span><p class="font-medium">{{ $currentComplaint->assignee_name ?? 'Unassigned' }}</p></div>
                                 <div><span class="text-gray-400 text-xs">Created</span><p class="font-medium">{{ fmtDateTime($currentComplaint->created_at) }}</p></div>
@@ -665,7 +672,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                 <textarea wire:model="formDescription" class="form-input" rows="4" placeholder="Detailed description..."></textarea>
                                 <span wire:error="formDescription" class="text-red-500 text-xs mt-1 block"></span>
                             </div>
-                            <div class="grid grid-cols-2 gap-3">
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                 @if(!$this->isClientUser)
                                     <div>
                                         <label class="form-label">Client</label>

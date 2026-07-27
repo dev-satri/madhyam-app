@@ -853,7 +853,7 @@ new #[Layout('components.layouts.app')] class extends Component
             </div>
 
             {{-- Global Stats --}}
-            <div wire:loading.class="opacity-60" class="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div wire:loading.class="opacity-60" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
                 <div class="stat-card"><div class="stat-icon bg-green-100 text-green-600"><i class="fas fa-dollar-sign"></i></div><div class="stat-value">{{ fmtCurrency($this->stats['revenue']) }}</div><div class="stat-label">{{ $this->isClient ? 'Total Billed' : 'Total Revenue' }}</div></div>
                 <div class="stat-card"><div class="stat-icon bg-blue-100 text-blue-600"><i class="fas fa-check-circle"></i></div><div class="stat-value">{{ fmtCurrency($this->stats['paid']) }}</div><div class="stat-label">Paid</div></div>
                 <div class="stat-card"><div class="stat-icon bg-amber-100 text-amber-600"><i class="fas fa-clock"></i></div><div class="stat-value">{{ fmtCurrency($this->stats['pending']) }}</div><div class="stat-label">Pending</div></div>
@@ -861,7 +861,7 @@ new #[Layout('components.layouts.app')] class extends Component
             </div>
 
             @unless($this->isClient)
-                <div wire:loading.class="opacity-60" class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div wire:loading.class="opacity-60" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
                     <div class="stat-card"><div class="stat-icon bg-orange-100 text-orange-600"><i class="fas fa-receipt"></i></div><div class="stat-value">{{ fmtCurrency($this->stats['expenses']) }}</div><div class="stat-label">Total Expenses</div></div>
                     <div class="stat-card"><div class="stat-icon {{ $this->stats['net_profit'] >= 0 ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600' }}"><i class="fas fa-chart-line"></i></div><div class="stat-value">{{ fmtCurrency($this->stats['net_profit']) }}</div><div class="stat-label">Net Profit</div></div>
                     <div class="stat-card"><div class="stat-icon bg-purple-100 text-purple-600"><i class="fas fa-percentage"></i></div><div class="stat-value">{{ fmtCurrency($this->stats['discount']) }}</div><div class="stat-label">Discount Given</div></div>
@@ -871,12 +871,12 @@ new #[Layout('components.layouts.app')] class extends Component
 
             {{-- Tabs --}}
             @unless($this->isClient)
-                <div class="border-b border-gray-200">
-                    <nav class="flex gap-0 -mb-px">
-                        <button wire:click="$set('activeTab', 'invoices')" class="px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors {{ $activeTab === 'invoices' ? 'border-[var(--brand)] text-[var(--brand)]' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300' }}"><i class="fas fa-file-invoice mr-1.5"></i>Invoices</button>
-                        <button wire:click="$set('activeTab', 'salary')" class="px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors {{ $activeTab === 'salary' ? 'border-[var(--brand)] text-[var(--brand)]' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300' }}"><i class="fas fa-money-bill-wave mr-1.5"></i>Salary & Workers</button>
-                        <button wire:click="$set('activeTab', 'expenses')" class="px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors {{ $activeTab === 'expenses' ? 'border-[var(--brand)] text-[var(--brand)]' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300' }}"><i class="fas fa-receipt mr-1.5"></i>Expenses</button>
-                        <button wire:click="$set('activeTab', 'overtime')" class="px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors {{ $activeTab === 'overtime' ? 'border-[var(--brand)] text-[var(--brand)]' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300' }}"><i class="fas fa-clock mr-1.5"></i>Overtime</button>
+                <div class="border-b border-gray-200 overflow-x-auto">
+                    <nav class="flex gap-0 -mb-px min-w-max">
+                        <button wire:click="$set('activeTab', 'invoices')" class="px-4 py-2.5 text-sm font-semibold border-b-2 whitespace-nowrap transition-colors {{ $activeTab === 'invoices' ? 'border-[var(--brand)] text-[var(--brand)]' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300' }}"><i class="fas fa-file-invoice mr-1.5"></i>Invoices</button>
+                        <button wire:click="$set('activeTab', 'salary')" class="px-4 py-2.5 text-sm font-semibold border-b-2 whitespace-nowrap transition-colors {{ $activeTab === 'salary' ? 'border-[var(--brand)] text-[var(--brand)]' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300' }}"><i class="fas fa-money-bill-wave mr-1.5"></i>Salary & Workers</button>
+                        <button wire:click="$set('activeTab', 'expenses')" class="px-4 py-2.5 text-sm font-semibold border-b-2 whitespace-nowrap transition-colors {{ $activeTab === 'expenses' ? 'border-[var(--brand)] text-[var(--brand)]' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300' }}"><i class="fas fa-receipt mr-1.5"></i>Expenses</button>
+                        <button wire:click="$set('activeTab', 'overtime')" class="px-4 py-2.5 text-sm font-semibold border-b-2 whitespace-nowrap transition-colors {{ $activeTab === 'overtime' ? 'border-[var(--brand)] text-[var(--brand)]' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300' }}"><i class="fas fa-clock mr-1.5"></i>Overtime</button>
                     </nav>
                 </div>
             @endunless
@@ -884,7 +884,7 @@ new #[Layout('components.layouts.app')] class extends Component
             {{-- INVOICES TAB --}}
             @if($activeTab === 'invoices' || $this->isClient)
                 {{-- Filters --}}
-                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end no-print">
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 items-start no-print">
                     <div><label class="form-label">Search</label><div class="relative"><i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs"></i><input type="text" wire:model.live.debounce.250ms="search" placeholder="Search invoices..." class="form-input pl-10 focus:ring-0"></div></div>
                     <div><label class="form-label">Status</label><select wire:model="statusFilter" class="form-select">
                         <option value="">All Status</option>
@@ -1069,13 +1069,13 @@ new #[Layout('components.layouts.app')] class extends Component
 
             {{-- SALARY & WORKERS TAB --}}
             @if($activeTab === 'salary' && !$this->isClient)
-                <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
                     <div class="stat-card"><div class="stat-icon bg-indigo-100 text-indigo-600"><i class="fas fa-users"></i></div><div class="stat-value">{{ $this->salaryStats['member_count'] }}</div><div class="stat-label">Team Members</div></div>
                     <div class="stat-card"><div class="stat-icon bg-green-100 text-green-600"><i class="fas fa-money-bill-wave"></i></div><div class="stat-value">{{ fmtCurrency($this->salaryStats['total_payroll']) }}</div><div class="stat-label">Total Payroll</div></div>
                     <div class="stat-card"><div class="stat-icon bg-blue-100 text-blue-600"><i class="fas fa-check-circle"></i></div><div class="stat-value">{{ fmtCurrency($this->salaryStats['paid']) }}</div><div class="stat-label">Paid</div></div>
                     <div class="stat-card"><div class="stat-icon bg-amber-100 text-amber-600"><i class="fas fa-hourglass-half"></i></div><div class="stat-value">{{ fmtCurrency($this->salaryStats['pending']) }}</div><div class="stat-label">Pending</div></div>
                 </div>
-                <div class="grid grid-cols-3 gap-4">
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                     <div class="stat-card"><div class="stat-icon bg-purple-100 text-purple-600"><i class="fas fa-clock"></i></div><div class="stat-value">{{ fmtCurrency($this->salaryStats['total_ot']) }}</div><div class="stat-label">Total OT Pay</div></div>
                     <div class="stat-card"><div class="stat-icon bg-teal-100 text-teal-600"><i class="fas fa-gift"></i></div><div class="stat-value">{{ fmtCurrency($this->salaryStats['total_bonus']) }}</div><div class="stat-label">Total Bonus</div></div>
                     <div class="stat-card"><div class="stat-icon bg-red-100 text-red-600"><i class="fas fa-minus-circle"></i></div><div class="stat-value">{{ fmtCurrency($this->salaryStats['total_deductions']) }}</div><div class="stat-label">Total Deductions</div></div>
@@ -1099,7 +1099,7 @@ new #[Layout('components.layouts.app')] class extends Component
                     $totalExpenses = $this->stats['expenses'];
                     $topCategories = $this->expenseSummary->take(3);
                 @endphp
-                <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
                     <div class="stat-card"><div class="stat-icon bg-orange-100 text-orange-600"><i class="fas fa-receipt"></i></div><div class="stat-value">{{ fmtCurrency($totalExpenses) }}</div><div class="stat-label">Total Expenses</div></div>
                     <div class="stat-card"><div class="stat-icon bg-blue-100 text-blue-600"><i class="fas fa-layer-group"></i></div><div class="stat-value">{{ $this->expenseSummary->count() }}</div><div class="stat-label">Categories</div></div>
                     <div class="stat-card"><div class="stat-icon bg-red-100 text-red-600"><i class="fas fa-arrow-up"></i></div><div class="stat-value">{{ $topCategories->isNotEmpty() ? $topCategories->first()->category : '-' }}</div><div class="stat-label">Highest Category</div></div>
@@ -1152,7 +1152,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
             {{-- OVERTIME TAB --}}
             @if($activeTab === 'overtime' && !$this->isClient)
-                <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
                     <div class="stat-card"><div class="stat-icon bg-blue-100 text-blue-600"><i class="fas fa-clock"></i></div><div class="stat-value">{{ number_format($this->overtimeSummary['total_hours'], 1) }}h</div><div class="stat-label">Total Hours</div></div>
                     <div class="stat-card"><div class="stat-icon bg-green-100 text-green-600"><i class="fas fa-check-circle"></i></div><div class="stat-value">{{ number_format($this->overtimeSummary['approved_hours'], 1) }}h</div><div class="stat-label">Approved</div></div>
                     <div class="stat-card"><div class="stat-icon bg-amber-100 text-amber-600"><i class="fas fa-hourglass-half"></i></div><div class="stat-value">{{ $this->overtimeSummary['pending_count'] }}</div><div class="stat-label">Pending Approval</div></div>
@@ -1186,12 +1186,12 @@ new #[Layout('components.layouts.app')] class extends Component
                                 </select>
                                 <span wire:error="formClientId" class="text-red-500 text-xs mt-1 block"></span>
                             </div>
-                            <div class="grid grid-cols-2 gap-3">
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                 <div><label class="form-label">Amount</label><input type="number" wire:model="formAmount" class="form-input" step="0.01"><span wire:error="formAmount" class="text-red-500 text-xs mt-1 block"></span></div>
                                 <div><label class="form-label">Due Date</label><input type="date" wire:model="formDueDate" class="form-input"><span wire:error="formDueDate" class="text-red-500 text-xs mt-1 block"></span></div>
                             </div>
                             <div><label class="form-label">Description</label><input type="text" wire:model="formDescription" class="form-input"></div>
-                            <div class="grid grid-cols-2 gap-3">
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                 <div><label class="form-label">Status</label>
                                     <select wire:model="formStatus" class="form-select">
                                         <option value="pending">Pending</option><option value="paid">Paid</option><option value="overdue">Overdue</option>
@@ -1208,7 +1208,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                 <div><label class="form-label">Discount Amount</label><input type="number" wire:model="formDiscountAmount" class="form-input" step="0.01"></div>
                             @endif
                             @if($formPaymentStatus === 'installment')
-                                <div class="grid grid-cols-3 gap-3">
+                                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                                     <div><label class="form-label">Total</label><input type="number" wire:model="formTotalInstallments" class="form-input"></div>
                                     <div><label class="form-label">Paid</label><input type="number" wire:model="formPaidInstallments" class="form-input"></div>
                                     <div><label class="form-label">Per Installment</label><input type="number" wire:model="formAmountPerInstallment" class="form-input" step="0.01"></div>
@@ -1386,7 +1386,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                     </span>
                                 </div>
                             </div>
-                            <div class="grid grid-cols-2 gap-3 text-sm">
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
                                 <div class="bg-gray-50 rounded-lg px-3 py-2.5"><div class="text-[10px] uppercase tracking-wide text-gray-400 font-semibold mb-0.5">Amount</div><div class="font-bold text-gray-900">{{ fmtCurrency($detail->amount) }}</div></div>
                                 <div class="bg-gray-50 rounded-lg px-3 py-2.5"><div class="text-[10px] uppercase tracking-wide text-gray-400 font-semibold mb-0.5">Discount</div><div class="font-semibold text-gray-700">{{ fmtCurrency($detail->discount_amount) }}</div></div>
                                 <div class="bg-gray-50 rounded-lg px-3 py-2.5"><div class="text-[10px] uppercase tracking-wide text-gray-400 font-semibold mb-0.5">Due</div><div class="font-semibold text-gray-700">{{ fmtDate($detail->due_date) }}</div></div>

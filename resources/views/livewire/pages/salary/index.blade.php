@@ -725,7 +725,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                 @endphp
 
                                 {{-- Summary Cards --}}
-                                <div class="grid grid-cols-3 gap-2 mb-4">
+                                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 mb-4">
                                     <div class="bg-green-50 border border-green-100 rounded-lg p-2.5 text-center">
                                         <div class="text-[10px] uppercase tracking-wider text-green-600/70 font-semibold">Total</div>
                                         <div class="font-bold text-green-700 text-sm mt-0.5">{{ fmtCurrency($totalAmount) }}</div>
@@ -817,7 +817,7 @@ new #[Layout('components.layouts.app')] class extends Component
                             <button wire:click="$set('showLeaveDetail', false)" class="flex-shrink-0 ml-3 w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition"><i class="fas fa-times"></i></button>
                         </div>
                         <div class="flex-1 overflow-y-auto px-5 py-4 space-y-3">
-                            <div class="grid grid-cols-3 gap-2">
+                            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                                 <div class="bg-blue-50 border border-blue-100 rounded-lg p-2.5 text-center"><div class="text-lg font-bold text-blue-600">{{ $this->selectedSalary->paid_leaves }}</div><div class="text-[10px] uppercase tracking-wider text-gray-500 font-semibold">Paid</div></div>
                                 <div class="bg-green-50 border border-green-100 rounded-lg p-2.5 text-center"><div class="text-lg font-bold text-green-600">{{ $this->selectedSalary->total_work_days }}</div><div class="text-[10px] uppercase tracking-wider text-gray-500 font-semibold">Work Days</div></div>
                                 <div class="bg-gray-50 border border-gray-100 rounded-lg p-2.5 text-center"><div class="text-lg font-bold">{{ fmtCurrency((float)$this->selectedSalary->base_salary / 30) }}</div><div class="text-[10px] uppercase tracking-wider text-gray-500 font-semibold">Daily Rate</div></div>
@@ -873,7 +873,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                 <div class="font-bold text-sm">{{ $this->selectedSalary->member_name }}</div>
                                 <div class="text-[11px] text-gray-400">{{ date('F Y', mktime(0,0,0,$this->selectedSalary->month,1,$this->selectedSalary->year)) }}</div>
                             </div>
-                            <div class="grid grid-cols-2 gap-2">
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
                                 <div class="bg-blue-50 border border-blue-100 rounded-lg p-2.5"><div class="text-[10px] uppercase tracking-wider text-gray-500 font-semibold">Base Salary</div><div class="font-bold text-sm mt-0.5">{{ fmtCurrency($this->selectedSalary->base_salary) }}</div></div>
                                 <div class="bg-gray-50 border border-gray-100 rounded-lg p-2.5"><div class="text-[10px] uppercase tracking-wider text-gray-500 font-semibold">Daily Rate</div><div class="font-bold text-sm mt-0.5">{{ fmtCurrency((float)$this->selectedSalary->base_salary / 30) }}</div></div>
                                 <div class="bg-green-50 border border-green-100 rounded-lg p-2.5">

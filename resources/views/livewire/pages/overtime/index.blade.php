@@ -459,7 +459,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                 <input type="date" wire:model="formDate" class="form-input">
                                 <span wire:error="formDate" class="text-red-500 text-xs mt-1 block"></span>
                             </div>
-                            <div class="grid grid-cols-2 gap-3">
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                 <div>
                                     <label class="form-label">Hours (0.5 step)</label>
                                     <input type="number" wire:model="formHours" class="form-input" step="0.5" min="0.5" max="24">

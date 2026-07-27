@@ -350,7 +350,7 @@ new #[Layout('components.layouts.app')] class extends Component
             </div>
 
             {{-- Stats --}}
-            <div class="grid grid-cols-2 sm:grid-cols-5 gap-3">
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
                 @foreach(['total'=>'Total','todo'=>'To Do','in_progress'=>'In Progress','completed'=>'Completed','overdue'=>'Overdue'] as $k=>$label)
                 <div class="stat-card text-center py-3">
                     <p class="stat-value text-xl font-extrabold {{ $k==='overdue'?'text-red-600':($k==='completed'?'text-green-600':'text-gray-900') }}">{{ $this->stats[$k] }}</p>
@@ -433,11 +433,11 @@ new #[Layout('components.layouts.app')] class extends Component
                     <div class="modal-header"><h3 class="text-base font-bold text-gray-900">{{ $editingId ? 'Edit Task' : 'New Task' }}</h3><button wire:click="$set('showForm',false)" class="btn btn-ghost btn-icon btn-sm"><i class="fas fa-times"></i></button></div>
                     <form wire:submit="save" class="modal-body space-y-4">
                         <div><label class="form-label">Title *</label><input type="text" wire:model="formTitle" class="form-input" required><span wire:error="formTitle" class="text-red-500 text-xs mt-1 block"></span></div>
-                        <div class="grid grid-cols-2 gap-4">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div><label class="form-label">Type</label><select wire:model="formType" class="form-select"><option value="task">Task</option><option value="shoot">Shoot</option><option value="editing">Editing</option></select></div>
                             <div><label class="form-label">Priority</label><select wire:model="formPriority" class="form-select"><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="urgent">Urgent</option></select></div>
                         </div>
-                        <div class="grid grid-cols-2 gap-4">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div><label class="form-label">Client</label><select wire:model="formClientId" class="form-select"><option value="0">None</option>@foreach($this->clients as $c)<option value="{{ $c->id }}">{{ $c->name }}</option>@endforeach</select></div>
                             <div><label class="form-label">Assignee</label><select wire:model="formAssigneeId" class="form-select"><option value="0">Unassigned</option>@foreach($this->team as $u)<option value="{{ $u->id }}">{{ $u->name }}</option>@endforeach</select></div>
                         </div>
@@ -463,7 +463,7 @@ new #[Layout('components.layouts.app')] class extends Component
                 <div class="modal-box max-w-xl">
                     <div class="modal-header"><h3 class="text-base font-bold text-gray-900">{{ $task->title ?? '' }}</h3><button wire:click="$set('showDetail',false)" class="btn btn-ghost btn-icon btn-sm"><i class="fas fa-times"></i></button></div>
                     <div class="modal-body space-y-4">
-                        <div class="grid grid-cols-2 gap-3 text-sm">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
                             <div><span class="text-gray-500">Type:</span> <span class="badge badge-{{ $task->type ?? '' }}">{{ ucfirst($task->type ?? '') }}</span></div>
                             <div><span class="text-gray-500">Priority:</span> <span class="badge badge-{{ $task->priority ?? '' }}">{{ ucfirst($task->priority ?? '') }}</span></div>
                             <div><span class="text-gray-500">Status:</span> <span class="badge badge-{{ str_replace('-','-',$task->status ?? '') }}">{{ ucwords(str_replace('-',' ',$task->status ?? '')) }}</span></div>

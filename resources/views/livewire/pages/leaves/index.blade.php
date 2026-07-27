@@ -409,7 +409,7 @@ new #[Layout('components.layouts.app')] class extends Component
                             </select>
                         </div>
                         @endif
-                        <div class="grid grid-cols-2 gap-3">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                             <div><label class="form-label">Start Date</label><input type="date" wire:model="formStartDate" class="form-input"></div>
                             <div><label class="form-label">End Date</label><input type="date" wire:model="formEndDate" class="form-input"></div>
                         </div>
@@ -464,7 +464,7 @@ new #[Layout('components.layouts.app')] class extends Component
                             </div>
                         </div>
 
-                        <div class="grid grid-cols-2 gap-3 text-sm">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
                             <div><span class="text-gray-500">Type:</span> <span class="badge badge-{{ $dl->type === 'sick' ? 'danger' : ($dl->type === 'casual' ? 'info' : ($dl->type === 'annual' ? 'success' : 'warning')) }}">{{ ucfirst($dl->type ?? '') }}</span></div>
                             <div><span class="text-gray-500">Status:</span> <span class="badge badge-{{ $dl->status === 'approved' ? 'success' : ($dl->status === 'rejected' ? 'danger' : 'warning') }}">{{ ucfirst($dl->status ?? '') }}</span></div>
                             <div><span class="text-gray-500">Start:</span> {{ $dl->start_date ? \Carbon\Carbon::parse($dl->start_date)->format('M d, Y') : '—' }}</div>

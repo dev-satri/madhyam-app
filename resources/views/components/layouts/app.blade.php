@@ -42,7 +42,7 @@
         <!-- Sidebar -->
         <aside
             :class="sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'"
-            class="sidebar fixed inset-y-0 left-0 z-40 flex w-[260px] flex-col border-r border-gray-100 bg-white transition-transform duration-300 ease-in-out"
+            class="sidebar fixed inset-y-0 left-0 z-50 flex w-[260px] flex-col border-r border-gray-100 bg-white transition-transform duration-300 ease-in-out"
         >
             <!-- Logo -->
             <div class="flex items-center gap-3 border-b border-gray-100 px-5 py-4">

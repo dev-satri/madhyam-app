@@ -676,7 +676,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
 <div>
     {{-- ========== HEADER ========== --}}
-    <div class="mb-6 flex items-center justify-between">
+    <div class="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
             <h1 class="text-2xl font-extrabold text-gray-900">Workflow</h1>
             <p class="text-sm text-gray-500 mt-1">Manage your content workflow pipeline</p>
@@ -995,7 +995,9 @@ new #[Layout('components.layouts.app')] class extends Component
                         @endif
 
                         {{-- Metadata grid --}}
-                        <div class="grid grid-cols-2 gap-x-6 gap-y-4 text-sm border-t border-gray-100 pt-4">
+                        <div
+                            class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4 text-sm border-t border-gray-100 pt-4"
+                        >
                             <div>
                                 <p class="text-[11px] uppercase tracking-wide font-semibold text-gray-500 mb-1">Client</p>
                                 <p class="text-gray-800"><i class="fas fa-building text-gray-400 mr-1.5"></i>{{ $detail->client->name ?? '—' }}</p>
@@ -1461,7 +1463,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                     type="button"
                                     wire:click="$dispatch('open-confirm', { title: 'Delete Stage?', message: 'Items currently in this stage will not be lost, but the stage will be removed.', type: 'warning', action: 'deleteStage', params: [{{ $stage['id'] }}] })"
                                     aria-label="Delete stage"
-                                    class="flex h-7 w-7 items-center justify-center rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors opacity-0 group-hover:opacity-100"
+                                    class="flex h-7 w-7 items-center justify-center rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors sm:opacity-0 sm:group-hover:opacity-100"
                                 >
                                     <i class="fas fa-trash text-xs"></i>
                                 </button>

@@ -638,7 +638,7 @@ new #[Layout('components.layouts.app')] class extends Component
             </div>
 
             {{-- Stats --}}
-            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3" aria-live="polite">
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3" aria-live="polite">
                 @foreach(['pending'=>'Pending','approved'=>'Approved','revision'=>'Revision','rejected'=>'Rejected'] as $k=>$label)
                 <button wire:click="toggleStatusFilter('{{ $k }}')" class="stat-card text-center py-3 text-left transition-all {{ $statusFilter === $k ? 'ring-2 ring-[var(--brand)]' : '' }}">
                     <p class="stat-value text-xl font-extrabold {{ $k==='pending'?'text-amber-600':($k==='approved'?'text-green-600':($k==='rejected'?'text-red-600':'text-orange-600')) }}">{{ $this->stats[$k] }}</p>
@@ -707,33 +707,60 @@ new #[Layout('components.layouts.app')] class extends Component
                             </div>
                             @endif
 
-                            <div class="flex items-center gap-2 mt-3" x-on:click.stop>
-                                @if($a->status === 'pending')
-                                    {{-- First approval: admin only --}}
-                                    @if($a->approval_stage === 'first' && $this->isManager)
-                                        <button type="button" wire:click="$dispatch('open-confirm', { title: 'Approve this item?', message: 'Content will be approved and workflow started.', type: 'info', action: 'updateStatus', params: [{{ $a->id }}, 'approved'] })" class="btn btn-success btn-sm"><i class="fas fa-check text-xs"></i> Approve</button>
-                                        <button type="button" wire:click="openReasonModal({{ $a->id }}, 'revision')" class="btn btn-secondary btn-sm"><i class="fas fa-pen text-xs"></i> Revision</button>
-                                        <button type="button" wire:click="openReasonModal({{ $a->id }}, 'rejected')" class="btn btn-danger btn-sm"><i class="fas fa-times text-xs"></i> Reject</button>
-                                    @endif
-                                    {{-- Admin-pending: admin only --}}
-                                    @if($a->approval_stage === 'admin-pending' && $this->isManager)
-                                        <button type="button" wire:click="$dispatch('open-confirm', { title: 'Approve this item?', message: 'This will send it to client for final approval.', type: 'info', action: 'updateStatus', params: [{{ $a->id }}, 'approved'] })" class="btn btn-success btn-sm"><i class="fas fa-check text-xs"></i> Approve</button>
-                                        <button type="button" wire:click="openReasonModal({{ $a->id }}, 'revision')" class="btn btn-secondary btn-sm"><i class="fas fa-pen text-xs"></i> Revision</button>
-                                        <button type="button" wire:click="openReasonModal({{ $a->id }}, 'rejected')" class="btn btn-danger btn-sm"><i class="fas fa-times text-xs"></i> Reject</button>
-                                    @endif
-                                    {{-- Client-pending: client only --}}
-                                    @if($a->approval_stage === 'client-pending' && !$this->isManager)
-                                        <button type="button" wire:click="$dispatch('open-confirm', { title: 'Approve this item?', message: 'This will move the content to Ready for Production for final publishing.', type: 'info', action: 'updateStatus', params: [{{ $a->id }}, 'approved'] })" class="btn btn-success btn-sm"><i class="fas fa-check text-xs"></i> Approve</button>
-                                        <button type="button" wire:click="openReasonModal({{ $a->id }}, 'revision')" class="btn btn-secondary btn-sm"><i class="fas fa-pen text-xs"></i> Revision</button>
-                                    @endif
-                                @elseif($a->status === 'revision')
-                                    @if($a->approval_stage === 'first' && $this->isManager)
-                                        <button type="button" wire:click="$dispatch('open-confirm', { title: 'Approve this item?', message: 'This will mark the item as approved.', type: 'info', action: 'updateStatus', params: [{{ $a->id }}, 'approved'] })" class="btn btn-success btn-sm"><i class="fas fa-check text-xs"></i> Approve</button>
-                                        <button type="button" wire:click="openReasonModal({{ $a->id }}, 'rejected')" class="btn btn-danger btn-sm"><i class="fas fa-times text-xs"></i> Reject</button>
-                                    @endif
+                            @php
+                                $cc = $this->commentCounts[$a->id] ?? 0;
+                                // Compute which secondary actions exist (Revision / Reject) — the primary is always Approve when actionable.
+                                $canActPending = $a->status === 'pending' && (
+                                    ($a->approval_stage === 'first' && $this->isManager)
+                                    || ($a->approval_stage === 'admin-pending' && $this->isManager)
+                                    || ($a->approval_stage === 'client-pending' && !$this->isManager)
+                                );
+                                $canActRevision = $a->status === 'revision' && $a->approval_stage === 'first' && $this->isManager;
+                                $canAct = $canActPending || $canActRevision;
+                                $canRevision = $a->status === 'pending' && (
+                                    ($a->approval_stage === 'first' && $this->isManager)
+                                    || ($a->approval_stage === 'admin-pending' && $this->isManager)
+                                    || ($a->approval_stage === 'client-pending' && !$this->isManager)
+                                );
+                                $canReject = ($a->status === 'pending' && $a->approval_stage !== 'client-pending' && $this->isManager)
+                                    || ($canActRevision);
+                                // Approve confirmation message depends on stage
+                                $approveMsg = match(true) {
+                                    $a->approval_stage === 'first' => 'Content will be approved and workflow started.',
+                                    $a->approval_stage === 'admin-pending' => 'This will send it to client for final approval.',
+                                    $a->approval_stage === 'client-pending' => 'This will move the content to Ready for Production for final publishing.',
+                                    default => 'This will mark the item as approved.',
+                                };
+                            @endphp
+                            <div class="flex flex-wrap items-center gap-2 mt-3" x-data="{ open: false }" x-on:click.stop>
+                                @if($canAct)
+                                    <button type="button" wire:click="$dispatch('open-confirm', { title: 'Approve this item?', message: '{{ $approveMsg }}', type: 'info', action: 'updateStatus', params: [{{ $a->id }}, 'approved'] })" class="btn btn-success btn-sm"><i class="fas fa-check text-xs"></i> Approve</button>
                                 @endif
-                                @php $cc = $this->commentCounts[$a->id] ?? 0; @endphp
-                                <button wire:click="openDetail({{ $a->id }})" class="btn btn-ghost btn-sm"><i class="fas fa-comments text-xs"></i> @if($cc > 0)<span class="badge badge-pending">{{ $cc }}</span> @endif</button>
+
+                                <button type="button" wire:click="openDetail({{ $a->id }})" class="btn btn-ghost btn-sm relative" title="View comments">
+                                    <i class="fas fa-comments text-xs"></i>
+                                    @if($cc > 0)<span class="badge badge-pending ml-1">{{ $cc }}</span>@endif
+                                </button>
+
+                                @if($canRevision || $canReject)
+                                    <div class="relative">
+                                        <button type="button" x-on:click="open = !open" class="btn btn-ghost btn-icon btn-sm" aria-label="More actions" title="More">
+                                            <i class="fas fa-ellipsis-h text-xs text-gray-500"></i>
+                                        </button>
+                                        <div x-show="open" x-cloak x-on:click.outside="open = false" x-transition class="absolute right-0 mt-1 w-44 bg-white border border-gray-100 rounded-lg shadow-lg z-20 py-1">
+                                            @if($canRevision)
+                                                <button type="button" wire:click="openReasonModal({{ $a->id }}, 'revision')" x-on:click="open = false" class="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2">
+                                                    <i class="fas fa-pen text-xs text-gray-400"></i> Request Revision
+                                                </button>
+                                            @endif
+                                            @if($canReject)
+                                                <button type="button" wire:click="openReasonModal({{ $a->id }}, 'rejected')" x-on:click="open = false" class="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2">
+                                                    <i class="fas fa-times text-xs"></i> Reject
+                                                </button>
+                                            @endif
+                                        </div>
+                                    </div>
+                                @endif
                             </div>
                         </div>
                     </div>
@@ -776,7 +803,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                 </div>
                                 @endif
                                 @if($appr->notes)<div><h4 class="text-sm font-semibold text-gray-900 mb-1">Notes</h4><p class="text-sm text-gray-600">{{ $appr->notes }}</p></div>@endif
-                                <div class="grid grid-cols-2 gap-3 text-sm">
+                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
                                     <div><span class="text-gray-500">Status:</span> <span class="badge badge-{{ $appr->status ?? '' }}">{{ ucfirst($appr->status ?? '') }}</span></div>
                                     <div><span class="text-gray-500">Type:</span> {{ ucfirst($appr->type ?? '—') }}</div>
                                     <div><span class="text-gray-500">Client:</span> {{ $appr->client_name ?? '—' }}</div>

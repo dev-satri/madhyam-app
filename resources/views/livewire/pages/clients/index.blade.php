@@ -395,7 +395,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
 <div>
     {{-- ========== HEADER ========== --}}
-    <div class="mb-6 flex items-center justify-between">
+    <div class="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
             <h1 class="text-2xl font-extrabold text-gray-900">Clients</h1>
             <p class="text-sm text-gray-500 mt-1">Manage your clients and their projects</p>

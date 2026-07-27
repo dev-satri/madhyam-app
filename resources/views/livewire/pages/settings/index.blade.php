@@ -359,7 +359,7 @@ new #[Layout('components.layouts.app')] class extends Component
             <div class="flex flex-col lg:flex-row gap-6">
                 {{-- Sidebar --}}
                 <div class="lg:w-48 flex-shrink-0">
-                    <div class="bg-white rounded-2xl border border-gray-100 p-2 flex lg:flex-col gap-1 overflow-x-auto">
+                    <div class="bg-white rounded-2xl border border-gray-100 p-2 flex lg:flex-col gap-1 overflow-x-auto lg:overflow-x-visible flex-nowrap">
                         <button wire:click="$set('activeTab', 'general')" class="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors {{ $activeTab === 'general' ? 'bg-[rgba(var(--brand-rgb),0.08)] text-[var(--brand)]' : 'text-gray-600 hover:bg-gray-50' }}"><i class="fas fa-cog"></i> General</button>
                         <button wire:click="$set('activeTab', 'working-hours')" class="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors {{ $activeTab === 'working-hours' ? 'bg-[rgba(var(--brand-rgb),0.08)] text-[var(--brand)]' : 'text-gray-600 hover:bg-gray-50' }}"><i class="fas fa-clock"></i> Working Hours</button>
                         @if(Auth::user()->role === 'super-admin')
@@ -399,9 +399,9 @@ new #[Layout('components.layouts.app')] class extends Component
                                 <div><label class="form-label">File Retention Days</label><input type="number" wire:model="fileRetentionDays" class="form-input" min="1"></div>
                                 <div><label class="form-label">Base Salary Default</label><input type="number" wire:model="baseSalaryDefault" class="form-input" step="100" min="0"></div>
                                 <div><label class="form-label">Overtime Rate Default</label><input type="number" wire:model="overtimeRateDefault" class="form-input" step="10" min="0"></div>
-                                <div class="col-span-2 border-t border-gray-100 pt-4 mt-2">
+                                <div class="md:col-span-2 border-t border-gray-100 pt-4 mt-2">
                                     <h3 class="text-sm font-bold text-gray-700 mb-3"><i class="fas fa-calendar-check mr-1 text-purple-500"></i> Leave & Salary Settings</h3>
-                                    <div class="grid grid-cols-3 gap-3">
+                                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                                         <div><label class="form-label">Paid Leaves / Year</label><input type="number" wire:model="paidLeavesPerYear" class="form-input" min="0" max="365"></div>
                                         <div><label class="form-label">Working Days / Month</label><input type="number" wire:model="workingDaysPerMonth" class="form-input" min="1" max="31"></div>
                                         <div><label class="form-label">Daily Wage Divisor</label><input type="number" wire:model="dailyWageDivisor" class="form-input" step="0.01" min="1" max="31"></div>
@@ -419,15 +419,19 @@ new #[Layout('components.layouts.app')] class extends Component
                             <h2 class="font-bold text-lg">Working Hours</h2>
                             <div class="space-y-2">
                                 @foreach(['mon','tue','wed','thu','fri','sat','sun'] as $day)
-                                    <div class="flex items-center gap-4 p-3 rounded-xl {{ $workingHours[$day]['active'] ? 'bg-white border border-gray-100' : 'bg-gray-50' }}">
-                                        <button wire:click="$set('workingHours.{{ $day }}.active', {{ $workingHours[$day]['active'] ? 'false' : 'true' }})" class="toggle-switch {{ $workingHours[$day]['active'] ? 'on' : '' }}"></button>
-                                        <span class="w-12 text-sm font-semibold capitalize">{{ $day }}</span>
+                                    <div class="flex flex-wrap items-center gap-3 p-3 rounded-xl {{ $workingHours[$day]['active'] ? 'bg-white border border-gray-100' : 'bg-gray-50' }}">
+                                        <div class="flex items-center gap-3 min-w-[7rem]">
+                                            <button wire:click="$set('workingHours.{{ $day }}.active', {{ $workingHours[$day]['active'] ? 'false' : 'true' }})" class="toggle-switch {{ $workingHours[$day]['active'] ? 'on' : '' }}"></button>
+                                            <span class="text-sm font-semibold capitalize">{{ $day }}</span>
+                                        </div>
                                         @if($workingHours[$day]['active'])
-                                            <input type="time" wire:model="workingHours.{{ $day }}.start" class="form-input w-32">
-                                            <span class="text-gray-400">to</span>
-                                            <input type="time" wire:model="workingHours.{{ $day }}.end" class="form-input w-32">
+                                            <div class="flex items-center gap-2 flex-wrap ml-auto">
+                                                <input type="time" wire:model="workingHours.{{ $day }}.start" class="form-input w-28 sm:w-32">
+                                                <span class="text-gray-400 text-sm">to</span>
+                                                <input type="time" wire:model="workingHours.{{ $day }}.end" class="form-input w-28 sm:w-32">
+                                            </div>
                                         @else
-                                            <span class="text-sm text-gray-400">Closed</span>
+                                            <span class="text-sm text-gray-400 ml-auto">Closed</span>
                                         @endif
                                     </div>
                                 @endforeach
@@ -608,8 +612,8 @@ new #[Layout('components.layouts.app')] class extends Component
                             {{-- Backup Settings --}}
                             <div class="rounded-xl border border-gray-100 p-4 space-y-4">
                                 <h3 class="font-semibold text-sm">Backup Reminder Settings</h3>
-                                <div class="flex items-end gap-4">
-                                    <div class="flex-1">
+                                <div class="flex flex-col sm:flex-row sm:items-end gap-3">
+                                    <div class="flex-1 min-w-0">
                                         <label class="form-label">Reminder Interval (days)</label>
                                         <select wire:model="backupIntervalDays" class="form-select">
                                             <option value="3">Every 3 days</option>
@@ -618,8 +622,10 @@ new #[Layout('components.layouts.app')] class extends Component
                                             <option value="30">Every 30 days</option>
                                         </select>
                                     </div>
-                                    <button wire:click="saveBackupSettings" class="btn btn-primary btn-sm">Save</button>
-                                    <button wire:click="forceReminderNow" class="btn btn-secondary btn-sm"><i class="fas fa-redo text-xs mr-1"></i> Force Reminder Now</button>
+                                    <div class="flex flex-wrap gap-2">
+                                        <button wire:click="saveBackupSettings" class="btn btn-primary btn-sm w-full sm:w-auto justify-center">Save</button>
+                                        <button wire:click="forceReminderNow" class="btn btn-secondary btn-sm w-full sm:w-auto justify-center"><i class="fas fa-redo text-xs mr-1"></i> Force Reminder Now</button>
+                                    </div>
                                 </div>
                                 <p class="text-xs text-gray-400">Last backup reminder: {{ $this->lastBackup ? \Carbon\Carbon::parse($this->lastBackup)->diffForHumans() : 'Never' }}</p>
                             </div>
@@ -650,9 +656,9 @@ new #[Layout('components.layouts.app')] class extends Component
                                             <p class="text-xs text-gray-500">Restore from a JSON backup file</p>
                                         </div>
                                     </div>
-                                    <div class="flex gap-2">
-                                        <input type="file" wire:model="importFile" accept=".json" class="form-input text-xs flex-1">
-                                        <button wire:click="handleImport" class="btn btn-primary btn-sm"><i class="fas fa-file-upload mr-1"></i> Import</button>
+                                    <div class="flex flex-col sm:flex-row gap-2">
+                                        <input type="file" wire:model="importFile" accept=".json" class="form-input text-xs flex-1 min-w-0">
+                                        <button wire:click="handleImport" class="btn btn-primary btn-sm w-full sm:w-auto justify-center whitespace-nowrap"><i class="fas fa-file-upload mr-1"></i> Import</button>
                                     </div>
                                 </div>
                             </div>

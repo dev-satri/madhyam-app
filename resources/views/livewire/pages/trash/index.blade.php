@@ -184,7 +184,7 @@ new class extends Component
 
 <div>
     {{-- ========== HEADER ========== --}}
-    <div class="mb-6 flex items-center justify-between">
+    <div class="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
             <h1 class="text-2xl font-extrabold text-gray-900">Trash</h1>
             <p class="text-sm text-gray-500 mt-1">Deleted items are kept for 7 days before permanent removal</p>

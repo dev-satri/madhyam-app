@@ -623,7 +623,7 @@ new #[Layout('components.layouts.app')] class extends Component
                     </div>
 
                     @if($folderViewMode === 'grid')
-                        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
                             @foreach($this->folders as $folder)
                                 <div class="group relative flex items-center gap-3 p-3 rounded-xl border-2 border-dashed border-gray-200 bg-white hover:bg-amber-50/60 hover:border-amber-300 cursor-pointer transition-all duration-150 shadow-sm"
                                      wire:click="enterFolder({{ $folder->id }})"
@@ -648,7 +648,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                     <button type="button"
                                         wire:click.stop="$dispatch('open-confirm', { title: 'Delete Folder?', message: 'Delete folder &quot;{{ addslashes($folder->name) }}&quot;? Files inside will not be deleted.', type: 'danger', action: 'deleteFolder', params: [{{ $folder->id }}] })"
                                         aria-label="Delete folder"
-                                        class="opacity-0 group-hover:opacity-100 flex-shrink-0 w-7 h-7 rounded flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50 transition-all">
+                                        class="sm:opacity-0 sm:group-hover:opacity-100 flex-shrink-0 w-7 h-7 rounded flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50 transition-all">
                                         <i class="fas fa-trash text-xs"></i>
                                     </button>
                                 </div>
@@ -656,37 +656,63 @@ new #[Layout('components.layouts.app')] class extends Component
                         </div>
                     @else
                         <div class="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
-                            <div class="grid grid-cols-12 gap-2 px-4 py-2 bg-gray-50 border-b border-gray-100 text-[10px] font-bold text-gray-500 uppercase tracking-wider">
+                            {{-- Desktop header --}}
+                            <div class="hidden sm:grid grid-cols-12 gap-2 px-4 py-2 bg-gray-50 border-b border-gray-100 text-[10px] font-bold text-gray-500 uppercase tracking-wider">
                                 <div class="col-span-5">Name</div>
-                                <div class="col-span-2 hidden sm:block">Files</div>
-                                <div class="col-span-2 hidden sm:block">Subfolders</div>
+                                <div class="col-span-2">Files</div>
+                                <div class="col-span-2">Subfolders</div>
                                 <div class="col-span-2">Size</div>
                                 <div class="col-span-1 text-right">Actions</div>
                             </div>
                             @foreach($this->folders as $folder)
-                                <div class="group grid grid-cols-12 gap-2 px-4 py-2.5 border-b border-gray-50 hover:bg-amber-50/50 transition-colors items-center {{ $loop->last ? 'border-b-0' : '' }} cursor-grab active:cursor-grabbing"
+                                {{-- Desktop: grid row --}}
+                                <div class="hidden sm:group sm:grid sm:grid-cols-12 sm:gap-2 sm:px-4 sm:py-2.5 sm:border-b sm:border-gray-50 sm:hover:bg-amber-50/50 sm:transition-colors sm:items-center {{ $loop->last ? 'sm:border-b-0' : '' }} sm:cursor-grab sm:active:cursor-grabbing"
                                      draggable="true"
                                      x-on:dragstart="$event.dataTransfer.setData('text/plain', JSON.stringify({type:'folder', id:{{ $folder->id }}})); $el.classList.add('opacity-50')"
                                      x-on:dragend="$el.classList.remove('opacity-50')"
                                      wire:click="enterFolder({{ $folder->id }})"
                                      x-data="{ hover: false }"
-                                     x-on:dragover.prevent="hover = true; $el.classList.add('bg-blue-50', 'ring-2', 'ring-[var(--brand)]')"
-                                     x-on:dragleave="hover = false; $el.classList.remove('bg-blue-50', 'ring-2', 'ring-[var(--brand)]')"
-                                     x-on:drop.prevent="hover = false; $el.classList.remove('bg-blue-50', 'ring-2', 'ring-[var(--brand)]'); const data = JSON.parse($event.dataTransfer.getData('text/plain')); if(data.type === 'file') $wire.moveFile(data.id, {{ $folder->id }}); if(data.type === 'folder') $wire.moveFolder(data.id, {{ $folder->id }});">
+                                     x-on:dragover.prevent="hover = true; $el.classList.add('border-[var(--brand)]', 'bg-blue-50')"
+                                     x-on:dragleave="hover = false; $el.classList.remove('border-[var(--brand)]', 'bg-blue-50')"
+                                     x-on:drop.prevent="hover = false; $el.classList.remove('border-[var(--brand)]', 'bg-blue-50'); const data = JSON.parse($event.dataTransfer.getData('text/plain')); if(data.type === 'file') $wire.moveFile(data.id, {{ $folder->id }}); if(data.type === 'folder') $wire.moveFolder(data.id, {{ $folder->id }});">
                                     <div class="col-span-5 flex items-center gap-3 min-w-0">
                                         <div class="flex-shrink-0 w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center">
                                             <i class="fas fa-folder text-amber-400 text-sm"></i>
                                         </div>
                                         <span class="text-sm font-medium text-gray-800 truncate">{{ $folder->name }}</span>
                                     </div>
-                                    <div class="col-span-2 hidden sm:block text-xs text-gray-500">{{ $folder->file_count }} file{{ $folder->file_count !== 1 ? 's' : '' }}</div>
-                                    <div class="col-span-2 hidden sm:block text-xs text-gray-500">{{ $folder->subfolder_count }} subfolder{{ $folder->subfolder_count !== 1 ? 's' : '' }}</div>
+                                    <div class="col-span-2 text-xs text-gray-500">{{ $folder->file_count }} file{{ $folder->file_count !== 1 ? 's' : '' }}</div>
+                                    <div class="col-span-2 text-xs text-gray-500">{{ $folder->subfolder_count }} subfolder{{ $folder->subfolder_count !== 1 ? 's' : '' }}</div>
                                     <div class="col-span-2 text-xs text-gray-500 font-mono">{{ $folder->total_size_label }}</div>
                                     <div class="col-span-1 flex justify-end opacity-0 group-hover:opacity-100 transition-opacity">
                                         <button type="button"
                                             wire:click.stop="$dispatch('open-confirm', { title: 'Delete Folder?', message: 'Delete folder &quot;{{ addslashes($folder->name) }}&quot;? Files inside will not be deleted.', type: 'danger', action: 'deleteFolder', params: [{{ $folder->id }}] })"
                                             aria-label="Delete folder"
                                             class="w-7 h-7 rounded flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50 transition-all">
+                                            <i class="fas fa-trash text-xs"></i>
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {{-- Mobile: card --}}
+                                <div class="sm:hidden px-4 py-3 border-b border-gray-50 {{ $loop->last ? 'border-b-0' : '' }}"
+                                     wire:click="enterFolder({{ $folder->id }})">
+                                    <div class="flex items-center gap-3 cursor-pointer">
+                                        <div class="flex-shrink-0 w-10 h-10 rounded-lg bg-amber-100 flex items-center justify-center">
+                                            <i class="fas fa-folder text-amber-400"></i>
+                                        </div>
+                                        <div class="flex-1 min-w-0">
+                                            <div class="text-sm font-semibold text-gray-800 truncate">{{ $folder->name }}</div>
+                                            <div class="text-[11px] text-gray-400">
+                                                @if($folder->file_count > 0){{ $folder->file_count }} file{{ $folder->file_count !== 1 ? 's' : '' }}@endif
+                                                @if($folder->subfolder_count > 0) &middot; {{ $folder->subfolder_count }} subfolder{{ $folder->subfolder_count !== 1 ? 's' : '' }}@endif
+                                                @if($folder->total_size > 0) &middot; {{ $folder->total_size_label }}@endif
+                                            </div>
+                                        </div>
+                                        <button type="button"
+                                            wire:click.stop="$dispatch('open-confirm', { title: 'Delete Folder?', message: 'Delete folder &quot;{{ addslashes($folder->name) }}&quot;? Files inside will not be deleted.', type: 'danger', action: 'deleteFolder', params: [{{ $folder->id }}] })"
+                                            aria-label="Delete folder"
+                                            class="flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50 transition-all">
                                             <i class="fas fa-trash text-xs"></i>
                                         </button>
                                     </div>
@@ -708,36 +734,37 @@ new #[Layout('components.layouts.app')] class extends Component
 
                     {{-- List View --}}
                     <div class="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
-                        {{-- Table Header --}}
-                        <div class="grid grid-cols-12 gap-2 px-4 py-2.5 bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                            <div class="col-span-5 sm:col-span-4 cursor-pointer hover:text-gray-700 flex items-center gap-1" wire:click="toggleSort('name')">
+                        {{-- Table Header (desktop only) --}}
+                        <div class="hidden sm:grid grid-cols-12 gap-2 px-4 py-2.5 bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                            <div class="col-span-4 cursor-pointer hover:text-gray-700 flex items-center gap-1" wire:click="toggleSort('name')">
                                 Name
                                 @if($sortBy === 'name')<i class="fas fa-sort-{{ $sortDir === 'asc' ? 'up' : 'down' }} text-[var(--brand)]"></i>@endif
                             </div>
-                            <div class="col-span-2 hidden sm:block cursor-pointer hover:text-gray-700" wire:click="toggleSort('type')">
+                            <div class="col-span-2 cursor-pointer hover:text-gray-700" wire:click="toggleSort('type')">
                                 Type
                                 @if($sortBy === 'type')<i class="fas fa-sort-{{ $sortDir === 'asc' ? 'up' : 'down' }} text-[var(--brand)]"></i>@endif
                             </div>
-                            <div class="col-span-3 sm:col-span-2 cursor-pointer hover:text-gray-700" wire:click="toggleSort('size')">
+                            <div class="col-span-2 cursor-pointer hover:text-gray-700" wire:click="toggleSort('size')">
                                 Size
                                 @if($sortBy === 'size')<i class="fas fa-sort-{{ $sortDir === 'asc' ? 'up' : 'down' }} text-[var(--brand)]"></i>@endif
                             </div>
-                            <div class="col-span-2 hidden md:block cursor-pointer hover:text-gray-700" wire:click="toggleSort('date')">
+                            <div class="col-span-2 cursor-pointer hover:text-gray-700" wire:click="toggleSort('date')">
                                 Modified
                                 @if($sortBy === 'date')<i class="fas fa-sort-{{ $sortDir === 'asc' ? 'up' : 'down' }} text-[var(--brand)]"></i>@endif
                             </div>
-                            <div class="col-span-1 text-right">Actions</div>
+                            <div class="col-span-2 text-right">Actions</div>
                         </div>
 
                         {{-- Table Body --}}
                         @foreach($this->files as $file)
                             <div class="group border-b border-gray-50 {{ $loop->last ? 'border-b-0' : '' }} {{ $file->storage_type === 'external' ? 'bg-blue-50/30' : '' }}">
-                                <div class="grid grid-cols-12 gap-2 px-4 py-2.5 hover:bg-blue-50/50 transition-colors items-center cursor-grab active:cursor-grabbing"
+
+                                {{-- Desktop: grid row --}}
+                                <div class="hidden sm:grid grid-cols-12 gap-2 px-4 py-2.5 hover:bg-blue-50/50 transition-colors items-center cursor-grab active:cursor-grabbing"
                                      draggable="true"
                                      x-on:dragstart="$event.dataTransfer.setData('text/plain', JSON.stringify({type:'file', id:{{ $file->id }}})); $el.classList.add('opacity-50')"
                                      x-on:dragend="$el.classList.remove('opacity-50')">
-                                    {{-- Name --}}
-                                    <div class="col-span-5 sm:col-span-4 flex items-center gap-3 min-w-0 cursor-pointer" wire:click="openPreview({{ $file->id }})">
+                                    <div class="col-span-4 flex items-center gap-3 min-w-0 cursor-pointer" wire:click="openPreview({{ $file->id }})">
                                         <div class="flex-shrink-0 w-9 h-9 rounded-lg flex items-center justify-center
                                             {{ $file->storage_type === 'external' ? 'bg-blue-100' : ($file->type === 'image' ? 'bg-blue-50' : ($file->type === 'video' ? 'bg-purple-50' : ($file->type === 'audio' ? 'bg-pink-50' : 'bg-gray-50'))) }}">
                                             @if($file->storage_type === 'external')
@@ -765,24 +792,16 @@ new #[Layout('components.layouts.app')] class extends Component
                                             </div>
                                         </div>
                                     </div>
-
-                                    {{-- Type --}}
-                                    <div class="col-span-2 hidden sm:block">
+                                    <div class="col-span-2">
                                         <span class="text-xs text-gray-500 uppercase">{{ $file->ext ?: $file->type }}</span>
                                     </div>
-
-                                    {{-- Size --}}
-                                    <div class="col-span-3 sm:col-span-2">
+                                    <div class="col-span-2">
                                         <span class="text-xs text-gray-500 font-mono">{{ $file->size_label }}</span>
                                     </div>
-
-                                    {{-- Modified --}}
-                                    <div class="col-span-2 hidden md:block">
+                                    <div class="col-span-2">
                                         <span class="text-xs text-gray-500">{{ $file->created_at ? \Carbon\Carbon::parse($file->created_at)->format('M d, Y') : '—' }}</span>
                                     </div>
-
-                                    {{-- Actions --}}
-                                    <div class="col-span-1 flex justify-end gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <div class="col-span-2 flex justify-end gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
                                         @if(!$file->extended && isset($file->expiry_class) && $file->expiry_class !== 'badge-danger')
                                             <button wire:click.stop="extendExpiry({{ $file->id }})" class="w-7 h-7 rounded flex items-center justify-center text-gray-400 hover:text-blue-500 hover:bg-blue-50" title="Extend expiry +5d"><i class="fas fa-clock text-xs"></i></button>
                                         @endif
@@ -799,6 +818,60 @@ new #[Layout('components.layouts.app')] class extends Component
                                             <a href="{{ route('files.download', $file->id) }}" class="w-7 h-7 rounded flex items-center justify-center text-gray-400 hover:text-green-500 hover:bg-green-50" title="Download"><i class="fas fa-download text-xs"></i></a>
                                         @endif
                                         <button type="button" wire:click.stop="$dispatch('open-confirm', { title: 'Delete File?', message: 'Delete &quot;{{ addslashes($file->name) }}&quot;? This cannot be undone.', type: 'danger', action: 'deleteFile', params: [{{ $file->id }}] })" aria-label="Delete file" class="w-7 h-7 rounded flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50" title="Delete"><i class="fas fa-trash text-xs"></i></button>
+                                    </div>
+                                </div>
+
+                                {{-- Mobile: card layout --}}
+                                <div class="sm:hidden px-4 py-3"
+                                     draggable="true"
+                                     x-on:dragstart="$event.dataTransfer.setData('text/plain', JSON.stringify({type:'file', id:{{ $file->id }}})); $el.classList.add('opacity-50')"
+                                     x-on:dragend="$el.classList.remove('opacity-50')">
+                                    <div class="flex items-start gap-3 cursor-pointer" wire:click="openPreview({{ $file->id }})">
+                                        <div class="flex-shrink-0 w-10 h-10 rounded-lg flex items-center justify-center
+                                            {{ $file->storage_type === 'external' ? 'bg-blue-100' : ($file->type === 'image' ? 'bg-blue-50' : ($file->type === 'video' ? 'bg-purple-50' : ($file->type === 'audio' ? 'bg-pink-50' : 'bg-gray-50'))) }}">
+                                            @if($file->storage_type === 'external')
+                                                <i class="fab fa-google-drive text-blue-500"></i>
+                                            @else
+                                                <i class="fas {{ $file->type_icon }} {{ $file->type_color }}"></i>
+                                            @endif
+                                        </div>
+                                        <div class="flex-1 min-w-0">
+                                            <div class="flex items-center gap-1.5">
+                                                <span class="text-sm font-medium text-gray-800 truncate">{{ $file->name }}</span>
+                                                @if($file->storage_type === 'external')
+                                                    <span class="badge badge-info text-[9px] py-0 px-1.5"><i class="fab fa-google-drive mr-0.5"></i> Drive</span>
+                                                @endif
+                                            </div>
+                                            <div class="flex items-center gap-2 mt-0.5 flex-wrap">
+                                                <span class="text-[11px] text-gray-400 font-mono">{{ $file->size_label }}</span>
+                                                @if($file->expiry_date)
+                                                    <span class="badge {{ $file->expiry_class }} text-[10px] py-0">{{ $file->expiry_label }}</span>
+                                                @endif
+                                                @if($file->tags)
+                                                    @foreach(array_slice(explode(',', $file->tags), 0, 2) as $tag)
+                                                        <span class="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded">{{ trim($tag) }}</span>
+                                                    @endforeach
+                                                @endif
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="flex items-center justify-end gap-1 mt-2 ml-13">
+                                        @if(!$file->extended && isset($file->expiry_class) && $file->expiry_class !== 'badge-danger')
+                                            <button wire:click.stop="extendExpiry({{ $file->id }})" class="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-blue-500 hover:bg-blue-50" title="Extend expiry +5d"><i class="fas fa-clock text-sm"></i></button>
+                                        @endif
+                                        @if($file->storage_type === 'external')
+                                            <a href="{{ $file->external_url }}" target="_blank" rel="noopener noreferrer" class="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-blue-500 hover:bg-blue-50" title="Open in Drive"><i class="fab fa-google-drive text-sm"></i></a>
+                                            <button wire:click.stop type="button"
+                                                x-data="{ copied: false }"
+                                                x-on:click="navigator.clipboard.writeText('{{ $file->external_url }}'); copied = true; setTimeout(() => copied = false, 2000)"
+                                                class="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-green-500 hover:bg-green-50" title="Copy Drive link">
+                                                <i x-show="!copied" class="fas fa-link text-sm"></i>
+                                                <i x-show="copied" class="fas fa-check text-sm text-green-500"></i>
+                                            </button>
+                                        @else
+                                            <a href="{{ route('files.download', $file->id) }}" class="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-green-500 hover:bg-green-50" title="Download"><i class="fas fa-download text-sm"></i></a>
+                                        @endif
+                                        <button type="button" wire:click.stop="$dispatch('open-confirm', { title: 'Delete File?', message: 'Delete &quot;{{ addslashes($file->name) }}&quot;? This cannot be undone.', type: 'danger', action: 'deleteFile', params: [{{ $file->id }}] })" aria-label="Delete file" class="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50" title="Delete"><i class="fas fa-trash text-sm"></i></button>
                                     </div>
                                 </div>
 

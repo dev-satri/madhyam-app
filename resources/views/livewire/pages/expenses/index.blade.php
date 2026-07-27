@@ -587,7 +587,7 @@ new #[Layout('components.layouts.app')] class extends Component
                             <button wire:click="$set('showForm', false)" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
                         </div>
                         <div class="p-4 space-y-4">
-                            <div class="grid grid-cols-2 gap-3">
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                 <div>
                                     <label class="form-label">Category</label>
                                     <select wire:model.live="formCategory" class="form-select">
@@ -632,7 +632,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                 <label class="form-label">Description</label>
                                 <input type="text" wire:model="formDescription" class="form-input" placeholder="Expense description">
                             </div>
-                            <div class="grid grid-cols-2 gap-3">
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                 <div>
                                     <label class="form-label">Amount</label>
                                     <input type="number" wire:model="formAmount" class="form-input" step="0.01" min="0">
@@ -643,7 +643,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                     <input type="text" wire:model="formPaidTo" class="form-input" placeholder="Vendor / Payee">
                                 </div>
                             </div>
-                            <div class="grid grid-cols-2 gap-3">
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                 <div>
                                     <label class="form-label">Client (optional)</label>
                                     <select wire:model="formClientId" class="form-select">

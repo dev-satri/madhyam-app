@@ -764,15 +764,15 @@ new #[Layout('components.layouts.app')] class extends Component
                             @if($editingMemberId)
                                 <div class="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-700"><i class="fas fa-shield-alt mr-1"></i> Password left blank to keep current.</div>
                             @endif
-                            <div class="grid grid-cols-2 gap-3">
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                 <div><label class="form-label">Full Name</label><input type="text" wire:model="formName" class="form-input"><span wire:error="formName" class="text-red-500 text-xs mt-1 block"></span></div>
                                 <div><label class="form-label">Email</label><input type="email" wire:model="formEmail" class="form-input"><span wire:error="formEmail" class="text-red-500 text-xs mt-1 block"></span></div>
                             </div>
-                            <div class="grid grid-cols-2 gap-3">
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                 <div><label class="form-label">Phone</label><input type="text" wire:model="formPhone" class="form-input"></div>
                                 <div><label class="form-label">Join Date</label><input type="date" wire:model="formJoinDate" class="form-input"></div>
                             </div>
-                            <div class="grid grid-cols-2 gap-3">
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                 <div>
                                     <label class="form-label">Role</label>
                                     <select wire:model="formRole" class="form-select">
@@ -791,7 +791,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                     </select>
                                 </div>
                             </div>
-                            <div class="grid grid-cols-2 gap-3">
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                 <div>
                                     <label class="form-label">Status</label>
                                     <select wire:model="formStatus" class="form-select">

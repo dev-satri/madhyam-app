@@ -345,11 +345,11 @@ body {
     transition: transform 0.3s ease;
     display: flex;
     flex-direction: column;
-    height: 100vh;
     position: fixed;
     top: 0;
     left: 0;
-    z-index: 40;
+    bottom: 0;
+    z-index: 50;
 }
 .sidebar-group-label {
     padding: 12px 20px 6px;
@@ -457,17 +457,8 @@ body {
 }
 
 @media (max-width: 1023px) {
-    .sidebar {
-        transform: translateX(-100%);
-    }
-    .sidebar.open {
-        transform: translateX(0);
-    }
     .main-content {
         margin-left: 0;
-    }
-    .sidebar-overlay {
-        display: block;
     }
 }
 
@@ -927,7 +918,12 @@ body {
     flex-direction: column;
     box-shadow: 0 20px 40px -10px rgba(15, 23, 42, 0.3);
     animation: slideUp 0.2s ease-out;
+}
+
+.modal-body {
     overflow-y: auto;
+    overflow-x: hidden;
+    flex: 1;
 }
 .modal-header {
     display: flex;
