@@ -25,7 +25,11 @@ class FinalTestSeederSmokeTest extends TestCase
 {
     use RefreshDatabase;
 
-    protected bool $seed = true;
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->seed([DatabaseSeeder::class]);
+    }
 
     /** @test */
     public function it_creates_exactly_the_documented_row_counts(): void
