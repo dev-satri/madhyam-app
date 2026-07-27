@@ -53,12 +53,6 @@ new #[Layout('components.layouts.app')] class extends Component
     public string $generatedEmail = '';
     public string $generatedPassword = '';
 
-    // Status toggle
-    public bool $showStatusConfirm = false;
-    public int $statusClientId = 0;
-    public string $newStatus = '';
-    public string $currentStatus = '';
-
     protected $listeners = ['statusUpdated' => 'render'];
 
     public function mount(): void {}
@@ -154,7 +148,7 @@ new #[Layout('components.layouts.app')] class extends Component
     public function save(): void
     {
         $this->validate([
-            'name'          => 'required|string|max:255',
+            'name'          => 'required|string|max:255|regex:/^[a-zA-Z\s\'\.\-]+$/',
             'email'         => 'nullable|email|max:255',
             'package'       => 'required|string',
             'package_id'    => 'nullable|exists:packages,id',
@@ -162,6 +156,8 @@ new #[Layout('components.layouts.app')] class extends Component
             'amount'        => 'nullable|numeric|min:0',
             'contract_start'=> 'nullable|date',
             'contract_end'  => 'nullable|date|after_or_equal:contract_start',
+        ], [
+            'name.regex' => 'Client name must contain only letters, spaces, hyphens, or apostrophes.',
         ]);
 
         $data = [
@@ -269,34 +265,10 @@ new #[Layout('components.layouts.app')] class extends Component
     public function confirmStatus(int $clientId, string $newStatus): void
     {
         $client = Client::find($clientId);
-        if (! $client) return;
+        if (! $client || $client->status === $newStatus) return;
 
-        $this->statusClientId = $clientId;
-        $this->currentStatus = $client->status;
-        $this->newStatus = $newStatus;
-        $this->showStatusConfirm = true;
-    }
-
-    public function performStatusChange(): void
-    {
-        $client = Client::find($this->statusClientId);
-        if ($client) {
-            $client->update(['status' => $this->newStatus]);
-            $this->dispatch('toast', message: "Client status changed to {$this->newStatus}", type: 'success');
-        }
-        $this->showStatusConfirm = false;
-        $this->statusClientId = 0;
-        $this->newStatus = '';
-        $this->currentStatus = '';
-        $this->dispatch('refreshClients');
-    }
-
-    public function cancelStatusChange(): void
-    {
-        $this->showStatusConfirm = false;
-        $this->statusClientId = 0;
-        $this->newStatus = '';
-        $this->currentStatus = '';
+        $client->update(['status' => $newStatus]);
+        $this->dispatch('toast', message: "Client status changed to {$newStatus}", type: 'success');
     }
 
     public function delete(int $id): void
@@ -476,46 +448,25 @@ new #[Layout('components.layouts.app')] class extends Component
                                 >
                             </td>
                             <td>
-                                <div class="relative" x-data="{ open: false }" @click.outside="open = false">
-                                    <button
-                                        @click="open = !open"
-                                        class="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold cursor-pointer transition-all hover:shadow-sm select-none
-                                                {{ match($client->status) {
-                                                    'active' => 'bg-green-100 text-green-700',
-                                                    'inactive' => 'bg-gray-100 text-gray-600',
-                                                    'pending' => 'bg-blue-100 text-blue-700',
-                                                    default => 'bg-gray-100 text-gray-600',
-                                                } }}"
-                                    >
-                                        <span>{{ ucfirst($client->status) }}</span>
-                                        <svg class="w-3 h-3 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-                                        </svg>
-                                    </button>
-                                    <div
-                                        x-show="open"
-                                        x-transition
-                                        class="absolute z-10 mt-1 w-36 rounded-xl border border-gray-100 bg-white py-1 shadow-lg"
-                                    >
-                                        @foreach (['active', 'inactive', 'pending'] as $statusOption)
-                                            @if ($statusOption !== $client->status)
-                                                <button
-                                                    wire:click="confirmStatus({{ $client->id }}, '{{ $statusOption }}')"
-                                                    @click="open = false"
-                                                    class="w-full px-3 py-2 text-left text-xs font-medium hover:bg-gray-50
-                                                            {{ match($statusOption) {
-                                                                'active' => 'text-green-600',
-                                                                'inactive' => 'text-gray-600',
-                                                                'pending' => 'text-blue-600',
-                                                                default => 'text-gray-600',
-                                                            } }}"
-                                                >
-                                                    {{ ucfirst($statusOption) }}
-                                                </button>
-                                            @endif
-                                        @endforeach
-                                    </div>
-                                </div>
+                                <select
+                                    wire:change="confirmStatus({{ $client->id }}, $event.target.value)"
+                                    class="text-xs font-semibold rounded-full px-3 py-1 border-0 cursor-pointer focus:ring-2 focus:ring-offset-1
+                                        {{ match($client->status) {
+                                            'active' => 'bg-green-100 text-green-700 focus:ring-green-300',
+                                            'inactive' => 'bg-gray-100 text-gray-600 focus:ring-gray-300',
+                                            'pending' => 'bg-blue-100 text-blue-700 focus:ring-blue-300',
+                                            default => 'bg-gray-100 text-gray-600 focus:ring-gray-300',
+                                        } }}"
+                                >
+                                    @foreach (['active', 'inactive', 'pending'] as $statusOption)
+                                        <option
+                                            value="{{ $statusOption }}"
+                                            {{ $client->status === $statusOption ? 'selected' : '' }}
+                                        >
+                                            {{ ucfirst($statusOption) }}
+                                        </option>
+                                    @endforeach
+                                </select>
                             </td>
                             <td>
                                 @php
@@ -1141,37 +1092,6 @@ new #[Layout('components.layouts.app')] class extends Component
                             </div>
                         @endif
                     @endif
-                </div>
-            </div>
-        </div>
-    @endif
-
-    {{-- ========== STATUS CHANGE CONFIRMATION DIALOG ========== --}}
-    @if ($showStatusConfirm)
-        <div class="confirm-overlay" x-data x-on:keydown.escape.window="$wire.cancelStatusChange()">
-            <div class="confirm-box">
-                <div
-                    class="confirm-icon {{ $newStatus === 'active' ? 'bg-green-100 text-green-600' : ($newStatus === 'inactive' ? 'bg-gray-100 text-gray-600' : 'bg-blue-100 text-blue-600') }}"
-                >
-                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
-                    </svg>
-                </div>
-                <h3 class="mb-2 text-lg font-bold text-gray-900">Change Client Status</h3>
-                <p class="mb-6 text-sm text-gray-500">Change status from <strong class="text-gray-700">{{ ucfirst($currentStatus) }}</strong> to <strong class="text-gray-700">{{ ucfirst($newStatus) }}</strong>?</p>
-                <div class="flex gap-3">
-                    <button
-                        wire:click="cancelStatusChange"
-                        class="flex-1 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors"
-                    >
-                        Cancel
-                    </button>
-                    <button
-                        wire:click="performStatusChange"
-                        class="flex-1 rounded-xl {{ $newStatus === 'active' ? 'bg-green-600 hover:bg-green-700' : ($newStatus === 'inactive' ? 'bg-gray-600 hover:bg-gray-700' : 'bg-blue-600 hover:bg-blue-700') }} px-4 py-2.5 text-sm font-semibold text-white transition-colors"
-                    >
-                        <i class="fas fa-check text-xs mr-1"></i> Confirm
-                    </button>
                 </div>
             </div>
         </div>
