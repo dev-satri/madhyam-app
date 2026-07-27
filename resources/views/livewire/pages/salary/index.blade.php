@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
 use App\Models\Salary;
 use App\Services\SalaryCalculator;
+use App\Support\UserVisibility;
 
 new #[Layout('components.layouts.app')] class extends Component
 {
@@ -62,7 +63,9 @@ new #[Layout('components.layouts.app')] class extends Component
     protected function syncSalaryRecords(): void
     {
         if (!$this->isManager()) return;
-        $activeUsers = DB::table('users')->where('status', 'active')->get();
+        $activeUsers = UserVisibility::apply(
+            DB::table('users')->where('status', 'active')
+        )->get();
         foreach ($activeUsers as $u) {
             $model = \App\Models\User::find($u->id);
             if ($model) {
@@ -111,6 +114,8 @@ new #[Layout('components.layouts.app')] class extends Component
         if (!$this->isManager()) {
             $q->where('salaries.member_id', Auth::id());
         }
+
+        UserVisibility::apply($q, table: 'users');
 
         if ($this->search) {
             $q->where('users.name', 'like', "%{$this->search}%");
@@ -511,7 +516,6 @@ new #[Layout('components.layouts.app')] class extends Component
                 <div><label class="form-label">Search</label><div class="relative"><i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs"></i><input type="search" wire:model.live.debounce.250ms="search" placeholder="Search staff..." class="form-input pl-10 focus:ring-0"></div></div>
                 <div><label class="form-label">Role</label><select wire:model.live="roleFilter" class="form-select">
                     <option value="">All Roles</option>
-                    <option value="super-admin">Super Admin</option>
                     <option value="admin">Admin</option>
                     <option value="manager">Manager</option>
                     <option value="editor">Editor</option>

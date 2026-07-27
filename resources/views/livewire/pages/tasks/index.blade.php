@@ -17,6 +17,7 @@ use App\Notifications\TaskCompletedNotification;
 use App\Services\ActivityLogger;
 use App\Services\NotificationService;
 use App\Services\RbacService;
+use App\Support\UserVisibility;
 
 new #[Layout('components.layouts.app')] class extends Component
 {
@@ -92,7 +93,9 @@ new #[Layout('components.layouts.app')] class extends Component
     #[Computed]
     public function team()
     {
-        return DB::table('users')->where('status', 'active')->orderBy('name')->get();
+        return UserVisibility::apply(
+            DB::table('users')->where('status', 'active')
+        )->orderBy('name')->get();
     }
 
     public function getFilteredTasks()

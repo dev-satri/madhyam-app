@@ -15,6 +15,7 @@ use App\Services\RbacService;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
+use App\Support\UserVisibility;
 
 new #[Layout('components.layouts.app')] class extends Component
 {
@@ -662,7 +663,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function getUserList()
     {
-        return User::orderBy('name')->get();
+        return UserVisibility::apply(User::query())->orderBy('name')->get();
     }
 
     #[On('confirm-resolved')]

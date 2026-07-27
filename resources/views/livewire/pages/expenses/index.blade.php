@@ -7,6 +7,7 @@ use Livewire\Attributes\Computed;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
 use App\Models\Expense;
+use App\Support\UserVisibility;
 use Livewire\WithPagination;
 
 new #[Layout('components.layouts.app')] class extends Component
@@ -258,7 +259,9 @@ new #[Layout('components.layouts.app')] class extends Component
     #[Computed]
     public function team()
     {
-        return DB::table('users')->where('status', 'active')->orderBy('name')->get();
+        return UserVisibility::apply(
+            DB::table('users')->where('status', 'active')
+        )->orderBy('name')->get();
     }
 
     #[Computed]

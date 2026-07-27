@@ -5,6 +5,7 @@ use Livewire\Attributes\Layout;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use App\Services\RbacService;
+use App\Support\UserVisibility;
 
 new #[Layout('components.layouts.app')] class extends Component
 {
@@ -137,7 +138,9 @@ new #[Layout('components.layouts.app')] class extends Component
         }
         $this->activities = $actQ->orderBy('activity_logs.time', 'desc')->limit(20)->get();
 
-        $this->allStaff = DB::table('users')->select('id', 'name')->orderBy('name')->get();
+        $this->allStaff = UserVisibility::apply(
+            DB::table('users')->select('id', 'name')
+        )->orderBy('name')->get();
 
         // Team Performance (completion % per member)
         $this->teamPerformance = DB::table('users')

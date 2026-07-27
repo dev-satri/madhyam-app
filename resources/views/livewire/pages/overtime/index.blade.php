@@ -6,6 +6,7 @@ use Livewire\Attributes\On;
 use Livewire\Attributes\Computed;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
+use App\Support\UserVisibility;
 use Livewire\WithPagination;
 use App\Models\OvertimeLog;
 
@@ -290,7 +291,9 @@ new #[Layout('components.layouts.app')] class extends Component
     #[Computed]
     public function team()
     {
-        return DB::table('users')->where('status', 'active')->orderBy('name')->get();
+        return UserVisibility::apply(
+            DB::table('users')->where('status', 'active')
+        )->orderBy('name')->get();
     }
 
     #[Computed]

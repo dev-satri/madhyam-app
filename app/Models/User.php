@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Mail;
 
 class User extends Authenticatable
@@ -85,6 +86,22 @@ class User extends Authenticatable
     public function scopeByRole($query, string $role)
     {
         return $query->where('role', $role);
+    }
+
+    /**
+     * Hide super-admin (provider) rows unless the viewer is themselves a super-admin.
+     * Applies to every non-super-admin viewer, including client-guard users
+     * (Auth::user() returns null on the client guard, which is treated as "not super-admin").
+     */
+    public function scopeVisibleTo($query, ?User $viewer = null)
+    {
+        $viewer = $viewer ?? Auth::user();
+
+        if ($viewer instanceof self && $viewer->isSuperAdmin()) {
+            return $query;
+        }
+
+        return $query->where('role', '!=', 'super-admin');
     }
 
     public function getInitialsAttribute(): string

@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Response;
 use App\Models\Leave;
 use App\Models\Setting;
+use App\Support\UserVisibility;
 
 new #[Layout('components.layouts.app')] class extends Component
 {
@@ -227,7 +228,9 @@ new #[Layout('components.layouts.app')] class extends Component
     #[Computed]
     public function team()
     {
-        return DB::table('users')->where('status', 'active')->orderBy('name')->get();
+        return UserVisibility::apply(
+            DB::table('users')->where('status', 'active')
+        )->orderBy('name')->get();
     }
 
     #[Computed]

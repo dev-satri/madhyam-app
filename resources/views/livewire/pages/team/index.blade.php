@@ -12,6 +12,7 @@ use Illuminate\Support\Str;
 use App\Mail\MemberWelcomeMail;
 use App\Models\CustomRole;
 use App\Services\RbacService;
+use App\Support\UserVisibility;
 use Livewire\WithPagination;
 
 new #[Layout('components.layouts.app')] class extends Component
@@ -72,7 +73,11 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function getRoleCounts(): array
     {
-        $counts = DB::table('users')->selectRaw('role, COUNT(*) as cnt')->groupBy('role')->pluck('cnt', 'role')->toArray();
+        $q = DB::table('users');
+        if (! Auth::user()?->isSuperAdmin()) {
+            $q->where('role', '!=', 'super-admin');
+        }
+        $counts = $q->selectRaw('role, COUNT(*) as cnt')->groupBy('role')->pluck('cnt', 'role')->toArray();
         // Include custom roles
         $customRoles = DB::table('custom_roles')->get();
         foreach ($customRoles as $cr) {
@@ -85,8 +90,10 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function getMembers()
     {
-        $q = DB::table('users')
-            ->leftJoin('departments', 'users.department_id', '=', 'departments.id');
+        $q = UserVisibility::apply(
+            DB::table('users')
+                ->leftJoin('departments', 'users.department_id', '=', 'departments.id')
+        );
 
         if ($this->search) {
             $q->where(function ($sub) {
