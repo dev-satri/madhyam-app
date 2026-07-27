@@ -784,7 +784,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                     <label class="form-label">Role</label>
                                     <select wire:model="formRole" class="form-select">
                                         @foreach($this->allRoles as $key => $label)
-                                            <option value="{{ $key }}" {{ ($editingMemberId && $key === 'super-admin' && !$isSuperAdminUser) ? 'disabled' : '' }}>{{ $label }}</option>
+                                            <option value="{{ $key }}" {{ ($editingMemberId && $key === 'super-admin' && !$this->isSuperAdminUser()) ? 'disabled' : '' }}>{{ $label }}</option>
                                         @endforeach
                                     </select>
                                 </div>
