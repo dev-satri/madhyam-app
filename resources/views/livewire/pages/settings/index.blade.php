@@ -132,6 +132,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function toggleFeature(string $role, string $feature): void
     {
+        abort_unless(Auth::user()->role === 'super-admin', 403);
         $this->featureMatrix[$role][$feature] = !$this->featureMatrix[$role][$feature];
         DB::table('feature_access')->where('role', $role)->update([
             'features' => json_encode($this->featureMatrix[$role]),
@@ -142,11 +143,13 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function togglePerm(string $role, string $perm): void
     {
+        abort_unless(Auth::user()->role === 'super-admin', 403);
         $this->dataMatrix[$role][$perm] = !$this->dataMatrix[$role][$perm];
     }
 
     public function saveDataAccess(): void
     {
+        abort_unless(Auth::user()->role === 'super-admin', 403);
         foreach ($this->allRoles as $role) {
             DB::table('data_access')->where('role', $role)->update([
                 'permissions' => json_encode($this->dataMatrix[$role] ?? []),
@@ -359,8 +362,10 @@ new #[Layout('components.layouts.app')] class extends Component
                     <div class="bg-white rounded-2xl border border-gray-100 p-2 flex lg:flex-col gap-1 overflow-x-auto">
                         <button wire:click="$set('activeTab', 'general')" class="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors {{ $activeTab === 'general' ? 'bg-[rgba(var(--brand-rgb),0.08)] text-[var(--brand)]' : 'text-gray-600 hover:bg-gray-50' }}"><i class="fas fa-cog"></i> General</button>
                         <button wire:click="$set('activeTab', 'working-hours')" class="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors {{ $activeTab === 'working-hours' ? 'bg-[rgba(var(--brand-rgb),0.08)] text-[var(--brand)]' : 'text-gray-600 hover:bg-gray-50' }}"><i class="fas fa-clock"></i> Working Hours</button>
+                        @if(Auth::user()->role === 'super-admin')
                         <button wire:click="$set('activeTab', 'feature-access')" class="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors {{ $activeTab === 'feature-access' ? 'bg-[rgba(var(--brand-rgb),0.08)] text-[var(--brand)]' : 'text-gray-600 hover:bg-gray-50' }}"><i class="fas fa-key"></i> Feature Access</button>
                         <button wire:click="$set('activeTab', 'data-access')" class="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors {{ $activeTab === 'data-access' ? 'bg-[rgba(var(--brand-rgb),0.08)] text-[var(--brand)]' : 'text-gray-600 hover:bg-gray-50' }}"><i class="fas fa-database"></i> Data Access</button>
+                        @endif
                         <button wire:click="$set('activeTab', 'backup')" class="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors {{ $activeTab === 'backup' ? 'bg-[rgba(var(--brand-rgb),0.08)] text-[var(--brand)]' : 'text-gray-600 hover:bg-gray-50' }}"><i class="fas fa-download"></i> Backup</button>
                     </div>
                 </div>

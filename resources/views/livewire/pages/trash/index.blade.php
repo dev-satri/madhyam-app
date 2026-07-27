@@ -2,6 +2,7 @@
 
 use App\Models\Trash;
 use App\Services\TrashService;
+use Illuminate\Support\Facades\Auth;
 use Livewire\Volt\Component;
 use Livewire\WithPagination;
 
@@ -20,8 +21,9 @@ new class extends Component
 
     protected TrashService $trashService;
 
-    public function boot(): void
+    public function mount(): void
     {
+        abort_unless(in_array(Auth::user()->role, ['super-admin', 'admin']), 403);
         $this->trashService = app(TrashService::class);
     }
 

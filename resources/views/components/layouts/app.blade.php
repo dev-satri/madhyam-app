@@ -114,7 +114,7 @@
                             ['feature' => 'complaints', 'route' => 'complaints', 'label' => 'Complaints', 'icon' => 'fa-exclamation-circle'],
                             ['feature' => 'settings', 'route' => 'settings', 'label' => 'Settings', 'icon' => 'fa-cog'],
                             ['feature' => 'userGuide', 'route' => 'user-guide', 'label' => 'User Guide', 'icon' => 'fa-book'],
-                            ['route' => 'trash', 'label' => 'Trash', 'icon' => 'fa-trash-alt', 'badge' => \Illuminate\Support\Facades\DB::getSchemaBuilder()->hasTable('trash') ? \App\Models\Trash::count() ?: null : null],
+                            ['route' => 'trash', 'label' => 'Trash', 'icon' => 'fa-trash-alt', 'roles' => ['super-admin', 'admin'], 'badge' => \Illuminate\Support\Facades\DB::getSchemaBuilder()->hasTable('trash') ? \App\Models\Trash::count() ?: null : null],
                         ]],
                     ];
                 @endphp
@@ -206,6 +206,9 @@
                     @foreach ($sidebarItems as $group)
                         @php
                             $visibleItems = collect($group['items'])->filter(function ($item) use ($rbac, $role) {
+                                if (isset($item['roles']) && ! in_array($role, $item['roles'], true)) {
+                                    return false;
+                                }
                                 return ! isset($item['feature']) || $rbac->hasFeature($role, $item['feature']);
                             });
                         @endphp
