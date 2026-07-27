@@ -27,10 +27,10 @@ A new invoice has been generated for your account.
 <td style="padding: 8px 0; font-size: 14px; color: #1e293b; font-weight: 600; text-align: right;">{{ $invoice->discount }}%</td>
 </tr>
 @endif
-@if($isInstallment)
+@if(!empty($isInstallment))
 <tr>
 <td style="padding: 8px 0; font-size: 14px; color: #64748b;">Payment Plan</td>
-<td style="padding: 8px 0; font-size: 14px; color: #0e7490; font-weight: 600; text-align: right;">Installment{{ $installmentInfo }}</td>
+<td style="padding: 8px 0; font-size: 14px; color: #0e7490; font-weight: 600; text-align: right;">Installment{{ $installmentInfo ?? '' }}</td>
 </tr>
 @endif
 </table>
