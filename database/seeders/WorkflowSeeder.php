@@ -30,12 +30,12 @@ class WorkflowSeeder extends Seeder
 
         // ── Content-linked workflows (contents past Approval #1) ─────────
         $contentTitles = [
-            'Himalayan Coffee — Farm Visit Video'    => ['stage' => 'scripting',            'assignee' => $editor,       'priority' => 'high'],
+            'Himalayan Coffee — Farm Visit Video' => ['stage' => 'scripting',            'assignee' => $editor,       'priority' => 'high'],
             'Himalayan Coffee — Barista Series Reel' => ['stage' => 'revision',             'assignee' => $editor,       'priority' => 'urgent', 'revision_notes' => 'Please strengthen the hook in the first 3 seconds and update color grade to match brand guidelines.'],
-            'Himalayan Coffee — Origin Story'        => ['stage' => 'published',            'assignee' => $videographer, 'priority' => 'medium'],
-            'Trek Nepal — Everest BC Trip Video'     => ['stage' => 'scripting',            'assignee' => $editor,       'priority' => 'medium'],
-            'Trek Nepal — Guide Testimonial'         => ['stage' => 'published',            'assignee' => $editor,       'priority' => 'medium'],
-            'Trek Nepal — Autumn Season Carousel'    => ['stage' => 'revision',             'assignee' => $videographer, 'priority' => 'high',   'revision_notes' => 'Audio levels are inconsistent — please re-edit the middle segment.'],
+            'Himalayan Coffee — Origin Story' => ['stage' => 'published',            'assignee' => $videographer, 'priority' => 'medium'],
+            'Trek Nepal — Everest BC Trip Video' => ['stage' => 'scripting',            'assignee' => $editor,       'priority' => 'medium'],
+            'Trek Nepal — Guide Testimonial' => ['stage' => 'published',            'assignee' => $editor,       'priority' => 'medium'],
+            'Trek Nepal — Autumn Season Carousel' => ['stage' => 'revision',             'assignee' => $videographer, 'priority' => 'high',   'revision_notes' => 'Audio levels are inconsistent — please re-edit the middle segment.'],
         ];
 
         $count = 0;

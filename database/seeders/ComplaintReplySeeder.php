@@ -19,7 +19,7 @@ class ComplaintReplySeeder extends Seeder
 
         $replies = [
             'Reel delivered 2 days late' => 'Thank you for flagging this. We are auditing the pipeline and will share a fix plan by end of week.',
-            'Caption tone too formal'    => 'Updated the caption style guide for the copywriter. All future captions will use the adventure tone.',
+            'Caption tone too formal' => 'Updated the caption style guide for the copywriter. All future captions will use the adventure tone.',
         ];
 
         foreach ($replies as $title => $text) {

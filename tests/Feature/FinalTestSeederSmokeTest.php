@@ -2,9 +2,14 @@
 
 namespace Tests\Feature;
 
+use App\Models\Approval;
 use App\Models\Client;
 use App\Models\ClientAccount;
+use App\Models\Content;
+use App\Models\Invoice;
+use App\Models\Task;
 use App\Models\User;
+use App\Models\Workflow;
 use Database\Seeders\DatabaseSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -50,19 +55,19 @@ class FinalTestSeederSmokeTest extends TestCase
     /** @test */
     public function seeded_pipeline_data_matches_the_test_plan(): void
     {
-        $this->assertSame(10, \App\Models\Content::count(), 'Should seed 10 content items');
-        $this->assertSame(10, \App\Models\Workflow::count(), 'Should seed 10 workflow items');
-        $this->assertSame(12, \App\Models\Task::count(), 'Should seed 12 tasks');
-        $this->assertSame(6, \App\Models\Invoice::count(), 'Should seed 6 invoices');
-        $this->assertSame(6, \App\Models\Approval::count(), 'Should seed 6 approvals');
+        $this->assertSame(10, Content::count(), 'Should seed 10 content items');
+        $this->assertSame(10, Workflow::count(), 'Should seed 10 workflow items');
+        $this->assertSame(12, Task::count(), 'Should seed 12 tasks');
+        $this->assertSame(6, Invoice::count(), 'Should seed 6 invoices');
+        $this->assertSame(6, Approval::count(), 'Should seed 6 approvals');
 
         // Coverage checks — every workflow stage and approval state is represented
-        $this->assertGreaterThan(0, \App\Models\Workflow::where('stage', 'revision')->count());
-        $this->assertGreaterThan(0, \App\Models\Workflow::where('stage', 'published')->count());
-        $this->assertGreaterThan(0, \App\Models\Approval::where('approval_stage', 'client-pending')->count());
-        $this->assertGreaterThan(0, \App\Models\Approval::where('status', 'rejected')->count());
-        $this->assertGreaterThan(0, \App\Models\Invoice::where('status', 'overdue')->count());
-        $this->assertGreaterThan(0, \App\Models\Invoice::where('payment_status', 'installment')->count());
+        $this->assertGreaterThan(0, Workflow::where('stage', 'revision')->count());
+        $this->assertGreaterThan(0, Workflow::where('stage', 'published')->count());
+        $this->assertGreaterThan(0, Approval::where('approval_stage', 'client-pending')->count());
+        $this->assertGreaterThan(0, Approval::where('status', 'rejected')->count());
+        $this->assertGreaterThan(0, Invoice::where('status', 'overdue')->count());
+        $this->assertGreaterThan(0, Invoice::where('payment_status', 'installment')->count());
     }
 
     /** @test */
