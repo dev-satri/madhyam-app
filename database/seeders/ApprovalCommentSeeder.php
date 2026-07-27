@@ -5,34 +5,45 @@ namespace Database\Seeders;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 
+/**
+ * Final-test approval comments.
+ *
+ * One human comment on every approval + one system-generated comment
+ * on the rejected approval so both branches of the comments UI have
+ * something to render.
+ */
 class ApprovalCommentSeeder extends Seeder
 {
     public function run(): void
     {
-        $approvals = DB::table('approvals')->select('id', 'title', 'status')->get();
-        $users = DB::table('users')->where('role', '!=', 'super-admin')->select('id', 'name')->get();
+        $admin = DB::table('users')->where('email', 'admin@madhyam.com')->first();
+        $editor = DB::table('users')->where('email', 'staff.editor@madhyam.com')->first();
 
-        $commentMap = [
-            'Reel Draft - Himalayan' => [['text' => 'Looks good, minor audio sync issue.', 'is_system' => false]],
-            'Post Carousel - Trek Nepal' => [['text' => 'Carousel approved for posting.', 'is_system' => false]],
-            'Video Edit - GreenLeaf' => [['text' => 'Needs color correction on frame 120.', 'is_system' => false], ['text' => 'Revision requested — adjust pacing.', 'is_system' => false]],
-            'Story Set - KTM Bites' => [['text' => 'Story format matches brand guidelines.', 'is_system' => false]],
-            'Blog Draft - Resort' => [['text' => 'System: Status changed to revision.', 'is_system' => true]],
-        ];
-
+        $approvals = DB::table('approvals')->get();
         foreach ($approvals as $approval) {
-            $comments = $commentMap[$approval->title] ?? [['text' => 'Please review this submission.', 'is_system' => false]];
+            DB::table('approval_comments')->insert([
+                'approval_id' => $approval->id,
+                'user_id' => $admin->id,
+                'user_name' => $admin->name,
+                'text' => match ($approval->status) {
+                    'approved' => 'Looks great — approved and moving forward.',
+                    'rejected' => 'Sending this back for revision — see rejection reason above.',
+                    default => 'Reviewing now, will post feedback shortly.',
+                },
+                'is_system' => false,
+                'created_at' => now()->subDays(1),
+                'updated_at' => now()->subDays(1),
+            ]);
 
-            foreach ($comments as $i => $comment) {
-                $user = $users[$i % count($users)];
+            if ($approval->status === 'rejected') {
                 DB::table('approval_comments')->insert([
                     'approval_id' => $approval->id,
-                    'user_id' => $user->id,
-                    'user_name' => $user->name,
-                    'text' => $comment['text'],
-                    'is_system' => $comment['is_system'],
-                    'created_at' => now()->subDays(random_int(0, 7)),
-                    'updated_at' => now()->subDays(random_int(0, 7)),
+                    'user_id' => $editor->id,
+                    'user_name' => 'System',
+                    'text' => 'System: status changed to rejected — revision required.',
+                    'is_system' => true,
+                    'created_at' => now()->subHours(20),
+                    'updated_at' => now()->subHours(20),
                 ]);
             }
         }

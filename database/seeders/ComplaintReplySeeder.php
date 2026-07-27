@@ -5,52 +5,39 @@ namespace Database\Seeders;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 
+/**
+ * Final-test complaint replies — one admin reply per complaint.
+ */
 class ComplaintReplySeeder extends Seeder
 {
     public function run(): void
     {
-        $users = DB::table('users')->pluck('id', 'email');
+        $admin = DB::table('users')->where('email', 'admin@madhyam.com')->first();
+        if (! $admin) {
+            return;
+        }
 
-        $replyMap = [
-            'Late delivery of reel' => [
-                'user_email' => 'super@madhyam.com',
-                'user_name' => 'Super Admin',
-                'text' => 'We apologize. The team is working on preventing this.',
-                'days_ago' => 1,
-            ],
-            'Caption tone mismatch' => [
-                'user_email' => 'karma@madhyam.com',
-                'user_name' => 'Karma Lama',
-                'text' => 'Updated the caption style guide. Will follow casual tone going forward.',
-                'days_ago' => 2,
-            ],
+        $replies = [
+            'Reel delivered 2 days late' => 'Thank you for flagging this. We are auditing the pipeline and will share a fix plan by end of week.',
+            'Caption tone too formal'    => 'Updated the caption style guide for the copywriter. All future captions will use the adventure tone.',
         ];
 
-        $complaints = DB::table('complaints')->select('id', 'title')->get();
-
-        foreach ($complaints as $complaint) {
-            $reply = $replyMap[$complaint->title] ?? null;
-            if (! $reply) {
-                continue;
-            }
-
-            $exists = DB::table('complaint_replies')
-                ->where('complaint_id', $complaint->id)
-                ->where('text', $reply['text'])
-                ->exists();
-
-            if ($exists) {
+        foreach ($replies as $title => $text) {
+            $complaintId = DB::table('complaints')->where('title', $title)->value('id');
+            if (! $complaintId) {
                 continue;
             }
 
             DB::table('complaint_replies')->insert([
-                'complaint_id' => $complaint->id,
-                'user_id' => $users[$reply['user_email']] ?? null,
-                'user_name' => $reply['user_name'],
-                'text' => $reply['text'],
-                'created_at' => now()->subDays($reply['days_ago']),
-                'updated_at' => now()->subDays($reply['days_ago']),
+                'complaint_id' => $complaintId,
+                'user_id' => $admin->id,
+                'user_name' => $admin->name,
+                'text' => $text,
+                'created_at' => now()->subDays(1),
+                'updated_at' => now()->subDays(1),
             ]);
         }
+
+        $this->command?->info('  ✓ Complaint replies: 1 per complaint');
     }
 }

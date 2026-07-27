@@ -5,94 +5,101 @@ namespace Database\Seeders;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 
+/**
+ * Final-test workflow board.
+ *
+ * 10 workflows total:
+ *  - 6 linked to content that has passed Approval #1 (contents in
+ *    scripting/revision/published get a workflow row)
+ *  - 4 standalone workflows to fill the Kanban with items at every stage
+ *    including one overdue and one in "review" (Approval #2 admin-pending)
+ *
+ * Valid stages (workflow_stages seeded lookup):
+ *   todo, in-progress, scripting, review, revision, ready-for-production, published
+ */
 class WorkflowSeeder extends Seeder
 {
     public function run(): void
     {
-        $clientIds = DB::table('clients')->orderBy('id')->pluck('id')->all();
-        $userIds = DB::table('users')->where('role', '!=', 'super-admin')->orderBy('id')->pluck('id')->all();
-        $c = count($clientIds);
-        $u = count($userIds);
+        $c1 = DB::table('clients')->where('name', 'Himalayan Coffee Co.')->value('id');
+        $c2 = DB::table('clients')->where('name', 'Trek Nepal Adventures')->value('id');
 
-        // Get content IDs that are in-review (these have Approval #1 pending — no workflow yet)
-        $inReviewContentIds = DB::table('contents')->where('status', 'in-review')->pluck('id')->all();
-        // Get content IDs that are published (already done — no workflow needed)
-        $publishedContentIds = DB::table('contents')->where('status', 'published')->pluck('id')->all();
-        // Get all content IDs for linking
-        $allContentIds = DB::table('contents')->orderBy('id')->pluck('id')->all();
+        $admin = DB::table('users')->where('email', 'admin@madhyam.com')->value('id');
+        $editor = DB::table('users')->where('email', 'staff.editor@madhyam.com')->value('id');
+        $videographer = DB::table('users')->where('email', 'staff.video@madhyam.com')->value('id');
 
-        $validStages = ['todo', 'in-progress', 'scripting', 'review', 'revision', 'ready-for-production', 'published'];
-
-        // ── Pipeline workflow items: linked to content at correct stages ──
-        // These represent content that has passed Approval #1 and is in the workflow pipeline
-        $pipelineWorkflows = [
-            // Content in REVISION stage (rejected by admin)
-            ['contentIndex' => 0, 'stage' => 'revision', 'revision_notes' => 'Need stronger hook in the first 3 seconds. Also update the color grading to match brand guidelines.'],
-            ['contentIndex' => 1, 'stage' => 'revision', 'revision_notes' => 'Audio levels are inconsistent. Please re-edit the middle section.'],
-
-            // Content in TODO stage (just approved, waiting to start)
-            ['contentIndex' => 2, 'stage' => 'todo'],
-            ['contentIndex' => 3, 'stage' => 'todo'],
-
-            // Content in IN-PROGRESS
-            ['contentIndex' => 4, 'stage' => 'in-progress'],
-            ['contentIndex' => 5, 'stage' => 'in-progress'],
-
-            // Content in SCRIPTING
-            ['contentIndex' => 6, 'stage' => 'scripting'],
-
-            // Content in REVIEW (waiting for Approval #2 — admin pending)
-            ['contentIndex' => 7, 'stage' => 'review'],
-
-            // Content in READY-FOR-PRODUCTION (client approved, admin needs to publish)
-            ['contentIndex' => 8, 'stage' => 'ready-for-production'],
-
-            // Content in PUBLISHED (fully done)
-            ['contentIndex' => 9, 'stage' => 'published'],
-            ['contentIndex' => 10, 'stage' => 'published'],
+        // ── Content-linked workflows (contents past Approval #1) ─────────
+        $contentTitles = [
+            'Himalayan Coffee — Farm Visit Video'    => ['stage' => 'scripting',            'assignee' => $editor,       'priority' => 'high'],
+            'Himalayan Coffee — Barista Series Reel' => ['stage' => 'revision',             'assignee' => $editor,       'priority' => 'urgent', 'revision_notes' => 'Please strengthen the hook in the first 3 seconds and update color grade to match brand guidelines.'],
+            'Himalayan Coffee — Origin Story'        => ['stage' => 'published',            'assignee' => $videographer, 'priority' => 'medium'],
+            'Trek Nepal — Everest BC Trip Video'     => ['stage' => 'scripting',            'assignee' => $editor,       'priority' => 'medium'],
+            'Trek Nepal — Guide Testimonial'         => ['stage' => 'published',            'assignee' => $editor,       'priority' => 'medium'],
+            'Trek Nepal — Autumn Season Carousel'    => ['stage' => 'revision',             'assignee' => $videographer, 'priority' => 'high',   'revision_notes' => 'Audio levels are inconsistent — please re-edit the middle segment.'],
         ];
 
-        $workflowIds = [];
-        foreach ($pipelineWorkflows as $i => $wf) {
-            $contentId = $allContentIds[$wf['contentIndex']] ?? null;
-            $content = $contentId ? DB::table('contents')->where('id', $contentId)->first() : null;
+        $count = 0;
+        foreach ($contentTitles as $title => $wf) {
+            $content = DB::table('contents')->where('title', $title)->first();
+            if (! $content) {
+                continue;
+            }
 
-            $id = DB::table('workflows')->insertGetId([
-                'title' => $content?->title ?? 'Workflow Item ' . ($i + 1),
-                'client_id' => $content?->client_id ?? $clientIds[$i % $c],
-                'content_id' => $contentId,
-                'type' => $content?->type ?? 'post',
-                'stage' => $wf['stage'],
-                'deadline' => now()->addDays(random_int(1, 21))->toDateString(),
-                'assignee' => $userIds[$i % $u],
-                'priority' => ['low', 'medium', 'high', 'urgent'][$i % 4],
-                'revision_notes' => $wf['revision_notes'] ?? null,
-                'submitted_by' => $userIds[($i + 1) % $u],
-                'created_at' => now()->subDays(random_int(0, 7)),
-                'updated_at' => now(),
-            ]);
-            $workflowIds[] = $id;
-        }
-
-        // ── Bulk workflows: varied stages for Kanban fill ──
-        for ($i = 0; $i < 14; $i++) {
-            $stage = $validStages[$i % 7];
             DB::table('workflows')->insert([
-                'title' => 'Workflow Project ' . ($i + 1),
-                'client_id' => $clientIds[$i % $c],
-                'content_id' => null,
-                'type' => ['reel', 'post', 'video', 'carousel'][$i % 4],
-                'stage' => $stage,
-                'deadline' => now()->addDays(random_int(0, 21))->toDateString(),
-                'assignee' => $userIds[$i % $u],
-                'priority' => ['low', 'medium', 'high', 'urgent'][$i % 4],
-                'revision_notes' => $stage === 'revision' ? 'Please revise the pacing and add brand intro.' : null,
-                'submitted_by' => $userIds[($i + 1) % $u],
-                'created_at' => now()->subDays(random_int(0, 10)),
+                'title' => $content->title,
+                'client_id' => $content->client_id,
+                'content_id' => $content->id,
+                'type' => $content->type,
+                'stage' => $wf['stage'],
+                'deadline' => now()->addDays(match ($wf['stage']) {
+                    'published' => -3,
+                    'revision' => 2,
+                    default => 7,
+                })->toDateString(),
+                'assignee' => $wf['assignee'],
+                'priority' => $wf['priority'],
+                'notes' => null,
+                'tags' => null,
+                'status' => $wf['stage'] === 'published' ? 'completed' : 'active',
+                'submitted_by' => $admin,
+                'revision_notes' => $wf['revision_notes'] ?? null,
+                'created_at' => now()->subDays(5),
                 'updated_at' => now(),
             ]);
+            $count++;
         }
 
-        $this->command?->info('  ✓ Workflows: ' . count($pipelineWorkflows) . ' pipeline items + 14 bulk items');
+        // ── Standalone workflows: fill remaining stages ──────────────────
+        $standalone = [
+            ['title' => 'Website Banner Refresh',       'client_id' => $c1, 'type' => 'post',     'stage' => 'todo',                 'assignee' => $editor,       'priority' => 'medium', 'deadline_days' => 10],
+            ['title' => 'Product Photography Batch',    'client_id' => $c1, 'type' => 'post',     'stage' => 'in-progress',          'assignee' => $videographer, 'priority' => 'high',   'deadline_days' => 5],
+            // Overdue item — deadline in the past, still not completed
+            ['title' => 'Trek Nepal — Ads Cutdown',     'client_id' => $c2, 'type' => 'video',    'stage' => 'in-progress',          'assignee' => $editor,       'priority' => 'urgent', 'deadline_days' => -2],
+            // Workflow at "review" — waiting for Approval #2 (admin-pending)
+            ['title' => 'Himalayan Coffee — Winter Campaign', 'client_id' => $c1, 'type' => 'carousel', 'stage' => 'review',        'assignee' => $editor,       'priority' => 'medium', 'deadline_days' => 3],
+        ];
+
+        foreach ($standalone as $wf) {
+            DB::table('workflows')->insert([
+                'title' => $wf['title'],
+                'client_id' => $wf['client_id'],
+                'content_id' => null,
+                'type' => $wf['type'],
+                'stage' => $wf['stage'],
+                'deadline' => now()->addDays($wf['deadline_days'])->toDateString(),
+                'assignee' => $wf['assignee'],
+                'priority' => $wf['priority'],
+                'notes' => null,
+                'tags' => null,
+                'status' => 'active',
+                'submitted_by' => $admin,
+                'revision_notes' => null,
+                'created_at' => now()->subDays(3),
+                'updated_at' => now(),
+            ]);
+            $count++;
+        }
+
+        $this->command?->info("  ✓ Workflows: {$count} items across every Kanban stage (incl. 1 overdue)");
     }
 }

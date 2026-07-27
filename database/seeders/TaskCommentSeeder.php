@@ -5,37 +5,48 @@ namespace Database\Seeders;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 
+/**
+ * Final-test task comments — 1-2 comments on the first four tasks
+ * so the comments UI has data on both editor and videographer profiles.
+ */
 class TaskCommentSeeder extends Seeder
 {
     public function run(): void
     {
-        $tasks = DB::table('tasks')->select('id', 'title')->get();
-        $users = DB::table('users')->where('role', '!=', 'super-admin')->select('id', 'name')->get();
+        $admin = DB::table('users')->where('email', 'admin@madhyam.com')->value('id');
+        $editor = DB::table('users')->where('email', 'staff.editor@madhyam.com')->value('id');
+        $videographer = DB::table('users')->where('email', 'staff.video@madhyam.com')->value('id');
 
         $comments = [
-            'Edit intro sequence' => ['Looks great, minor color tweak needed.', 'Approved, shipping now.'],
-            'Color grade footage' => ['Can we warm up the highlights?', 'Done — warmer grade applied.'],
-            'Write caption draft' => ['Captions look solid.', 'Updated with hashtags.'],
-            'Design thumbnail' => ['Thumbnail is eye-catching.', 'Revised contrast per feedback.'],
-            'Schedule posts' => ['Posts queued for next week.'],
-            'Shoot BTS photos' => ['BTS photos uploaded to drive.'],
-            'Export final cut' => ['Export rendered in 4K.'],
+            'Edit Farm Visit intro sequence' => [
+                [$admin, 'Please tighten the first 5 seconds — the hook is a bit slow.'],
+                [$editor, 'Noted — cutting the establishing shot and jumping straight to the espresso pour.'],
+            ],
+            'Colour grade Barista Series footage' => [
+                [$admin, 'Match the brand LUT — warmer highlights, deeper shadows.'],
+            ],
+            'Shoot BTS at coffee farm' => [
+                [$admin, 'Remember to grab audio-only interview clips for reels.'],
+                [$videographer, 'Will do — bringing the shotgun mic and Lav for backup.'],
+            ],
+            'Ads Cutdown — overdue export' => [
+                [$admin, 'This is overdue — please export tonight and share the link.'],
+            ],
         ];
 
-        foreach ($tasks as $task) {
-            $texts = $comments[$task->title] ?? null;
-            if (! $texts) {
-                $texts = ['Initial comment on this task.'];
+        foreach ($comments as $title => $entries) {
+            $taskId = DB::table('tasks')->where('title', $title)->value('id');
+            if (! $taskId) {
+                continue;
             }
 
-            foreach ($texts as $i => $text) {
-                $user = $users[$i % count($users)];
+            foreach ($entries as $idx => [$userId, $text]) {
                 DB::table('task_comments')->insert([
-                    'task_id' => $task->id,
-                    'user_id' => $user->id,
+                    'task_id' => $taskId,
+                    'user_id' => $userId,
                     'text' => $text,
-                    'created_at' => now()->subDays(random_int(0, 5)),
-                    'updated_at' => now()->subDays(random_int(0, 5)),
+                    'created_at' => now()->subDays(2)->addMinutes($idx * 30),
+                    'updated_at' => now()->subDays(2)->addMinutes($idx * 30),
                 ]);
             }
         }

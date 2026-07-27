@@ -71,5 +71,34 @@ class DatabaseSeeder extends Seeder
             PackageUsageSeeder::class,
             ActivityLogSeeder::class,
         ]);
+
+        $this->printFinalTestCredentials();
+    }
+
+    /**
+     * Print the 6 test credentials to the console after seeding so the
+     * user sees them at the end of `php artisan migrate:fresh --seed`.
+     * Full test plan lives at docs/FINAL_TEST_PLAN.md.
+     */
+    private function printFinalTestCredentials(): void
+    {
+        if (! $this->command) {
+            return;
+        }
+
+        $this->command->line('');
+        $this->command->line('<fg=cyan>═══════════════ MADHYAM — FINAL TEST CREDENTIALS ═══════════════</>');
+        $this->command->line('<fg=yellow>Staff login (auth:web)  →  http://localhost/login</>');
+        $this->command->line('  super-admin    superadmin@madhyam.com       SuperAdmin@123');
+        $this->command->line('  admin          admin@madhyam.com            Admin@123');
+        $this->command->line('  editor         staff.editor@madhyam.com     Staff@123');
+        $this->command->line('  videographer   staff.video@madhyam.com      Staff@123');
+        $this->command->line('');
+        $this->command->line('<fg=yellow>Client portal (auth:client)  →  http://localhost/client/login</>');
+        $this->command->line('  Himalayan Coffee Co.       client1@madhyam.com       Client@123');
+        $this->command->line('  Trek Nepal Adventures      client2@madhyam.com       Client@123');
+        $this->command->line('');
+        $this->command->line('<fg=gray>See docs/FINAL_TEST_PLAN.md for use cases + testing tickets per role.</>');
+        $this->command->line('<fg=cyan>═══════════════════════════════════════════════════════════════</>');
     }
 }
