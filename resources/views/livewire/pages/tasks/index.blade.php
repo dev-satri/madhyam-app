@@ -1,13 +1,7 @@
 <?php
 
-use Livewire\Volt\Component;
-use Livewire\Attributes\Layout;
-use Livewire\Attributes\On;
-use Livewire\Attributes\Computed;
-use Livewire\WithPagination;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Notification;
+use App\Models\Comment;
+use App\Models\File;
 use App\Models\Task;
 use App\Models\TaskComment;
 use App\Models\User;
@@ -15,48 +9,87 @@ use App\Notifications\TaskAssignedNotification;
 use App\Notifications\TaskCommentNotification;
 use App\Notifications\TaskCompletedNotification;
 use App\Services\ActivityLogger;
-use App\Services\NotificationService;
 use App\Services\RbacService;
 use App\Support\UserVisibility;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Notification;
+use Livewire\Attributes\Computed;
+use Livewire\Attributes\Layout;
+use Livewire\Attributes\On;
+use Livewire\Volt\Component;
+use Livewire\WithPagination;
 
 new #[Layout('components.layouts.app')] class extends Component
 {
     use WithPagination;
 
     public string $search = '';
+
     public string $statusFilter = '';
+
     public string $typeFilter = '';
+
     public string $priorityFilter = '';
+
     public string $clientFilter = '';
+
     public string $tab = 'all';
+
     public bool $showForm = false;
+
     public bool $showDetail = false;
+
     public int $editingId = 0;
+
     public int $detailId = 0;
+
     public string $formTitle = '';
+
     public string $formDescription = '';
+
     public string $formType = 'task';
+
     public string $formPriority = 'medium';
+
     public int $formClientId = 0;
+
     public ?int $formWorkflowId = null;
+
     public int $formAssigneeId = 0;
+
     public string $formDueDate = '';
+
     public string $formLocation = '';
+
     public string $formChecklist = '';
+
     public string $formNotes = '';
+
     public array $selected = [];
+
     public string $bulkStatus = '';
+
     public int $bulkAssigneeId = 0;
+
     public string $commentText = '';
+
+    public array $commentAttachments = [];
+
+    public string $commentAttachmentsJson = '[]';
 
     public function mount(): void
     {
         $this->formDueDate = now()->format('Y-m-d');
     }
 
-    public function getAvailableWorkflows(): \Illuminate\Support\Collection
+    public function getAvailableWorkflows(): Collection
     {
-        if (!$this->formClientId) return collect();
+        if (! $this->formClientId) {
+            return collect();
+        }
+
         return DB::table('workflows')
             ->where('client_id', $this->formClientId)
             ->orderBy('created_at', 'desc')
@@ -85,8 +118,11 @@ new #[Layout('components.layouts.app')] class extends Component
     public function canAddTasks(): bool
     {
         $user = Auth::user();
-        if (!$user) return false;
+        if (! $user) {
+            return false;
+        }
         $rbac = app(RbacService::class);
+
         return $rbac->hasDataAccess($user->role, 'canAddTasks');
     }
 
@@ -104,7 +140,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
         $user = Auth::user();
         $rbac = app(RbacService::class);
-        if ($user && !$rbac->hasDataAccess($user->role, 'seeAllTasks')) {
+        if ($user && ! $rbac->hasDataAccess($user->role, 'seeAllTasks')) {
             $q->where('tasks.assignee', $user->id);
         }
 
@@ -113,11 +149,21 @@ new #[Layout('components.layouts.app')] class extends Component
                 $q->where('tasks.title', 'like', "%{$this->search}%")->orWhere('tasks.description', 'like', "%{$this->search}%");
             });
         }
-        if ($this->statusFilter) $q->where('tasks.status', $this->statusFilter);
-        if ($this->typeFilter) $q->where('tasks.type', $this->typeFilter);
-        if ($this->priorityFilter) $q->where('tasks.priority', $this->priorityFilter);
-        if ($this->clientFilter) $q->where('tasks.client_id', $this->clientFilter);
-        if ($this->tab !== 'all') $q->where('tasks.type', $this->tab);
+        if ($this->statusFilter) {
+            $q->where('tasks.status', $this->statusFilter);
+        }
+        if ($this->typeFilter) {
+            $q->where('tasks.type', $this->typeFilter);
+        }
+        if ($this->priorityFilter) {
+            $q->where('tasks.priority', $this->priorityFilter);
+        }
+        if ($this->clientFilter) {
+            $q->where('tasks.client_id', $this->clientFilter);
+        }
+        if ($this->tab !== 'all') {
+            $q->where('tasks.type', $this->tab);
+        }
 
         return $q->select('tasks.*', 'clients.name as client_name', 'users.name as assignee_name')
             ->orderBy('tasks.due_date', 'asc')
@@ -127,6 +173,7 @@ new #[Layout('components.layouts.app')] class extends Component
     public function getStats(): array
     {
         $all = DB::table('tasks');
+
         return [
             'total' => $all->count(),
             'todo' => (clone $all)->where('status', 'todo')->count(),
@@ -139,18 +186,21 @@ new #[Layout('components.layouts.app')] class extends Component
     public function cycleStatus(int $id): void
     {
         $task = DB::table('tasks')->where('id', $id)->first();
-        if (!$task) return;
+        if (! $task) {
+            return;
+        }
 
         // Lock if linked workflow is published or ready-for-production
         if ($task->workflow_id) {
             $workflow = DB::table('workflows')->where('id', $task->workflow_id)->first();
             if ($workflow && in_array($workflow->stage, ['published', 'ready-for-production'])) {
                 $this->dispatch('toast', message: 'Cannot update task — workflow is in a terminal state', type: 'error');
+
                 return;
             }
         }
 
-        $next = match($task->status) {
+        $next = match ($task->status) {
             'todo' => 'in-progress',
             'in-progress' => 'completed',
             default => 'todo',
@@ -206,6 +256,7 @@ new #[Layout('components.layouts.app')] class extends Component
                 $workflow = DB::table('workflows')->where('id', $existingTask->workflow_id)->first();
                 if ($workflow && in_array($workflow->stage, ['published', 'ready-for-production'])) {
                     $this->dispatch('toast', message: 'Cannot edit task — workflow is in a terminal state', type: 'error');
+
                     return;
                 }
             }
@@ -290,11 +341,13 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function addComment(): void
     {
-        if (!$this->commentText || !$this->detailId) return;
+        if (! $this->commentText || ! $this->detailId) {
+            return;
+        }
         $commentId = DB::table('task_comments')->insertGetId([
-            'task_id'    => $this->detailId,
-            'user_id'    => Auth::id(),
-            'text'       => $this->commentText,
+            'task_id' => $this->detailId,
+            'user_id' => Auth::id(),
+            'text' => $this->commentText,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
@@ -329,11 +382,70 @@ new #[Layout('components.layouts.app')] class extends Component
         $this->dispatch('toast', message: 'Comment added', type: 'success');
     }
 
+    public function getDiscussionComments()
+    {
+        if (! $this->detailId) {
+            return collect();
+        }
+
+        return Comment::with('user')
+            ->where('commentable_type', Task::class)
+            ->where('commentable_id', $this->detailId)
+            ->latest()
+            ->get();
+    }
+
+    public function addDiscussionComment(): void
+    {
+        if (! $this->commentText || ! $this->detailId) {
+            return;
+        }
+
+        $attachments = json_decode($this->commentAttachmentsJson, true) ?: [];
+
+        Comment::create([
+            'commentable_type' => Task::class,
+            'commentable_id' => $this->detailId,
+            'user_id' => Auth::id(),
+            'body' => $this->commentText,
+            'attachments' => $attachments ?: null,
+        ]);
+
+        app(ActivityLogger::class)->record(Auth::user(), "Commented on task #{$this->detailId}");
+
+        $this->commentText = '';
+        $this->commentAttachments = [];
+        $this->dispatch('tiptap-set-content', name: 'taskComment', html: '');
+        $this->dispatch('toast', message: 'Comment added', type: 'success');
+    }
+
+    public function getPickableFiles(?string $search = null, ?int $clientId = null): array
+    {
+        $q = File::select('id', 'name', 'type', 'size')
+            ->orderBy('name');
+
+        if ($clientId) {
+            $q->where('client_id', $clientId);
+        }
+        if ($search) {
+            $q->where('name', 'like', "%{$search}%");
+        }
+
+        return $q->limit(30)->get()->map(fn ($f) => [
+            'id' => $f->id,
+            'name' => $f->name,
+            'url' => $f->getUrl(),
+            'type' => $f->type,
+            'size_label' => $f->size_readable,
+        ])->toArray();
+    }
+
     public function deleteTask(int $id): void
     {
         $task = Task::findOrFail($id);
         if ($task->status === 'in-progress') {
             $this->dispatch('toast', message: 'Cannot delete a task that is in progress', type: 'error');
+
             return;
         }
         $task->delete();
@@ -342,9 +454,10 @@ new #[Layout('components.layouts.app')] class extends Component
         $this->dispatch('toast', message: 'Task deleted', type: 'success');
     }
 
-    public function render(): mixed    {
+    public function render(): mixed
+    {
         return <<<'blade'
-        <div class="space-y-6">
+        <div class="space-y-6" x-data>
             <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                 <div><h1 class="text-2xl font-extrabold text-gray-900">Tasks & Shoots</h1><p class="text-sm text-gray-500">Manage tasks, shoots, and editing work</p></div>
                 @if($this->canAddTasks)
@@ -412,7 +525,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                 <td class="text-gray-500">{{ $t->assignee_name ?? '—' }}</td>
                                 <td class="{{ $t->due_date && \Carbon\Carbon::parse($t->due_date)->isPast() && $t->status!=='completed' ? 'text-red-600 font-semibold' : '' }}">{{ $t->due_date ? \Carbon\Carbon::parse($t->due_date)->format('M d, Y') : '—' }}</td>
                                 <td><button wire:click="cycleStatus({{ $t->id }})" class="badge badge-{{ str_replace('-','-',$t->status) }} cursor-pointer hover:shadow-sm">{{ ucwords(str_replace('-',' ',$t->status)) }}</button></td>
-                                <td class="flex gap-1"><button wire:click="openDetail({{ $t->id }})" class="btn btn-ghost btn-sm btn-icon"><i class="fas fa-eye text-xs"></i></button><button wire:click="openForm({{ $t->id }})" class="btn btn-ghost btn-sm btn-icon"><i class="fas fa-pen text-xs"></i></button>@if($t->status !== 'in-progress')<button type="button" wire:click="$dispatch('open-confirm', { title: 'Delete Task?', message: 'This task and its checklist will be permanently removed.', type: 'danger', action: 'deleteTask', params: [{{ $t->id }}] })" class="btn btn-ghost btn-sm btn-icon text-red-500" aria-label="Delete task"><i class="fas fa-trash text-xs"></i></button>@endif</td>
+                                <td class="flex gap-1"><button wire:click="openDetail({{ $t->id }})" wire:loading.attr="disabled" wire:target="openDetail({{ $t->id }})" class="btn btn-ghost btn-sm btn-icon"><i class="fas fa-eye text-xs" wire:loading.remove wire:target="openDetail({{ $t->id }})"></i><i class="fas fa-spinner fa-spin text-xs" wire:loading wire:target="openDetail({{ $t->id }})"></i></button><button wire:click="openForm({{ $t->id }})" class="btn btn-ghost btn-sm btn-icon"><i class="fas fa-pen text-xs"></i></button>@if($t->status !== 'in-progress')<button type="button" wire:click="$dispatch('open-confirm', { title: 'Delete Task?', message: 'This task and its checklist will be permanently removed.', type: 'danger', action: 'deleteTask', params: [{{ $t->id }}] })" class="btn btn-ghost btn-sm btn-icon text-red-500" aria-label="Delete task"><i class="fas fa-trash text-xs"></i></button>@endif</td>
                             </tr>
                             @empty
                             <tr wire:loading.remove wire:target="search,statusFilter,priorityFilter,clientFilter,tab"><td colspan="8">
@@ -462,8 +575,8 @@ new #[Layout('components.layouts.app')] class extends Component
             {{-- TaskDetail Modal --}}
             @if($showDetail)
             @php $task = $this->getDetailTask(); $comments = $this->getDetailComments(); @endphp
-            <div class="modal-overlay" wire:click.self="$set('showDetail',false)" x-on:keydown.escape.window="$wire.set('showDetail',false)">
-                <div class="modal-box max-w-xl">
+            <div wire:transition.opacity.duration.150ms class="modal-overlay" wire:click.self="$set('showDetail',false)" x-on:keydown.escape.window="$wire.set('showDetail',false)">
+                <div class="modal-box max-w-lg">
                     <div class="modal-header"><h3 class="text-base font-bold text-gray-900">{{ $task->title ?? '' }}</h3><button wire:click="$set('showDetail',false)" class="btn btn-ghost btn-icon btn-sm"><i class="fas fa-times"></i></button></div>
                     <div class="modal-body space-y-4">
                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
@@ -477,14 +590,61 @@ new #[Layout('components.layouts.app')] class extends Component
                         @if($task->description)<div><h4 class="text-sm font-semibold text-gray-900 mb-1">Description</h4><p class="text-sm text-gray-600">{{ $task->description }}</p></div>@endif
                         @if($task->location)<div><span class="text-sm text-gray-500">Location:</span> {{ $task->location }}</div>@endif
 
-                        {{-- Comments --}}
-                        <div><h4 class="text-sm font-semibold text-gray-900 mb-2">Comments</h4>
-                            <div class="space-y-2 max-h-40 overflow-y-auto">
-                                @forelse($comments as $c)
-                                <div class="bg-gray-50 rounded-lg px-3 py-2"><p class="text-sm font-medium text-gray-900">{{ $c->user_name }} <span class="text-[10px] text-gray-400 font-normal">{{ \Carbon\Carbon::parse($c->created_at)->diffForHumans() }}</span></p><p class="text-sm text-gray-600">{{ $c->text }}</p></div>
-                                @empty <p class="text-xs text-gray-400">No comments yet</p> @endforelse
+                        {{-- Discussion --}}
+                        <div class="border-t border-gray-100 pt-4">
+                            <h4 class="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                                <i class="fas fa-comments text-gray-400"></i> Discussion
+                            </h4>
+
+                            @php $discussionComments = $this->getDiscussionComments(); @endphp
+                            <div class="space-y-3 max-h-60 overflow-y-auto mb-4">
+                                @forelse($discussionComments as $comment)
+                                    <div class="flex gap-3">
+                                        <div class="flex-shrink-0 w-7 h-7 rounded-full bg-[rgba(var(--brand-rgb),0.1)] flex items-center justify-center text-[10px] font-bold text-[var(--brand)]">
+                                            {{ strtoupper(substr($comment->user->name ?? '?', 0, 1)) }}
+                                        </div>
+                                        <div class="flex-1 min-w-0">
+                                            <div class="flex items-center gap-2 mb-0.5">
+                                                <span class="text-xs font-semibold text-gray-800">{{ $comment->user->name ?? 'Unknown' }}</span>
+                                                <span class="text-[10px] text-gray-400">{{ $comment->created_at->diffForHumans() }}</span>
+                                            </div>
+                                            <div class="comment-body text-sm text-gray-600">{!! $comment->body !!}</div>
+                                            @if($comment->attachments)
+                                                <div class="flex flex-wrap gap-1 mt-1.5">
+                                                    @foreach($comment->attachments as $att)
+                                                        @if(($att['type'] ?? '') === 'image')
+                                                            <a href="{{ $att['url'] }}" target="_blank" class="block"><img src="{{ $att['url'] }}" class="rounded-lg max-h-24 border border-gray-100"></a>
+                                                        @else
+                                                            <a href="{{ $att['url'] }}" target="_blank" class="inline-flex items-center gap-1 bg-gray-100 rounded-lg px-2 py-1 text-xs text-gray-600 hover:bg-gray-200">
+                                                                <i class="fas {{ ($att['type'] ?? '') === 'drive' ? 'fa-google-drive text-blue-500' : 'fa-file text-gray-400' }}"></i>
+                                                                {{ $att['name'] ?? 'File' }}
+                                                            </a>
+                                                        @endif
+                                                    @endforeach
+                                                </div>
+                                            @endif
+                                        </div>
+                                    </div>
+                                @empty
+                                    <p class="text-xs text-gray-400 text-center py-2">No comments yet. Start the discussion.</p>
+                                @endforelse
                             </div>
-                            <div class="flex gap-2 mt-3"><input type="text" wire:model="commentText" class="form-input flex-1" placeholder="Add a comment..."><button wire:click="addComment" class="btn btn-primary btn-sm"><i class="fas fa-paper-plane text-xs"></i></button></div>
+
+                            {{-- Comment form --}}
+                            <div class="border-t border-gray-100 pt-3">
+                                <x-tiptap-editor wire="commentText" name="taskComment" placeholder="Add a comment..." />
+                                <div class="flex items-center justify-between mt-2">
+                                    <x-file-picker :clientId="$task->client_id ?? null" wire="commentAttachments" wire-json="commentAttachmentsJson" />
+                                    <input type="hidden" wire:model="commentAttachmentsJson">
+                                    <button wire:click="addDiscussionComment"
+                                            wire:loading.attr="disabled" wire:target="addDiscussionComment"
+                                            class="btn btn-primary btn-sm" :disabled="!$wire.commentText">
+                                        <i class="fas fa-paper-plane text-xs" wire:loading.remove wire:target="addDiscussionComment"></i>
+                                        <i class="fas fa-spinner fa-spin text-xs" wire:loading wire:target="addDiscussionComment"></i>
+                                        Send
+                                    </button>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>

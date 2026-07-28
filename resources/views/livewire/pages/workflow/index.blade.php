@@ -65,6 +65,11 @@ new #[Layout('components.layouts.app')] class extends Component
         '#06b6d4', '#0891b2', '#2563eb', '#3b82f6', '#6b7280',
     ];
 
+    // Discussion
+    public string $commentText = '';
+    public array $commentAttachments = [];
+    public string $commentAttachmentsJson = '[]';
+
     public function mount(): void
     {
         $this->loadStages();
@@ -432,7 +437,7 @@ new #[Layout('components.layouts.app')] class extends Component
         $this->formAssignee = $workflow->assignee;
         $this->formStage = $workflow->stage;
         $this->formDeadline = $workflow->deadline?->format('Y-m-d');
-        $this->formTags = $workflow->tags ?? '';
+        $this->formTags = is_array($workflow->tags) ? implode(',', $workflow->tags) : ($workflow->tags ?? '');
         $this->showForm = true;
     }
 
@@ -627,6 +632,97 @@ new #[Layout('components.layouts.app')] class extends Component
     {
         if (!$this->detailId) return null;
         return Workflow::with(['client', 'stageInfo', 'assigneeUser'])->find($this->detailId);
+    }
+
+    public function getComments()
+    {
+        if (!$this->detailId) return collect();
+        return \App\Models\Comment::with('user')
+            ->where('commentable_type', Workflow::class)
+            ->where('commentable_id', $this->detailId)
+            ->latest()
+            ->get();
+    }
+
+    public function getApprovalAttachments(): array
+    {
+        $workflow = Workflow::find($this->detailId);
+        if (!$workflow) return [];
+
+        $approvals = DB::table('approvals')
+            ->where(function ($q) use ($workflow) {
+                if ($workflow->content_id) {
+                    $q->where('content_id', $workflow->content_id);
+                } else {
+                    $baseTitle = preg_replace('/\s*\([^)]*\)\s*$/', '', $workflow->title ?? '');
+                    if ($baseTitle) {
+                        $q->where('title', $baseTitle)
+                          ->orWhere('title', 'like', $baseTitle . '%');
+                    }
+                }
+            })
+            ->whereNotNull('attachments')
+            ->where('attachments', '!=', 'null')
+            ->where('attachments', '!=', '[]')
+            ->get();
+
+        $allAttachments = [];
+        foreach ($approvals as $approval) {
+            $atts = json_decode($approval->attachments, true) ?? [];
+            foreach ($atts as $att) {
+                $att['_approval_id'] = $approval->id;
+                $att['_approval_status'] = $approval->status;
+                $att['_approval_stage'] = $approval->approval_stage;
+                $allAttachments[] = $att;
+            }
+        }
+        return $allAttachments;
+    }
+
+    public function addComment(): void
+    {
+        if (!$this->commentText || !$this->detailId) return;
+
+        $attachments = json_decode($this->commentAttachmentsJson, true) ?: [];
+
+        \App\Models\Comment::create([
+            'commentable_type' => Workflow::class,
+            'commentable_id' => $this->detailId,
+            'user_id' => Auth::id(),
+            'body' => $this->commentText,
+            'attachments' => $attachments ?: null,
+        ]);
+
+        app(\App\Services\ActivityLogger::class)->record(
+            Auth::user(),
+            "Commented on workflow #{$this->detailId}"
+        );
+
+        $this->commentText = '';
+        $this->commentAttachments = [];
+        $this->dispatch('tiptap-set-content', name: 'wfComment', html: '');
+        $this->dispatch('toast', message: 'Comment added', type: 'success');
+    }
+
+    public function getPickableFiles(?string $search = null, ?int $clientId = null): array
+    {
+        $q = \App\Models\File::select('id', 'name', 'type', 'size')
+            ->orderBy('name');
+
+        if ($clientId) {
+            $q->where('client_id', $clientId);
+        }
+        if ($search) {
+            $q->where('name', 'like', "%{$search}%");
+        }
+
+        return $q->limit(30)->get()->map(fn ($f) => [
+            'id' => $f->id,
+            'name' => $f->name,
+            'url' => $f->getUrl(),
+            'type' => $f->type,
+            'size_label' => $f->size_readable,
+        ])->toArray();
     }
 
     public function reorderStages(array $stageIds): void
@@ -938,9 +1034,14 @@ new #[Layout('components.layouts.app')] class extends Component
                 ][$detail->type] ?? 'bg-gray-100 text-gray-600';
                 $isOverdueDetail = $detail->deadline && $detail->deadline->isPast() && !in_array($detail->stage, ['published', 'ready-for-production']);
             @endphp
-            <div class="modal-overlay" x-data x-on:keydown.escape.window="$wire.set('showDetail', false)">
+            <div
+                wire:transition.opacity.duration.150ms
+                class="modal-overlay"
+                x-data
+                x-on:keydown.escape.window="$wire.set('showDetail', false)"
+            >
                 <div
-                    class="modal-box max-w-2xl max-h-[90vh]"
+                    class="modal-box max-w-lg"
                     x-on:click.stop
                     role="dialog"
                     aria-modal="true"
@@ -960,9 +1061,9 @@ new #[Layout('components.layouts.app')] class extends Component
                         </button>
                     </div>
 
-                    <div class="modal-body overflow-y-auto max-h-[calc(90vh-160px)]">
+                    <div class="modal-body space-y-4">
                         {{-- Title + badges --}}
-                        <div class="mb-5">
+                        <div>
                             <div class="flex flex-wrap items-center gap-1.5 mb-2">
                                 <span
                                     class="inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-semibold {{ $typeBadge }}"
@@ -984,46 +1085,46 @@ new #[Layout('components.layouts.app')] class extends Component
                                     {{ $detail->stageInfo->name ?? ucfirst($detail->stage) }}
                                 </span>
                             </div>
-                            <h2 class="text-xl font-bold text-gray-900 leading-snug">{{ $detail->title }}</h2>
+                            <h2 class="text-lg font-bold text-gray-900 leading-snug">{{ $detail->title }}</h2>
                         </div>
 
                         {{-- Description --}}
                         @if ($detail->notes)
-                            <div class="mb-5">
-                                <p class="text-[11px] uppercase tracking-wide font-semibold text-gray-500 mb-1.5">Description</p>
+                            <div>
+                                <p class="text-[11px] uppercase tracking-wide font-semibold text-gray-500 mb-1">Description</p>
                                 <p class="text-sm text-gray-700 whitespace-pre-line leading-relaxed">{{ $detail->notes }}</p>
                             </div>
                         @endif
 
                         {{-- Metadata grid --}}
-                        <div
-                            class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4 text-sm border-t border-gray-100 pt-4"
-                        >
+                        <div class="grid grid-cols-2 gap-x-4 gap-y-3 text-sm border-t border-gray-100 pt-3">
                             <div>
-                                <p class="text-[11px] uppercase tracking-wide font-semibold text-gray-500 mb-1">Client</p>
-                                <p class="text-gray-800"><i class="fas fa-building text-gray-400 mr-1.5"></i>{{ $detail->client->name ?? '—' }}</p>
+                                <p class="text-[11px] uppercase tracking-wide font-semibold text-gray-500 mb-0.5">Client</p>
+                                <p class="text-gray-800 text-xs"><i class="fas fa-building text-gray-400 mr-1"></i>{{ $detail->client->name ?? '—' }}</p>
                             </div>
                             <div>
-                                <p class="text-[11px] uppercase tracking-wide font-semibold text-gray-500 mb-1">Assignee</p>
+                                <p class="text-[11px] uppercase tracking-wide font-semibold text-gray-500 mb-0.5">Assignee</p>
                                 @if ($detail->assigneeUser)
-                                    <div class="flex items-center gap-2">
+                                    <div class="flex items-center gap-1.5">
                                         <div
-                                            class="flex h-6 w-6 items-center justify-center rounded-full bg-[rgba(var(--brand-rgb),0.1)] text-[10px] font-bold text-[var(--brand)]"
+                                            class="flex h-5 w-5 items-center justify-center rounded-full bg-[rgba(var(--brand-rgb),0.1)] text-[9px] font-bold text-[var(--brand)]"
                                         >
                                             {{ $detail->assigneeUser->initials }}
                                         </div>
-                                        <span class="text-gray-800">{{ $detail->assigneeUser->name }}</span>
+                                        <span class="text-gray-800 text-xs">{{ $detail->assigneeUser->name }}</span>
                                     </div>
                                 @else
-                                    <p class="text-gray-400 italic">Unassigned</p>
+                                    <p class="text-gray-400 italic text-xs">Unassigned</p>
                                 @endif
                             </div>
                             <div>
-                                <p class="text-[11px] uppercase tracking-wide font-semibold text-gray-500 mb-1">Deadline</p>
+                                <p class="text-[11px] uppercase tracking-wide font-semibold text-gray-500 mb-0.5">Deadline</p>
                                 @if ($detail->deadline)
-                                    <p class="{{ $isOverdueDetail ? 'text-red-600 font-semibold' : 'text-gray-800' }}">
+                                    <p
+                                        class="{{ $isOverdueDetail ? 'text-red-600 font-semibold' : 'text-gray-800' }} text-xs"
+                                    >
                                         <i
-                                            class="fas fa-calendar-alt {{ $isOverdueDetail ? 'text-red-500' : 'text-gray-400' }} mr-1.5"
+                                            class="fas fa-calendar-alt {{ $isOverdueDetail ? 'text-red-500' : 'text-gray-400' }} mr-1"
                                         ></i>
                                         {{ $detail->deadline->format('M d, Y') }}
                                         @if ($isOverdueDetail)
@@ -1034,13 +1135,13 @@ new #[Layout('components.layouts.app')] class extends Component
                                         @endif
                                     </p>
                                 @else
-                                    <p class="text-gray-400 italic">No deadline</p>
+                                    <p class="text-gray-400 italic text-xs">No deadline</p>
                                 @endif
                             </div>
                             <div>
-                                <p class="text-[11px] uppercase tracking-wide font-semibold text-gray-500 mb-1">Created</p>
-                                <p class="text-gray-800">
-                                    <i class="fas fa-clock text-gray-400 mr-1.5"></i>
+                                <p class="text-[11px] uppercase tracking-wide font-semibold text-gray-500 mb-0.5">Created</p>
+                                <p class="text-gray-800 text-xs">
+                                    <i class="fas fa-clock text-gray-400 mr-1"></i>
                                     {{ $detail->created_at?->format('M d, Y') ?? '—' }}
                                 </p>
                             </div>
@@ -1048,8 +1149,8 @@ new #[Layout('components.layouts.app')] class extends Component
 
                         {{-- Tags --}}
                         @if ($detail->tags)
-                            <div class="mt-4 border-t border-gray-100 pt-4">
-                                <p class="text-[11px] uppercase tracking-wide font-semibold text-gray-500 mb-2">Tags</p>
+                            <div class="border-t border-gray-100 pt-3">
+                                <p class="text-[11px] uppercase tracking-wide font-semibold text-gray-500 mb-1.5">Tags</p>
                                 <div class="flex flex-wrap gap-1.5">
                                     @foreach (explode(',', $detail->tags) as $tag)
                                         @php $tag = trim($tag); @endphp
@@ -1064,17 +1165,157 @@ new #[Layout('components.layouts.app')] class extends Component
                                 </div>
                             </div>
                         @endif
-                    </div>
 
-                    <div class="border-t border-gray-100 px-6 py-4 flex items-center justify-end gap-3">
-                        <button type="button" wire:click="$set('showDetail', false)" class="btn btn-secondary">
-                            Close
-                        </button>
-                        @if ($this->canEditWorkflow)
-                            <button type="button" wire:click="editFromDetail" class="btn btn-primary">
-                                <i class="fas fa-pen text-xs"></i> Edit
-                            </button>
+                        {{-- Approval Attachments --}}
+                        @php $approvalAttachments = $this->getApprovalAttachments(); @endphp
+                        @if (count($approvalAttachments))
+                            <div class="border-t border-gray-100 pt-3">
+                                <p class="text-[11px] uppercase tracking-wide font-semibold text-gray-500 mb-1.5 flex items-center gap-1.5">
+                                    <i class="fas fa-check-double text-gray-400"></i> Approval Attachments
+                                </p>
+                                <div class="space-y-1.5">
+                                    @foreach ($approvalAttachments as $att)
+                                        @if (isset($att['url']))
+                                            <div
+                                                class="flex items-center gap-2 bg-gray-50 rounded-lg px-3 py-2 group hover:bg-gray-100 transition-colors"
+                                            >
+                                                @if (($att['type'] ?? '') === 'image' && str_starts_with($att['url'] ?? '', '/'))
+                                                    <a href="{{ $att['url'] }}" target="_blank" class="block shrink-0"
+                                                        ><img
+                                                            src="{{ $att['url'] }}"
+                                                            class="rounded-lg h-10 w-10 object-cover border border-gray-200"
+                                                    /></a>
+                                                @else
+                                                    <i
+                                                        class="fas {{ (($att['type'] ?? '') === 'drive') ? 'fa-google-drive text-blue-500' : ((($att['type'] ?? '') === 'image') ? 'fa-image text-blue-500' : 'fa-file text-gray-400') }} text-sm"
+                                                    ></i>
+                                                @endif
+                                                <div class="flex-1 min-w-0">
+                                                    <a
+                                                        href="{{ $att['url'] }}"
+                                                        target="_blank"
+                                                        class="text-sm text-gray-700 hover:text-[var(--brand)] hover:underline truncate block"
+                                                        >{{ $att['name'] ?? 'File' }}</a
+                                                    >
+                                                    <p class="text-[10px] text-gray-400">
+                                                        From approval
+                                                        <span
+                                                            class="badge badge-{{ $att['_approval_status'] ?? 'pending' }}"
+                                                            style="font-size: 9px; padding: 1px 5px"
+                                                            >{{ ucfirst($att['_approval_status'] ?? 'pending') }}</span
+                                                        >
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        @endif
+                                    @endforeach
+                                </div>
+                            </div>
                         @endif
+
+                        {{-- Discussion Section --}}
+                        <div class="border-t border-gray-100 pt-3">
+                            <h4 class="text-sm font-semibold text-gray-900 mb-2 flex items-center gap-2">
+                                <i class="fas fa-comments text-gray-400"></i> Discussion
+                            </h4>
+
+                            {{-- Comment list --}}
+                            @php $comments = $this->getComments(); @endphp
+                            <div class="space-y-3 max-h-48 overflow-y-auto mb-3">
+                                @forelse ($comments as $comment)
+                                    <div class="flex gap-2.5">
+                                        <div
+                                            class="flex-shrink-0 w-6 h-6 rounded-full bg-[rgba(var(--brand-rgb),0.1)] flex items-center justify-center text-[9px] font-bold text-[var(--brand)]"
+                                        >
+                                            {{ strtoupper(substr($comment->user->name ?? '?', 0, 1)) }}
+                                        </div>
+                                        <div class="flex-1 min-w-0">
+                                            <div class="flex items-center gap-2 mb-0.5">
+                                                <span
+                                                    class="text-xs font-semibold text-gray-800"
+                                                    >{{ $comment->user->name ?? 'Unknown' }}</span
+                                                >
+                                                <span
+                                                    class="text-[10px] text-gray-400"
+                                                    >{{ $comment->created_at->diffForHumans() }}</span
+                                                >
+                                            </div>
+                                            <div class="comment-body text-sm text-gray-600">{!! $comment->body !!}</div>
+                                            @if ($comment->attachments)
+                                                <div class="flex flex-wrap gap-1 mt-1">
+                                                    @foreach ($comment->attachments as $att)
+                                                        @if (($att['type'] ?? '') === 'image')
+                                                            <a href="{{ $att['url'] }}" target="_blank" class="block"
+                                                                ><img
+                                                                    src="{{ $att['url'] }}"
+                                                                    class="rounded-lg max-h-20 border border-gray-100"
+                                                            /></a>
+                                                        @else
+                                                            <a
+                                                                href="{{ $att['url'] }}"
+                                                                target="_blank"
+                                                                class="inline-flex items-center gap-1 bg-gray-100 rounded-lg px-2 py-1 text-xs text-gray-600 hover:bg-gray-200"
+                                                            >
+                                                                <i
+                                                                    class="fas {{ ($att['type'] ?? '') === 'drive' ? 'fa-google-drive text-blue-500' : 'fa-file text-gray-400' }}"
+                                                                ></i>
+                                                                {{ $att['name'] ?? 'File' }}
+                                                            </a>
+                                                        @endif
+                                                    @endforeach
+                                                </div>
+                                            @endif
+                                        </div>
+                                    </div>
+                                @empty
+                                    <p class="text-xs text-gray-400 text-center py-2">No comments yet. Start the discussion.</p>
+                                @endforelse
+                            </div>
+
+                            {{-- Comment form --}}
+                            <div class="border-t border-gray-100 pt-3">
+                                <x-tiptap-editor wire="commentText" name="wfComment" placeholder="Add a comment..." />
+                                <div class="flex items-center justify-between mt-2">
+                                    <x-file-picker
+                                        :clientId="$detail->client_id"
+                                        wire="commentAttachments"
+                                        wire-json="commentAttachmentsJson"
+                                    />
+                                    <input type="hidden" wire:model="commentAttachmentsJson" />
+                                    <button
+                                        wire:click="addComment"
+                                        wire:loading.attr="disabled"
+                                        wire:target="addComment"
+                                        class="btn btn-primary btn-sm"
+                                        :disabled="!$wire.commentText"
+                                    >
+                                        <i
+                                            class="fas fa-paper-plane text-xs"
+                                            wire:loading.remove
+                                            wire:target="addComment"
+                                        ></i>
+                                        <i
+                                            class="fas fa-spinner fa-spin text-xs"
+                                            wire:loading
+                                            wire:target="addComment"
+                                        ></i>
+                                        Send
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        {{-- Footer Buttons --}}
+                        <div class="flex items-center justify-end gap-3 border-t border-gray-100 pt-3">
+                            <button type="button" wire:click="$set('showDetail', false)" class="btn btn-secondary">
+                                Close
+                            </button>
+                            @if ($this->canEditWorkflow)
+                                <button type="button" wire:click="editFromDetail" class="btn btn-primary">
+                                    <i class="fas fa-pen text-xs"></i> Edit
+                                </button>
+                            @endif
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1084,7 +1325,7 @@ new #[Layout('components.layouts.app')] class extends Component
     {{-- ========== WORKFLOW FORM MODAL ========== --}}
     @if ($showForm)
         <div class="modal-overlay" x-data x-on:keydown.escape.window="$wire.set('showForm', false)">
-            <div class="modal-box max-w-2xl max-h-[90vh]" x-on:click.stop>
+            <div class="modal-box max-w-lg" x-on:click.stop>
                 <div class="modal-header">
                     <h3 class="text-base font-bold text-gray-900">
                         <i class="fas fa-{{ $formMode === 'edit' ? 'pen' : 'plus' }} text-[var(--brand)] mr-2"></i>
@@ -1098,8 +1339,8 @@ new #[Layout('components.layouts.app')] class extends Component
                     </button>
                 </div>
 
-                <div class="modal-body overflow-y-auto max-h-[calc(90vh-80px)]">
-                    <form wire:submit="save">
+                <div class="modal-body">
+                    <form wire:submit="save" class="space-y-4">
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div class="md:col-span-2">
                                 <label class="form-label">Title <span class="text-red-500">*</span></label>
@@ -1139,7 +1380,7 @@ new #[Layout('components.layouts.app')] class extends Component
                             </div>
 
                             @if ($formClientId)
-                                <div>
+                                <div x-data>
                                     <label class="form-label"
                                         >Link to Content <span class="text-gray-400 text-xs">(optional)</span></label
                                     >
@@ -1220,7 +1461,9 @@ new #[Layout('components.layouts.app')] class extends Component
                             </div>
                         </div>
 
-                        <div class="mt-6 flex items-center justify-end gap-3 border-t border-gray-100 pt-5">
+                        <div
+                            class="mt-6 flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-3 border-t border-gray-100 pt-5"
+                        >
                             <button type="button" wire:click="$set('showForm', false)" class="btn btn-secondary">
                                 Cancel
                             </button>
@@ -1270,7 +1513,7 @@ new #[Layout('components.layouts.app')] class extends Component
             }"
             x-on:keydown.escape.window="$wire.set('showStageManager', false)"
         >
-            <div class="modal-box max-w-lg max-h-[85vh]" x-on:click.stop>
+            <div class="modal-box max-w-lg" x-on:click.stop>
                 <div class="modal-header">
                     <h3 class="text-base font-bold text-gray-900">
                         <i class="fas fa-cog text-[var(--brand)] mr-2"></i>
@@ -1284,7 +1527,7 @@ new #[Layout('components.layouts.app')] class extends Component
                     </button>
                 </div>
 
-                <div class="modal-body overflow-y-auto max-h-[calc(85vh-80px)]">
+                <div class="modal-body space-y-4">
                     {{-- Existing Stages --}}
                     <div x-ref="stageList" class="space-y-2 mb-5">
                         @forelse ($this->getStages() as $stage)
@@ -1358,7 +1601,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                         @if ($item->content_id && in_array($item->stage, ['review', 'revision']))
                                             <div class="mt-2 bg-blue-50 border border-blue-200 rounded-lg px-2 py-1.5">
                                                 <p class="text-[10px] text-blue-700 font-medium mb-1"><i class="fas fa-clipboard-check mr-1"></i>Approval:</p>
-                                                <div class="flex items-center gap-2">
+                                                <div class="flex flex-wrap items-center gap-2">
                                                     <span
                                                         class="text-[10px] {{ $appr['admin'] ? 'text-green-600' : 'text-gray-500' }}"
                                                     >
@@ -1553,20 +1796,23 @@ new #[Layout('components.layouts.app')] class extends Component
     {{-- ─── REVISION MODAL ────────────────────────────── --}}
     @if ($showRevisionModal)
         <div
-            class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+            class="modal-overlay z-50"
             wire:click.self="$set('showRevisionModal', false)"
             x-on:keydown.escape.window="$wire.set('showRevisionModal', false)"
         >
-            <div class="modal-box w-full max-w-md mx-4">
-                <div class="sticky top-0 bg-white flex items-center justify-between p-4 border-b">
-                    <h3 class="font-bold text-lg">
+            <div class="modal-box max-w-md">
+                <div class="modal-header">
+                    <h3 class="text-base font-bold text-gray-900">
                         <i class="fas fa-undo text-red-500 mr-2"></i>Send Back for Revision
                     </h3>
-                    <button wire:click="$set('showRevisionModal', false)" class="text-gray-400 hover:text-gray-600">
-                        <i class="fas fa-times"></i>
+                    <button
+                        wire:click="$set('showRevisionModal', false)"
+                        class="flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors"
+                    >
+                        <i class="fas fa-times text-sm"></i>
                     </button>
                 </div>
-                <div class="p-4 space-y-4">
+                <div class="modal-body space-y-4">
                     <p class="text-sm text-gray-600">This item will be moved to <strong>Revision</strong> stage. The staff will be notified.</p>
                     <div>
                         <label class="form-label">Revision Notes <span class="text-red-500">*</span></label>
@@ -1577,26 +1823,26 @@ new #[Layout('components.layouts.app')] class extends Component
                             placeholder="What needs to be changed?"
                         ></textarea>
                     </div>
-                </div>
-                <div class="sticky bottom-0 bg-white flex justify-end gap-2 p-4 border-t">
-                    <button wire:click="$set('showRevisionModal', false)" class="btn btn-secondary">Cancel</button>
-                    <button
-                        wire:click="confirmRevision"
-                        class="btn btn-danger"
-                        wire:loading.attr="disabled"
-                        wire:target="confirmRevision"
-                    >
-                        <span wire:loading.remove wire:target="confirmRevision"
-                            ><i class="fas fa-undo mr-1"></i> Send for Revision</span
+                    <div class="flex items-center justify-end gap-3 border-t border-gray-100 pt-4">
+                        <button wire:click="$set('showRevisionModal', false)" class="btn btn-secondary">Cancel</button>
+                        <button
+                            wire:click="confirmRevision"
+                            class="btn btn-danger"
+                            wire:loading.attr="disabled"
+                            wire:target="confirmRevision"
                         >
-                        <span wire:loading wire:target="confirmRevision" class="flex items-center gap-2">
-                            <svg class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                            </svg>
-                            Processing...
-                        </span>
-                    </button>
+                            <span wire:loading.remove wire:target="confirmRevision"
+                                ><i class="fas fa-undo mr-1"></i> Send for Revision</span
+                            >
+                            <span wire:loading wire:target="confirmRevision" class="flex items-center gap-2">
+                                <svg class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                                Processing...
+                            </span>
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -1605,41 +1851,44 @@ new #[Layout('components.layouts.app')] class extends Component
     {{-- ─── RESUBMIT MODAL ────────────────────────────── --}}
     @if ($showResubmitModal)
         <div
-            class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+            class="modal-overlay z-50"
             wire:click.self="$set('showResubmitModal', false)"
             x-on:keydown.escape.window="$wire.set('showResubmitModal', false)"
         >
-            <div class="modal-box w-full max-w-md mx-4">
-                <div class="sticky top-0 bg-white flex items-center justify-between p-4 border-b">
-                    <h3 class="font-bold text-lg">
+            <div class="modal-box max-w-md">
+                <div class="modal-header">
+                    <h3 class="text-base font-bold text-gray-900">
                         <i class="fas fa-paper-plane text-[var(--brand)] mr-2"></i>Resubmit for Approval
                     </h3>
-                    <button wire:click="$set('showResubmitModal', false)" class="text-gray-400 hover:text-gray-600">
-                        <i class="fas fa-times"></i>
-                    </button>
-                </div>
-                <div class="p-4 space-y-4">
-                    <p class="text-sm text-gray-600">This item will be moved to <strong>Review</strong> stage and sent for admin approval again.</p>
-                </div>
-                <div class="sticky bottom-0 bg-white flex justify-end gap-2 p-4 border-t">
-                    <button wire:click="$set('showResubmitModal', false)" class="btn btn-secondary">Cancel</button>
                     <button
-                        wire:click="confirmResubmit"
-                        class="btn btn-primary"
-                        wire:loading.attr="disabled"
-                        wire:target="confirmResubmit"
+                        wire:click="$set('showResubmitModal', false)"
+                        class="flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors"
                     >
-                        <span wire:loading.remove wire:target="confirmResubmit"
-                            ><i class="fas fa-paper-plane mr-1"></i> Resubmit</span
-                        >
-                        <span wire:loading wire:target="confirmResubmit" class="flex items-center gap-2">
-                            <svg class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                            </svg>
-                            Processing...
-                        </span>
+                        <i class="fas fa-times text-sm"></i>
                     </button>
+                </div>
+                <div class="modal-body space-y-4">
+                    <p class="text-sm text-gray-600">This item will be moved to <strong>Review</strong> stage and sent for admin approval again.</p>
+                    <div class="flex items-center justify-end gap-3 border-t border-gray-100 pt-4">
+                        <button wire:click="$set('showResubmitModal', false)" class="btn btn-secondary">Cancel</button>
+                        <button
+                            wire:click="confirmResubmit"
+                            class="btn btn-primary"
+                            wire:loading.attr="disabled"
+                            wire:target="confirmResubmit"
+                        >
+                            <span wire:loading.remove wire:target="confirmResubmit"
+                                ><i class="fas fa-paper-plane mr-1"></i> Resubmit</span
+                            >
+                            <span wire:loading wire:target="confirmResubmit" class="flex items-center gap-2">
+                                <svg class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                                Processing...
+                            </span>
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>

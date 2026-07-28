@@ -7,6 +7,7 @@ use App\Models\Concerns\ScopesToClientAccount;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Approval extends Model
@@ -15,10 +16,13 @@ class Approval extends Model
 
     protected $fillable = [
         'title', 'client_id', 'content_id', 'type', 'status', 'approval_stage',
-        'submitted_by', 'notes', 'reference_file', 'rejection_reason',
+        'submitted_by', 'notes', 'description_html', 'reference_file', 'rejection_reason',
+        'attachments',
     ];
 
-    protected $casts = [];
+    protected $casts = [
+        'attachments' => 'array',
+    ];
 
     public function client(): BelongsTo
     {
@@ -38,5 +42,10 @@ class Approval extends Model
     public function comments(): HasMany
     {
         return $this->hasMany(ApprovalComment::class);
+    }
+
+    public function discussionComments(): MorphMany
+    {
+        return $this->morphMany(Comment::class, 'commentable');
     }
 }

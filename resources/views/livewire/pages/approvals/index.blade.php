@@ -1,60 +1,113 @@
 <?php
 
-use Livewire\Volt\Component;
-use Livewire\Attributes\Layout;
-use Livewire\Attributes\On;
-use Livewire\Attributes\Computed;
-use Livewire\WithPagination;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Storage;
+use App\Models\Approval;
+use App\Models\Comment;
+use App\Models\File;
+use App\Models\User;
 use App\Services\ActivityLogger;
 use App\Services\NotificationService;
-use App\Models\Approval;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
+use Livewire\Attributes\Computed;
+use Livewire\Attributes\Layout;
+use Livewire\Attributes\On;
+use Livewire\Volt\Component;
+use Livewire\WithPagination;
 
 new #[Layout('components.layouts.app')] class extends Component
 {
     use WithPagination;
 
     public string $statusFilter = '';
+
     public string $clientFilter = '';
+
     public string $stageFilter = '';
+
     public string $typeFilter = '';
+
     public string $search = '';
+
     public bool $showForm = false;
+
     public int $editingId = 0;
+
     public string $formTitle = '';
+
     public string $formNotes = '';
+
     public int $formClientId = 0;
+
     public ?int $formContentId = null;
+
     public string $formStatus = 'pending';
+
     public string $formType = 'post';
+
     public string $formReferenceFile = '';
+
     public string $commentText = '';
+
+    public array $formAttachments = [];
+
+    public array $commentAttachments = [];
+
+    public string $commentAttachmentsJson = '[]';
+
     public int $detailId = 0;
+
     public bool $showDetail = false;
+
     public array $selectedItems = [];
+
     public bool $showReasonModal = false;
+
     public string $reasonAction = '';
+
     public array $reasonTargets = [];
+
     public string $reasonText = '';
 
     public function mount(): void {}
 
-    public function getAvailableContent(): \Illuminate\Support\Collection
+    public function getAvailableContent(): Collection
     {
-        if (!$this->formClientId) return collect();
+        if (! $this->formClientId) {
+            return collect();
+        }
+
         return DB::table('contents')
             ->where('client_id', $this->formClientId)
             ->orderBy('date', 'desc')
             ->get();
     }
 
-    public function updatedSearch(): void { $this->resetPage(); }
-    public function updatedTypeFilter(): void { $this->resetPage(); }
-    public function updatedStatusFilter(): void { $this->resetPage(); }
-    public function updatedClientFilter(): void { $this->resetPage(); }
-    public function updatedStageFilter(): void { $this->resetPage(); }
+    public function updatedSearch(): void
+    {
+        $this->resetPage();
+    }
+
+    public function updatedTypeFilter(): void
+    {
+        $this->resetPage();
+    }
+
+    public function updatedStatusFilter(): void
+    {
+        $this->resetPage();
+    }
+
+    public function updatedClientFilter(): void
+    {
+        $this->resetPage();
+    }
+
+    public function updatedStageFilter(): void
+    {
+        $this->resetPage();
+    }
 
     public function toggleStatusFilter(string $status): void
     {
@@ -83,6 +136,7 @@ new #[Layout('components.layouts.app')] class extends Component
     public function isManager(): bool
     {
         $user = Auth::user();
+
         return $user && in_array($user->role ?? '', ['super-admin', 'admin', 'manager']);
     }
 
@@ -90,7 +144,10 @@ new #[Layout('components.layouts.app')] class extends Component
     public function commentCounts(): array
     {
         $ids = collect($this->approvals)->pluck('id')->toArray();
-        if (empty($ids)) return [];
+        if (empty($ids)) {
+            return [];
+        }
+
         return DB::table('approval_comments')
             ->whereIn('approval_id', $ids)
             ->select('approval_id', DB::raw('count(*) as cnt'))
@@ -101,14 +158,22 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function isImage(?string $path): bool
     {
-        if (!$path) return false;
+        if (! $path) {
+            return false;
+        }
+
         return (bool) preg_match('/\.(jpe?g|png|gif|webp|svg|bmp|ico)$/i', $path);
     }
 
     public function fileUrl(?string $path): string
     {
-        if (!$path) return '';
-        if (str_starts_with($path, 'http')) return $path;
+        if (! $path) {
+            return '';
+        }
+        if (str_starts_with($path, 'http')) {
+            return $path;
+        }
+
         return Storage::url($path);
     }
 
@@ -119,22 +184,30 @@ new #[Layout('components.layouts.app')] class extends Component
             ->leftJoin('clients', 'approvals.client_id', '=', 'clients.id')
             ->leftJoin('users', 'approvals.submitted_by', '=', 'users.id');
 
-        if ($this->statusFilter) $q->where('approvals.status', $this->statusFilter);
-        if ($this->clientFilter) $q->where('approvals.client_id', $this->clientFilter);
-        if ($this->typeFilter) $q->where('approvals.type', $this->typeFilter);
-        if ($this->stageFilter) $q->where('approvals.approval_stage', $this->stageFilter);
+        if ($this->statusFilter) {
+            $q->where('approvals.status', $this->statusFilter);
+        }
+        if ($this->clientFilter) {
+            $q->where('approvals.client_id', $this->clientFilter);
+        }
+        if ($this->typeFilter) {
+            $q->where('approvals.type', $this->typeFilter);
+        }
+        if ($this->stageFilter) {
+            $q->where('approvals.approval_stage', $this->stageFilter);
+        }
         if ($this->search) {
             $q->where(function ($q) {
                 $q->where('approvals.title', 'like', "%{$this->search}%")
-                  ->orWhere('users.name', 'like', "%{$this->search}%");
+                    ->orWhere('users.name', 'like', "%{$this->search}%");
             });
         }
 
         $user = Auth::user() ?? Auth::guard('client')->user();
-        if ($user && !in_array($user->role ?? 'client', ['super-admin', 'admin', 'manager'])) {
+        if ($user && ! in_array($user->role ?? 'client', ['super-admin', 'admin', 'manager'])) {
             $q->where(function ($q) use ($user) {
                 $q->where('approvals.submitted_by', $user->id)
-                  ->orWhere('approvals.client_id', $user->client_id ?? 0);
+                    ->orWhere('approvals.client_id', $user->client_id ?? 0);
             });
         }
 
@@ -155,7 +228,7 @@ new #[Layout('components.layouts.app')] class extends Component
             $q->where('client_id', $account->client_id);
         } else {
             $user = Auth::user();
-            if ($user && !in_array($user->role ?? '', ['super-admin', 'admin', 'manager'])) {
+            if ($user && ! in_array($user->role ?? '', ['super-admin', 'admin', 'manager'])) {
                 $q->where('submitted_by', $user->id);
             }
         }
@@ -174,33 +247,39 @@ new #[Layout('components.layouts.app')] class extends Component
         $isClient = $actor && ($actor->role ?? 'client') === 'client';
 
         $approval = DB::table('approvals')->where('id', $id)->first();
-        if (!$approval) return;
+        if (! $approval) {
+            return;
+        }
 
         // Clients cannot reject
         if ($status === 'rejected' && $isClient) {
             $this->dispatch('toast', message: 'Clients cannot reject approvals', type: 'error');
+
             return;
         }
 
         // Sequential flow rules
         if ($approval->approval_stage === 'admin-pending' && $isClient) {
             $this->dispatch('toast', message: 'This approval is awaiting admin review', type: 'error');
+
             return;
         }
 
-        if ($approval->approval_stage === 'client-pending' && !$isClient) {
+        if ($approval->approval_stage === 'client-pending' && ! $isClient) {
             // Admin can still approve/reject at client-pending stage
         }
 
         if ($approval->approval_stage === 'first' && $isClient) {
             $this->dispatch('toast', message: 'This is an admin-only approval', type: 'error');
+
             return;
         }
 
         $current = $approval->status;
         $allowed = ($current === 'pending') || ($current === 'revision' && in_array($status, ['approved', 'rejected']));
-        if (!$allowed) {
+        if (! $allowed) {
             $this->dispatch('toast', message: 'Cannot change this approval status', type: 'warning');
+
             return;
         }
 
@@ -218,7 +297,9 @@ new #[Layout('components.layouts.app')] class extends Component
         // Try by content_id first (most reliable)
         if ($approval->content_id) {
             $wf = DB::table('workflows')->where('content_id', $approval->content_id)->first();
-            if ($wf) return $wf;
+            if ($wf) {
+                return $wf;
+            }
         }
 
         // Fallback: match by title (strip parenthetical suffixes like " (Instagram / Reel)")
@@ -228,7 +309,9 @@ new #[Layout('components.layouts.app')] class extends Component
                 ->where('title', $baseTitle)
                 ->orWhere('title', 'like', $baseTitle . '%')
                 ->first();
-            if ($wf) return $wf;
+            if ($wf) {
+                return $wf;
+            }
         }
 
         return null;
@@ -240,15 +323,19 @@ new #[Layout('components.layouts.app')] class extends Component
         $isClient = $actor && ($actor->role ?? 'client') === 'client';
 
         $approval = DB::table('approvals')->where('id', $id)->first();
-        if (!$approval) return false;
+        if (! $approval) {
+            return false;
+        }
 
         $current = $approval->status;
         $allowed = ($current === 'pending') || ($current === 'revision' && in_array($status, ['approved', 'rejected']));
-        if (!$allowed) return false;
+        if (! $allowed) {
+            return false;
+        }
 
         DB::table('approvals')->where('id', $id)->update(['status' => $status, 'updated_at' => now()]);
 
-        $commentUserId = $actor instanceof \App\Models\User ? $actor?->id : null;
+        $commentUserId = $actor instanceof User ? $actor?->id : null;
         if ($reason) {
             DB::table('approval_comments')->insert([
                 'approval_id' => $id, 'user_id' => $commentUserId, 'user_name' => $actor?->name ?? 'Unknown',
@@ -285,7 +372,7 @@ new #[Layout('components.layouts.app')] class extends Component
                     ]);
                 }
 
-                if (!$suppressSideEffects) {
+                if (! $suppressSideEffects) {
                     app(NotificationService::class)->notifyContentApproved($approval->title);
                 }
             } elseif ($status === 'rejected') {
@@ -293,7 +380,7 @@ new #[Layout('components.layouts.app')] class extends Component
                     'status' => 'revision',
                     'updated_at' => now(),
                 ]);
-                if (!$suppressSideEffects) {
+                if (! $suppressSideEffects) {
                     app(NotificationService::class)->notifyContentRejected($approval->title, $reason);
                 }
             } elseif ($status === 'revision') {
@@ -301,7 +388,7 @@ new #[Layout('components.layouts.app')] class extends Component
                     'status' => 'revision',
                     'updated_at' => now(),
                 ]);
-                if (!$suppressSideEffects) {
+                if (! $suppressSideEffects) {
                     app(NotificationService::class)->notifyContentRevision($approval->title, $reason);
                 }
             }
@@ -314,7 +401,7 @@ new #[Layout('components.layouts.app')] class extends Component
                     'status' => 'pending',
                     'updated_at' => now(),
                 ]);
-                if (!$suppressSideEffects) {
+                if (! $suppressSideEffects) {
                     app(NotificationService::class)->notifyAdminApprovedFinal($approval->title);
                 }
             } else {
@@ -331,7 +418,7 @@ new #[Layout('components.layouts.app')] class extends Component
                     'status' => 'revision',
                     'updated_at' => now(),
                 ]);
-                if (!$suppressSideEffects) {
+                if (! $suppressSideEffects) {
                     app(NotificationService::class)->notifyAdminRejectedFinal($approval->title, $reason);
                 }
             }
@@ -346,12 +433,12 @@ new #[Layout('components.layouts.app')] class extends Component
                         'updated_at' => now(),
                     ]);
                 } else {
-                    \Log::warning("Approval #{$id} client-pending approved but no linked workflow found", [
+                    Log::warning("Approval #{$id} client-pending approved but no linked workflow found", [
                         'content_id' => $approval->content_id,
                         'title' => $approval->title,
                     ]);
                 }
-                if (!$suppressSideEffects) {
+                if (! $suppressSideEffects) {
                     app(NotificationService::class)->notifyClientApprovedFinal($approval->title);
                 }
             } else {
@@ -368,14 +455,14 @@ new #[Layout('components.layouts.app')] class extends Component
                     'status' => 'revision',
                     'updated_at' => now(),
                 ]);
-                if (!$suppressSideEffects) {
+                if (! $suppressSideEffects) {
                     app(NotificationService::class)->notifyClientRejectedFinal($approval->title, $reason);
                 }
             }
         }
 
-        if (!$suppressSideEffects) {
-            $isStaff = !$isClient;
+        if (! $suppressSideEffects) {
+            $isStaff = ! $isClient;
             app(NotificationService::class)->sendNotification(
                 text: "Approval #{$id} {$status}",
                 type: $status === 'approved' ? 'success' : ($status === 'rejected' ? 'error' : 'info'),
@@ -383,6 +470,7 @@ new #[Layout('components.layouts.app')] class extends Component
                 forRole: $isStaff ? 'client' : 'manager',
             );
         }
+
         return true;
     }
 
@@ -393,17 +481,22 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function bulkAct(string $action, ?string $reason = null): void
     {
-        if (empty($this->selectedItems)) return;
+        if (empty($this->selectedItems)) {
+            return;
+        }
         $actor = Auth::user() ?? Auth::guard('client')->user();
         if ($action === 'rejected' && $actor && ($actor->role ?? 'client') === 'client') {
             $this->dispatch('toast', message: 'Clients cannot reject approvals', type: 'error');
+
             return;
         }
         $pending = DB::table('approvals')->where('status', 'pending')->pluck('id')->toArray();
         $targets = array_values(array_intersect($this->selectedItems, $pending));
         $count = 0;
         foreach ($targets as $id) {
-            if ($this->applyStatus($id, $action, $reason, suppressSideEffects: true)) $count++;
+            if ($this->applyStatus($id, $action, $reason, suppressSideEffects: true)) {
+                $count++;
+            }
         }
         if ($count > 0) {
             $isStaff = $actor && ($actor->role ?? 'client') !== 'client';
@@ -441,13 +534,15 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function deleteApproval(int $id): void
     {
-        if (!$this->isManager) {
+        if (! $this->isManager) {
             $this->dispatch('toast', message: 'Unauthorized action', type: 'error');
+
             return;
         }
         $approval = Approval::findOrFail($id);
         if ($approval->status === 'pending') {
             $this->dispatch('toast', message: 'Cannot delete a pending approval', type: 'error');
+
             return;
         }
         $approval->delete();
@@ -470,9 +565,13 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function edit(int $id): void
     {
-        if (!$this->isManager) return;
+        if (! $this->isManager) {
+            return;
+        }
         $row = DB::table('approvals')->where('id', $id)->first();
-        if (!$row) return;
+        if (! $row) {
+            return;
+        }
         $this->editingId = (int) $row->id;
         $this->formTitle = $row->title ?? '';
         $this->formNotes = $row->notes ?? '';
@@ -480,13 +579,16 @@ new #[Layout('components.layouts.app')] class extends Component
         $this->formContentId = $row->content_id ?? null;
         $this->formType = $row->type ?? 'post';
         $this->formReferenceFile = $row->reference_file ?? '';
+        $this->formAttachments = is_array($row->attachments ?? null) ? ($row->attachments ?? []) : json_decode($row->attachments ?? '[]', true) ?? [];
         $this->showDetail = false;
         $this->showForm = true;
     }
 
     public function create(): void
     {
-        if (!$this->isManager) return;
+        if (! $this->isManager) {
+            return;
+        }
         $this->editingId = 0;
         $this->formTitle = '';
         $this->formNotes = '';
@@ -494,12 +596,15 @@ new #[Layout('components.layouts.app')] class extends Component
         $this->formContentId = null;
         $this->formType = 'post';
         $this->formReferenceFile = '';
+        $this->formAttachments = [];
         $this->showForm = true;
     }
 
     public function createOrUpdate(): void
     {
-        if (!$this->isManager) return;
+        if (! $this->isManager) {
+            return;
+        }
         $actor = Auth::user();
         $data = [
             'title' => $this->formTitle,
@@ -508,6 +613,7 @@ new #[Layout('components.layouts.app')] class extends Component
             'content_id' => $this->formContentId ?: null,
             'notes' => $this->formNotes,
             'reference_file' => $this->formReferenceFile ?: null,
+            'attachments' => $this->formAttachments ? json_encode(array_values($this->formAttachments)) : null,
         ];
         if ($this->editingId > 0) {
             DB::table('approvals')->where('id', $this->editingId)->update($data + ['updated_at' => now()]);
@@ -521,7 +627,14 @@ new #[Layout('components.layouts.app')] class extends Component
             $this->dispatch('toast', message: 'Approval created', type: 'success');
         }
         $this->showForm = false;
+        $this->formAttachments = [];
         $this->resetPage();
+    }
+
+    public function cancelForm(): void
+    {
+        $this->showForm = false;
+        $this->formAttachments = [];
     }
 
     public function openReasonModal(int $id, string $action): void
@@ -529,6 +642,7 @@ new #[Layout('components.layouts.app')] class extends Component
         $actor = Auth::user() ?? Auth::guard('client')->user();
         if ($action === 'rejected' && $actor && ($actor->role ?? 'client') === 'client') {
             $this->dispatch('toast', message: 'Clients cannot reject approvals', type: 'error');
+
             return;
         }
         $this->reasonAction = $action;
@@ -542,12 +656,14 @@ new #[Layout('components.layouts.app')] class extends Component
         $actor = Auth::user() ?? Auth::guard('client')->user();
         if ($action === 'rejected' && $actor && ($actor->role ?? 'client') === 'client') {
             $this->dispatch('toast', message: 'Clients cannot reject approvals', type: 'error');
+
             return;
         }
         $pending = DB::table('approvals')->where('status', 'pending')->pluck('id')->toArray();
         $this->reasonTargets = array_values(array_intersect($this->selectedItems, $pending));
         if (empty($this->reasonTargets)) {
             $this->dispatch('toast', message: 'No pending items selected', type: 'warning');
+
             return;
         }
         $this->reasonAction = $action;
@@ -557,18 +673,22 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function submitReason(): void
     {
-        if (!trim($this->reasonText)) {
+        if (! trim($this->reasonText)) {
             $this->dispatch('toast', message: 'Reason is required', type: 'error');
+
             return;
         }
         $actor = Auth::user() ?? Auth::guard('client')->user();
         if ($this->reasonAction === 'rejected' && $actor && ($actor->role ?? 'client') === 'client') {
             $this->dispatch('toast', message: 'Clients cannot reject approvals', type: 'error');
+
             return;
         }
         $count = 0;
         foreach ($this->reasonTargets as $id) {
-            if ($this->applyStatus($id, $this->reasonAction, trim($this->reasonText), suppressSideEffects: true)) $count++;
+            if ($this->applyStatus($id, $this->reasonAction, trim($this->reasonText), suppressSideEffects: true)) {
+                $count++;
+            }
         }
         if ($count > 0) {
             $isStaff = $actor && ($actor->role ?? 'client') !== 'client';
@@ -604,26 +724,88 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function addComment(): void
     {
-        if (!$this->commentText || !$this->detailId) return;
+        if (! $this->commentText || ! $this->detailId) {
+            return;
+        }
         $actor = Auth::user() ?? Auth::guard('client')->user();
-        $commentUserId = $actor instanceof \App\Models\User ? $actor?->id : null;
+        $commentUserId = $actor instanceof User ? $actor?->id : null;
         DB::table('approval_comments')->insert([
             'approval_id' => $this->detailId,
-            'user_id'     => $commentUserId,
-            'user_name'   => $actor?->name ?? 'Unknown',
-            'text'        => $this->commentText,
-            'is_system'   => false,
-            'created_at'  => now(),
-            'updated_at'  => now(),
+            'user_id' => $commentUserId,
+            'user_name' => $actor?->name ?? 'Unknown',
+            'text' => $this->commentText,
+            'is_system' => false,
+            'created_at' => now(),
+            'updated_at' => now(),
         ]);
         app(ActivityLogger::class)->record($actor, "Commented on approval #{$this->detailId}");
         $this->commentText = '';
         $this->dispatch('toast', message: 'Comment added', type: 'success');
     }
 
-    public function render(): mixed    {
+    public function getDiscussionComments()
+    {
+        if (! $this->detailId) {
+            return collect();
+        }
+
+        return Comment::with('user')
+            ->where('commentable_type', Approval::class)
+            ->where('commentable_id', $this->detailId)
+            ->latest()
+            ->get();
+    }
+
+    public function addDiscussionComment(): void
+    {
+        if (! $this->commentText || ! $this->detailId) {
+            return;
+        }
+
+        $actor = Auth::user() ?? Auth::guard('client')->user();
+        $attachments = json_decode($this->commentAttachmentsJson, true) ?: [];
+
+        Comment::create([
+            'commentable_type' => Approval::class,
+            'commentable_id' => $this->detailId,
+            'user_id' => $actor?->id,
+            'body' => $this->commentText,
+            'attachments' => $attachments ?: null,
+        ]);
+
+        app(ActivityLogger::class)->record($actor, "Commented on approval #{$this->detailId}");
+
+        $this->commentText = '';
+        $this->commentAttachments = [];
+        $this->dispatch('tiptap-set-content', name: 'apprComment', html: '');
+        $this->dispatch('toast', message: 'Comment added', type: 'success');
+    }
+
+    public function getPickableFiles(?string $search = null, ?int $clientId = null): array
+    {
+        $q = File::select('id', 'name', 'type', 'size')
+            ->orderBy('name');
+
+        if ($clientId) {
+            $q->where('client_id', $clientId);
+        }
+        if ($search) {
+            $q->where('name', 'like', "%{$search}%");
+        }
+
+        return $q->limit(30)->get()->map(fn ($f) => [
+            'id' => $f->id,
+            'name' => $f->name,
+            'url' => $f->getUrl(),
+            'type' => $f->type,
+            'size_label' => $f->size_readable,
+        ])->toArray();
+    }
+
+    public function render(): mixed
+    {
         return <<<'blade'
-        <div class="space-y-6">
+        <div class="space-y-6" x-data>
             {{-- Banner --}}
             <div class="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
                 <i class="fas fa-info-circle mr-1"></i>
@@ -673,7 +855,7 @@ new #[Layout('components.layouts.app')] class extends Component
             {{-- Approval Cards --}}
             <div class="space-y-3">
                 @forelse($this->approvals as $a)
-                <div class="bg-white rounded-2xl border border-gray-100 p-4 hover:shadow-md transition-shadow" role="button" tabindex="0" wire:click="openDetail({{ $a->id }})" x-on:keydown.enter="$wire.openDetail({{ $a->id }})">
+                <div wire:key="appr-card-{{ $a->id }}" wire:loading.class="opacity-60 pointer-events-none" wire:target="openDetail({{ $a->id }})" class="bg-white rounded-2xl border border-gray-100 p-4 hover:shadow-md transition-all cursor-pointer active:scale-[0.99]" role="button" tabindex="0" wire:click="openDetail({{ $a->id }})" x-on:keydown.enter="$wire.openDetail({{ $a->id }})">
                     <div class="flex items-start gap-4">
                         @if($this->isManager && $a->status === 'pending')
                         <input type="checkbox" wire:change.stop="toggleSelect({{ $a->id }})" {{ in_array($a->id, $selectedItems) ? 'checked' : '' }} class="mt-1 h-4 w-4 rounded border-gray-300 text-[var(--brand)]">
@@ -778,7 +960,7 @@ new #[Layout('components.layouts.app')] class extends Component
             {{-- Detail Modal --}}
             @if($showDetail)
             @php $appr = $this->getDetailApproval(); $comments = $this->getDetailComments(); @endphp
-            <div class="modal-overlay" wire:click.self="$set('showDetail',false)" x-on:keydown.escape.window="$wire.set('showDetail',false)">
+            <div wire:transition.opacity.duration.150ms class="modal-overlay" wire:click.self="$set('showDetail',false)" x-on:keydown.escape.window="$wire.set('showDetail',false)">
                 <div class="modal-box max-w-3xl">
                     <div class="modal-header">
                         <h3 class="text-base font-bold text-gray-900">{{ $appr->title ?? 'Approval Details' }}</h3>
@@ -800,6 +982,25 @@ new #[Layout('components.layouts.app')] class extends Component
                                     @else
                                     <a href="{{ $this->fileUrl($appr->reference_file) }}" target="_blank" class="inline-flex items-center gap-1 text-sm text-[var(--brand)] hover:underline"><i class="fas fa-paperclip"></i> View attachment</a>
                                     @endif
+                                </div>
+                                @endif
+                                @if($appr->attachments && count(json_decode($appr->attachments, true) ?? []))
+                                <div>
+                                    <h4 class="text-sm font-semibold text-gray-900 mb-1">Attachments</h4>
+                                    <div class="flex flex-wrap gap-1.5">
+                                        @foreach(json_decode($appr->attachments, true) ?? [] as $att)
+                                            @if(isset($att['url']))
+                                                @if(($att['type'] ?? '') === 'image' && str_starts_with($att['url'] ?? '', '/'))
+                                                    <a href="{{ $att['url'] }}" target="_blank" class="block"><img src="{{ $att['url'] }}" class="rounded-lg max-h-24 border border-gray-100"></a>
+                                                @else
+                                                    <a href="{{ $att['url'] }}" target="_blank" class="inline-flex items-center gap-1 bg-gray-100 rounded-lg px-2 py-1 text-xs text-gray-600 hover:bg-gray-200">
+                                                        <i class="fas {{ ($att['type'] ?? '') === 'drive' ? 'fa-google-drive text-blue-500' : 'fa-file text-gray-400' }}"></i>
+                                                        {{ $att['name'] ?? 'File' }}
+                                                    </a>
+                                                @endif
+                                            @endif
+                                        @endforeach
+                                    </div>
                                 </div>
                                 @endif
                                 @if($appr->notes)<div><h4 class="text-sm font-semibold text-gray-900 mb-1">Notes</h4><p class="text-sm text-gray-600">{{ $appr->notes }}</p></div>@endif
@@ -838,16 +1039,74 @@ new #[Layout('components.layouts.app')] class extends Component
                                 @endif
 
                                 <div>
-                                    <h4 class="text-sm font-semibold text-gray-900 mb-2">Comments</h4>
-                                    <div class="space-y-2 max-h-60 overflow-y-auto">
-                                        @forelse($comments as $c)
+                                    <h4 class="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                                        <i class="fas fa-comments text-gray-400"></i> Discussion
+                                    </h4>
+
+                                    {{-- Legacy comments --}}
+                                    @if($comments->count())
+                                    <div class="space-y-2 max-h-40 overflow-y-auto mb-3">
+                                        @foreach($comments as $c)
                                         <div class="{{ $c->is_system ? 'bg-blue-50' : 'bg-gray-50' }} rounded-lg px-3 py-2">
                                             <p class="text-sm font-medium {{ $c->is_system ? 'text-blue-700' : 'text-gray-900' }}">{{ $c->user_name }} <span class="text-[10px] text-gray-400 font-normal">{{ \Carbon\Carbon::parse($c->created_at)->diffForHumans() }}</span></p>
                                             <p class="text-sm {{ $c->is_system ? 'text-blue-600 italic' : 'text-gray-600' }}">{{ $c->text }}</p>
                                         </div>
-                                        @empty <p class="text-xs text-gray-400">No comments yet</p> @endforelse
+                                        @endforeach
                                     </div>
-                                    <div class="flex gap-2 mt-3"><textarea wire:model="commentText" class="form-input flex-1" rows="2" placeholder="Add a comment..."></textarea><button wire:click="addComment" class="btn btn-primary btn-sm self-end"><i class="fas fa-paper-plane text-xs"></i></button></div>
+                                    @endif
+
+                                    {{-- New discussion --}}
+                                    @php $discussionComments = $this->getDiscussionComments(); @endphp
+                                    <div class="space-y-3 max-h-60 overflow-y-auto mb-4">
+                                        @forelse($discussionComments as $comment)
+                                            <div class="flex gap-3">
+                                                <div class="flex-shrink-0 w-7 h-7 rounded-full bg-[rgba(var(--brand-rgb),0.1)] flex items-center justify-center text-[10px] font-bold text-[var(--brand)]">
+                                                    {{ strtoupper(substr($comment->user->name ?? '?', 0, 1)) }}
+                                                </div>
+                                                <div class="flex-1 min-w-0">
+                                                    <div class="flex items-center gap-2 mb-0.5">
+                                                        <span class="text-xs font-semibold text-gray-800">{{ $comment->user->name ?? 'Unknown' }}</span>
+                                                        <span class="text-[10px] text-gray-400">{{ $comment->created_at->diffForHumans() }}</span>
+                                                    </div>
+                                                    <div class="comment-body text-sm text-gray-600">{!! $comment->body !!}</div>
+                                                    @if($comment->attachments)
+                                                        <div class="flex flex-wrap gap-1 mt-1.5">
+                                                            @foreach($comment->attachments as $att)
+                                                                @if(($att['type'] ?? '') === 'image')
+                                                                    <a href="{{ $att['url'] }}" target="_blank" class="block"><img src="{{ $att['url'] }}" class="rounded-lg max-h-24 border border-gray-100"></a>
+                                                                @else
+                                                                    <a href="{{ $att['url'] }}" target="_blank" class="inline-flex items-center gap-1 bg-gray-100 rounded-lg px-2 py-1 text-xs text-gray-600 hover:bg-gray-200">
+                                                                        <i class="fas {{ ($att['type'] ?? '') === 'drive' ? 'fa-google-drive text-blue-500' : 'fa-file text-gray-400' }}"></i>
+                                                                        {{ $att['name'] ?? 'File' }}
+                                                                    </a>
+                                                                @endif
+                                                            @endforeach
+                                                        </div>
+                                                    @endif
+                                                </div>
+                                            </div>
+                                        @empty
+                                            @if($comments->count() === 0)
+                                            <p class="text-xs text-gray-400 text-center py-2">No comments yet. Start the discussion.</p>
+                                            @endif
+                                        @endforelse
+                                    </div>
+
+                                    {{-- Comment form --}}
+                                    <div class="border-t border-gray-100 pt-3">
+                                        <x-tiptap-editor wire="commentText" name="apprComment" placeholder="Add a comment..." />
+                                        <div class="flex items-center justify-between mt-2">
+                                            <x-file-picker :clientId="$appr->client_id ?? null" wire="commentAttachments" wire-json="commentAttachmentsJson" />
+                                            <input type="hidden" wire:model="commentAttachmentsJson">
+                                            <button wire:click="addDiscussionComment"
+                                                    wire:loading.attr="disabled" wire:target="addDiscussionComment"
+                                                    class="btn btn-primary btn-sm" :disabled="!$wire.commentText">
+                                                <i class="fas fa-paper-plane text-xs" wire:loading.remove wire:target="addDiscussionComment"></i>
+                                                <i class="fas fa-spinner fa-spin text-xs" wire:loading wire:target="addDiscussionComment"></i>
+                                                Send
+                                            </button>
+                                        </div>
+                                    </div>
                                 </div>
 
                                 @if($this->isManager && $appr->status !== 'pending')
@@ -876,8 +1135,13 @@ new #[Layout('components.layouts.app')] class extends Component
                         @endif
                         <div><label class="form-label">Notes</label><textarea wire:model="formNotes" class="form-textarea" rows="3" placeholder="Notes..."></textarea></div>
                         <div><label class="form-label">Reference File</label><input type="text" wire:model="formReferenceFile" class="form-input" placeholder="Path or URL" /></div>
+                        <div>
+                            <label class="form-label">Attachments</label>
+                            <x-file-picker :clientId="$formClientId ?: null" wire="formAttachments" />
+                            <p class="text-[11px] text-gray-400 mt-1">Attach files from Media library or paste drive links for review</p>
+                        </div>
                         <div class="flex justify-end gap-2 pt-2">
-                            <button wire:click="$set('showForm',false)" class="btn btn-secondary btn-sm">Cancel</button>
+                            <button wire:click="cancelForm" class="btn btn-secondary btn-sm">Cancel</button>
                             <button wire:click="createOrUpdate" class="btn btn-primary btn-sm" wire:loading.attr="disabled"><i class="fas fa-save text-xs"></i> Save</button>
                         </div>
                     </div>

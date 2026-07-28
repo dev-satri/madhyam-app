@@ -6,6 +6,7 @@ use App\Models\Concerns\InteractsWithTrash;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Carbon;
 
@@ -15,7 +16,7 @@ class Task extends Model
 
     protected $fillable = [
         'title', 'type', 'client_id', 'workflow_id', 'assignee', 'due_date', 'priority',
-        'status', 'description', 'location', 'checklist',
+        'status', 'description', 'description_html', 'location', 'checklist',
         'reference_file', 'submission_file', 'submission_notes', 'progress',
     ];
 
@@ -43,6 +44,11 @@ class Task extends Model
     public function comments(): HasMany
     {
         return $this->hasMany(TaskComment::class);
+    }
+
+    public function discussionComments(): MorphMany
+    {
+        return $this->morphMany(Comment::class, 'commentable');
     }
 
     public function scopeOverdue($query)

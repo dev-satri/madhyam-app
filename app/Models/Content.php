@@ -7,6 +7,7 @@ use App\Models\Concerns\ScopesToClientAccount;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Content extends Model
@@ -17,13 +18,14 @@ class Content extends Model
 
     protected $fillable = [
         'title', 'client_id', 'platform', 'type', 'date', 'due_date', 'status',
-        'caption', 'hashtags', 'reference_file', 'needs_approval', 'created_by',
+        'caption', 'hashtags', 'reference_file', 'attachments', 'needs_approval', 'created_by',
         'submitted_for_approval_at',
     ];
 
     protected $casts = [
         'date' => 'date',
         'due_date' => 'date',
+        'attachments' => 'array',
         'needs_approval' => 'boolean',
         'submitted_for_approval_at' => 'datetime',
     ];
@@ -51,5 +53,10 @@ class Content extends Model
     public function tasks(): HasMany
     {
         return $this->hasMany(Task::class);
+    }
+
+    public function discussionComments(): MorphMany
+    {
+        return $this->morphMany(Comment::class, 'commentable');
     }
 }

@@ -7,6 +7,7 @@ use App\Models\Concerns\ScopesToClientAccount;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Carbon;
 
@@ -16,7 +17,7 @@ class Workflow extends Model
 
     protected $fillable = [
         'title', 'client_id', 'content_id', 'type', 'stage', 'deadline', 'assignee',
-        'priority', 'notes', 'tags', 'status', 'submitted_by', 'revision_notes',
+        'priority', 'notes', 'description_html', 'tags', 'status', 'submitted_by', 'revision_notes',
     ];
 
     protected $casts = [
@@ -52,6 +53,11 @@ class Workflow extends Model
     public function tasks(): HasMany
     {
         return $this->hasMany(Task::class);
+    }
+
+    public function discussionComments(): MorphMany
+    {
+        return $this->morphMany(Comment::class, 'commentable');
     }
 
     public function scopeOverdue($query)

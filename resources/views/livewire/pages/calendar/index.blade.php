@@ -1,43 +1,80 @@
 <?php
 
-use Livewire\Volt\Component;
-use Livewire\Attributes\Layout;
-use Livewire\Attributes\On;
+use App\Models\Comment;
+use App\Models\Content;
+use App\Models\File;
+use App\Services\ActivityLogger;
+use App\Services\NotificationService;
+use App\Services\PackageService;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
-use Carbon\Carbon;
-use App\Models\Content;
-use App\Services\PackageService;
+use Livewire\Attributes\Layout;
+use Livewire\Attributes\On;
+use Livewire\Volt\Component;
 
 new #[Layout('components.layouts.app')] class extends Component
 {
     public string $viewMode = 'month';
+
     public int $currentMonth;
+
     public int $currentYear;
+
     public string $search = '';
+
     public string $platformFilter = '';
+
     public string $statusFilter = '';
+
     public string $clientFilter = '';
+
     public bool $showForm = false;
+
     public bool $showDayDetail = false;
+
     public ?string $selectedDate = null;
+
     public int $editingId = 0;
 
     public string $title = '';
+
     public ?int $formClientId = null;
+
     public string $formDate = '';
+
     public string $formDueDate = '';
+
     public array $formPlatforms = [];
+
     public array $formTypes = [];
+
     public string $formStatus = 'draft';
+
     public string $caption = '';
+
     public string $hashtags = '';
+
     public string $referenceFile = '';
+
+    public array $formAttachments = [];
+
+    public string $commentText = '';
+
+    public array $commentAttachments = [];
+
+    public string $commentAttachmentsJson = '[]';
+
+    public ?int $selectedContentId = null;
+
+    public bool $showContentDiscussion = false;
 
     public array $clients = [];
 
     public const PLATFORMS = ['instagram', 'facebook', 'tiktok', 'youtube', 'twitter', 'linkedin'];
+
     public const TYPES = ['reel', 'post', 'story', 'video', 'carousel', 'blog'];
+
     public const STATUSES = ['draft', 'scripting', 'in-review', 'revision', 'published'];
 
     public array $contentByDate = [];
@@ -102,7 +139,7 @@ new #[Layout('components.layouts.app')] class extends Component
         if ($this->search) {
             $query->where(function ($q) {
                 $q->where('contents.title', 'like', "%{$this->search}%")
-                  ->orWhere('clients.name', 'like', "%{$this->search}%");
+                    ->orWhere('clients.name', 'like', "%{$this->search}%");
             });
         }
         if ($this->platformFilter) {
@@ -154,6 +191,7 @@ new #[Layout('components.layouts.app')] class extends Component
             $days[] = $current->copy();
             $current->addDay();
         }
+
         return $days;
     }
 
@@ -170,7 +208,10 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function getDayContent(): array
     {
-        if (!$this->selectedDate) return [];
+        if (! $this->selectedDate) {
+            return [];
+        }
+
         return $this->contentByDate[$this->selectedDate] ?? [];
     }
 
@@ -187,14 +228,17 @@ new #[Layout('components.layouts.app')] class extends Component
             $platform = $item->platform ?? 'unknown';
             $summary[$platform] = ($summary[$platform] ?? 0) + 1;
         }
+
         return $summary;
     }
 
     public function getContentLinks(): array
     {
         $items = $this->getDayContent();
-        $ids = array_map(fn($i) => $i->id, $items);
-        if (empty($ids)) return [];
+        $ids = array_map(fn ($i) => $i->id, $items);
+        if (empty($ids)) {
+            return [];
+        }
 
         $workflows = DB::table('workflows')
             ->whereIn('content_id', $ids)
@@ -215,6 +259,7 @@ new #[Layout('components.layouts.app')] class extends Component
                 'approval' => $approvals->get($id),
             ];
         }
+
         return $links;
     }
 
@@ -231,10 +276,13 @@ new #[Layout('components.layouts.app')] class extends Component
     public function editContent(int $id): void
     {
         $content = DB::table('contents')->where('id', $id)->first();
-        if (!$content) return;
+        if (! $content) {
+            return;
+        }
 
         if ($content->status === 'published') {
             $this->dispatch('toast', message: 'Published content cannot be edited', type: 'error');
+
             return;
         }
 
@@ -249,6 +297,13 @@ new #[Layout('components.layouts.app')] class extends Component
         $this->caption = $content->caption ?? '';
         $this->hashtags = $content->hashtags ?? '';
         $this->referenceFile = $content->reference_file ?? '';
+        $raw = $content->attachments;
+        if (is_string($raw)) {
+            $decoded = json_decode($raw, true);
+            $this->formAttachments = is_array($decoded) ? $decoded : [];
+        } else {
+            $this->formAttachments = is_array($raw) ? $raw : [];
+        }
         $this->showForm = true;
         $this->showDayDetail = false;
     }
@@ -278,6 +333,7 @@ new #[Layout('components.layouts.app')] class extends Component
                     'caption' => $this->caption,
                     'hashtags' => $this->hashtags,
                     'reference_file' => $this->referenceFile,
+                    'attachments' => $this->formAttachments ? json_encode(array_values($this->formAttachments)) : null,
                     'updated_at' => now(),
                 ]);
                 $this->dispatch('toast', message: 'Content updated successfully', type: 'success');
@@ -296,6 +352,7 @@ new #[Layout('components.layouts.app')] class extends Component
                             'caption' => $this->caption,
                             'hashtags' => $this->hashtags,
                             'reference_file' => $this->referenceFile,
+                            'attachments' => $this->formAttachments ? json_encode(array_values($this->formAttachments)) : null,
                             'created_by' => auth()->id(),
                             'created_at' => now(),
                             'updated_at' => now(),
@@ -317,7 +374,7 @@ new #[Layout('components.layouts.app')] class extends Component
             $this->showForm = false;
             $this->resetForm();
             $this->loadMonthContent();
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             $this->dispatch('toast', message: 'Error saving content: ' . $e->getMessage(), type: 'error');
         }
     }
@@ -327,6 +384,7 @@ new #[Layout('components.layouts.app')] class extends Component
         $content = Content::findOrFail($id);
         if (in_array($content->status, ['published', 'in-review', 'scheduled'])) {
             $this->dispatch('toast', message: 'Cannot delete content with status: ' . $content->status, type: 'error');
+
             return;
         }
         $content->delete();
@@ -372,7 +430,7 @@ new #[Layout('components.layouts.app')] class extends Component
         if ($this->search) {
             $query->where(function ($q) {
                 $q->where('contents.title', 'like', "%{$this->search}%")
-                  ->orWhere('clients.name', 'like', "%{$this->search}%");
+                    ->orWhere('clients.name', 'like', "%{$this->search}%");
             });
         }
         if ($this->platformFilter) {
@@ -409,28 +467,33 @@ new #[Layout('components.layouts.app')] class extends Component
     public function submitForApproval(int $contentId): void
     {
         $content = DB::table('contents')->where('id', $contentId)->first();
-        if (!$content) return;
+        if (! $content) {
+            return;
+        }
 
         if ($content->status === 'published') {
             $this->dispatch('toast', message: 'Published content cannot be changed', type: 'error');
+
             return;
         }
 
         if ($content->status === 'in-review') {
             $this->dispatch('toast', message: 'Content is already submitted for approval', type: 'info');
+
             return;
         }
 
         // Advance: draft → scripting, scripting → in-review
-        $next = match($content->status) {
+        $next = match ($content->status) {
             'draft' => 'scripting',
             'scripting' => 'in-review',
             'revision' => 'in-review',
             default => null,
         };
 
-        if (!$next) {
+        if (! $next) {
             $this->dispatch('toast', message: 'Cannot advance from this status', type: 'error');
+
             return;
         }
 
@@ -459,13 +522,81 @@ new #[Layout('components.layouts.app')] class extends Component
                 'updated_at' => now(),
             ]);
 
-            app(\App\Services\NotificationService::class)->notifyContentSubmittedForApproval($content->title, $contentId);
+            app(NotificationService::class)->notifyContentSubmittedForApproval($content->title, $contentId);
             $this->dispatch('toast', message: 'Content submitted for approval', type: 'success');
         } else {
-            $this->dispatch('toast', message: "Status changed to " . str_replace('-', ' ', ucfirst($next)), type: 'success');
+            $this->dispatch('toast', message: 'Status changed to ' . str_replace('-', ' ', ucfirst($next)), type: 'success');
         }
 
         $this->loadMonthContent();
+    }
+
+    public function openDiscussion(int $contentId): void
+    {
+        $this->selectedContentId = $contentId;
+        $this->showContentDiscussion = true;
+        $this->showDayDetail = false;
+    }
+
+    public function getContentDiscussionComments()
+    {
+        if (! $this->selectedContentId) {
+            return collect();
+        }
+
+        return Comment::with('user')
+            ->where('commentable_type', Content::class)
+            ->where('commentable_id', $this->selectedContentId)
+            ->latest()
+            ->get();
+    }
+
+    public function addContentComment(): void
+    {
+        if (! $this->commentText || ! $this->selectedContentId) {
+            return;
+        }
+
+        $attachments = json_decode($this->commentAttachmentsJson, true) ?: [];
+
+        Comment::create([
+            'commentable_type' => Content::class,
+            'commentable_id' => $this->selectedContentId,
+            'user_id' => Auth::id(),
+            'body' => $this->commentText,
+            'attachments' => $attachments ?: null,
+        ]);
+
+        app(ActivityLogger::class)->record(
+            Auth::user(),
+            "Commented on content #{$this->selectedContentId}"
+        );
+
+        $this->commentText = '';
+        $this->commentAttachments = [];
+        $this->dispatch('tiptap-set-content', name: 'calComment', html: '');
+        $this->dispatch('toast', message: 'Comment added', type: 'success');
+    }
+
+    public function getPickableFiles(?string $search = null, ?int $clientId = null): array
+    {
+        $q = File::select('id', 'name', 'type', 'size')
+            ->orderBy('name');
+
+        if ($clientId) {
+            $q->where('client_id', $clientId);
+        }
+        if ($search) {
+            $q->where('name', 'like', "%{$search}%");
+        }
+
+        return $q->limit(30)->get()->map(fn ($f) => [
+            'id' => $f->id,
+            'name' => $f->name,
+            'url' => $f->getUrl(),
+            'type' => $f->type,
+            'size_label' => $f->size_readable,
+        ])->toArray();
     }
 
     private function resetForm(): void
@@ -481,6 +612,7 @@ new #[Layout('components.layouts.app')] class extends Component
         $this->caption = '';
         $this->hashtags = '';
         $this->referenceFile = '';
+        $this->formAttachments = [];
     }
 
     #[On('confirm-resolved')]
@@ -928,13 +1060,21 @@ new #[Layout('components.layouts.app')] class extends Component
                             </div>
 
                             <div>
-                                <label class="form-label">Reference File</label>
+                                <label class="form-label"
+                                    >Reference File
+                                    <span class="text-gray-400 font-normal">(optional URL/name)</span></label
+                                >
                                 <input
                                     type="text"
                                     wire:model="referenceFile"
                                     class="form-input"
                                     placeholder="File name or URL"
                                 />
+                            </div>
+
+                            <div class="md:col-span-2">
+                                <label class="form-label">Attachments</label>
+                                <x-file-picker :clientId="$formClientId" wire="formAttachments" />
                             </div>
 
                             {{-- Platforms Multi-Select --}}
@@ -1171,7 +1311,16 @@ new #[Layout('components.layouts.app')] class extends Component
                                     </div>
 
                                     {{-- Right side: action or status indicator --}}
-                                    <div class="flex-shrink-0 ml-2">
+                                    <div class="flex-shrink-0 ml-2 flex items-center gap-1.5">
+                                        @if ($item->status !== 'published')
+                                            <button
+                                                wire:click.stop="openDiscussion({{ $item->id }})"
+                                                class="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition"
+                                                title="Discussion"
+                                            >
+                                                <i class="fas fa-comments text-[11px]"></i>
+                                            </button>
+                                        @endif
                                         @if (in_array($item->status, ['draft', 'scripting', 'revision']))
                                             @php
                                             $ddBtnIcon = match($item->status) { 'draft' => 'fa-arrow-right', 'scripting' => 'fa-paper-plane', 'revision' => 'fa-redo', default => 'fa-arrow-right' };
@@ -1220,6 +1369,131 @@ new #[Layout('components.layouts.app')] class extends Component
                     <button wire:click="openForm('{{ $selectedDate }}')" class="btn btn-primary text-sm">
                         <i class="fas fa-plus text-xs mr-1"></i> Add Content
                     </button>
+                </div>
+            </div>
+        </div>
+    @endif
+
+    {{-- ========== CONTENT DISCUSSION MODAL ========== --}}
+    @if ($showContentDiscussion && $selectedContentId)
+        @php
+            $discContent = \App\Models\Content::with('client')->find($selectedContentId);
+            $discComments = $this->getContentDiscussionComments();
+        @endphp
+        <div
+            class="modal-overlay z-50"
+            wire:click.self="$set('showContentDiscussion', false)"
+            x-on:keydown.escape.window="$wire.set('showContentDiscussion', false)"
+        >
+            <div class="modal-box max-w-lg" x-on:click.stop>
+                <div class="modal-header">
+                    <h3 class="text-base font-bold text-gray-900 truncate pr-2">
+                        <i class="fas fa-comments text-[var(--brand)] mr-2"></i>
+                        {{ $discContent->title ?? 'Discussion' }}
+                    </h3>
+                    <button
+                        wire:click="$set('showContentDiscussion', false)"
+                        class="flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors flex-shrink-0"
+                    >
+                        <i class="fas fa-times text-sm"></i>
+                    </button>
+                </div>
+
+                <div class="modal-body space-y-4">
+                    {{-- Content info --}}
+                    <div class="flex items-center gap-2 text-xs text-gray-500">
+                        @if ($discContent->client)
+                            <span class="text-gray-600">{{ $discContent->client->name }}</span>
+                            <span>·</span>
+                        @endif
+                        <span class="capitalize">{{ $discContent->type }}</span>
+                        <span>·</span>
+                        <span class="capitalize">{{ str_replace('-', ' ', $discContent->status) }}</span>
+                    </div>
+
+                    {{-- Comment list --}}
+                    <div class="space-y-3 max-h-60 overflow-y-auto">
+                        @forelse ($discComments as $comment)
+                            <div class="flex gap-2.5">
+                                <div
+                                    class="flex-shrink-0 w-6 h-6 rounded-full bg-[rgba(var(--brand-rgb),0.1)] flex items-center justify-center text-[9px] font-bold text-[var(--brand)]"
+                                >
+                                    {{ strtoupper(substr($comment->user->name ?? '?', 0, 1)) }}
+                                </div>
+                                <div class="flex-1 min-w-0">
+                                    <div class="flex items-center gap-2 mb-0.5">
+                                        <span
+                                            class="text-xs font-semibold text-gray-800"
+                                            >{{ $comment->user->name ?? 'Unknown' }}</span
+                                        >
+                                        <span
+                                            class="text-[10px] text-gray-400"
+                                            >{{ $comment->created_at->diffForHumans() }}</span
+                                        >
+                                    </div>
+                                    <div class="comment-body text-sm text-gray-600">{!! $comment->body !!}</div>
+                                    @if ($comment->attachments)
+                                        <div class="flex flex-wrap gap-1 mt-1">
+                                            @foreach ($comment->attachments as $att)
+                                                @if (($att['type'] ?? '') === 'image')
+                                                    <a href="{{ $att['url'] }}" target="_blank" class="block"
+                                                        ><img
+                                                            src="{{ $att['url'] }}"
+                                                            class="rounded-lg max-h-20 border border-gray-100"
+                                                    /></a>
+                                                @else
+                                                    <a
+                                                        href="{{ $att['url'] }}"
+                                                        target="_blank"
+                                                        class="inline-flex items-center gap-1 bg-gray-100 rounded-lg px-2 py-1 text-xs text-gray-600 hover:bg-gray-200"
+                                                    >
+                                                        <i
+                                                            class="fas {{ ($att['type'] ?? '') === 'drive' ? 'fa-google-drive text-blue-500' : 'fa-file text-gray-400' }}"
+                                                        ></i>
+                                                        {{ $att['name'] ?? 'File' }}
+                                                    </a>
+                                                @endif
+                                            @endforeach
+                                        </div>
+                                    @endif
+                                </div>
+                            </div>
+                        @empty
+                            <p class="text-xs text-gray-400 text-center py-3">No comments yet. Start the discussion.</p>
+                        @endforelse
+                    </div>
+
+                    {{-- Comment form --}}
+                    <div class="border-t border-gray-100 pt-3">
+                        <x-tiptap-editor wire="commentText" name="calComment" placeholder="Add a comment..." />
+                        <div class="flex items-center justify-between mt-2">
+                            <x-file-picker
+                                :clientId="$discContent->client_id"
+                                wire="commentAttachments"
+                                wire-json="commentAttachmentsJson"
+                            />
+                            <input type="hidden" wire:model="commentAttachmentsJson" />
+                            <button
+                                wire:click="addContentComment"
+                                wire:loading.attr="disabled"
+                                wire:target="addContentComment"
+                                class="btn btn-primary btn-sm"
+                                :disabled="!$wire.commentText"
+                            >
+                                <i
+                                    class="fas fa-paper-plane text-xs"
+                                    wire:loading.remove
+                                    wire:target="addContentComment"
+                                ></i>
+                                <i
+                                    class="fas fa-spinner fa-spin text-xs"
+                                    wire:loading
+                                    wire:target="addContentComment"
+                                ></i>
+                                Send
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
