@@ -179,12 +179,6 @@ Route::middleware('auth:client')->prefix('client')->group(function () {
     Route::middleware('client:dashboard')->group(function () {
         Volt::route('dashboard', 'pages.dashboard.client-dashboard')->name('client.dashboard');
     });
-    Route::middleware('client:contentPlanner')->group(function () {
-        Volt::route('content-planner', 'pages.calendar.index')->name('client.content-planner');
-    });
-    Route::middleware('client:workflow')->group(function () {
-        Volt::route('workflow', 'pages.workflow.index')->name('client.workflow');
-    });
     Route::middleware('client:approvals')->group(function () {
         Volt::route('approvals', 'pages.approvals.index')->name('client.approvals');
     });

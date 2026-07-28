@@ -12,7 +12,7 @@ class EnsureClientPortalAccess
      * Whitelisted client-portal routes.
      */
     protected const WHITELIST = [
-        'dashboard', 'contentPlanner', 'workflow',
+        'dashboard',
         'approvals', 'complaints', 'reports', 'profile',
     ];
 

@@ -136,28 +136,6 @@
                         <span>Overview</span>
                     </a>
                     <a
-                        href="{{ route('client.content-planner') }}"
-                        class="sidebar-link flex items-center gap-3 rounded-xl px-3 py-2.5 text-[13px] font-medium text-gray-500 hover:bg-gray-50 hover:text-gray-900 {{ request()->routeIs('client.content-planner') ? 'active' : '' }}"
-                    >
-                        <div
-                            class="icon-box flex h-8 w-8 items-center justify-center rounded-lg bg-gray-100 text-gray-500 transition-colors"
-                        >
-                            <i class="fas fa-calendar-alt text-xs"></i>
-                        </div>
-                        <span>Content Schedule</span>
-                    </a>
-                    <a
-                        href="{{ route('client.workflow') }}"
-                        class="sidebar-link flex items-center gap-3 rounded-xl px-3 py-2.5 text-[13px] font-medium text-gray-500 hover:bg-gray-50 hover:text-gray-900 {{ request()->routeIs('client.workflow') ? 'active' : '' }}"
-                    >
-                        <div
-                            class="icon-box flex h-8 w-8 items-center justify-center rounded-lg bg-gray-100 text-gray-500 transition-colors"
-                        >
-                            <i class="fas fa-project-diagram text-xs"></i>
-                        </div>
-                        <span>Workflow</span>
-                    </a>
-                    <a
                         href="{{ route('client.approvals') }}"
                         class="sidebar-link flex items-center gap-3 rounded-xl px-3 py-2.5 text-[13px] font-medium text-gray-500 hover:bg-gray-50 hover:text-gray-900 {{ request()->routeIs('client.approvals') ? 'active' : '' }}"
                     >
