@@ -1,3 +1,4 @@
+/* globals $wire */
 import { Editor } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import Image from '@tiptap/extension-image';
@@ -25,7 +26,7 @@ document.addEventListener('alpine:init', () => {
             if (!alive()) return;
             try {
                 return fn();
-            } catch (e) {
+            } catch {
                 return;
             }
         };
@@ -69,7 +70,7 @@ document.addEventListener('alpine:init', () => {
                             const html = e.getHTML();
                             if (target) {
                                 target.value = html;
-                                target.dispatchEvent(new Event('input', { bubbles: true }));
+                                target.dispatchEvent(new window.Event('input', { bubbles: true }));
                             }
                             this.$dispatch('tiptap-change', { html });
                             // Bump reactive flag so toolbar :class bindings
@@ -80,7 +81,7 @@ document.addEventListener('alpine:init', () => {
                     });
                     this._hasEditor = true;
                     this._tick = 0;
-                } catch (e) {
+                } catch {
                     editorInstance = null;
                 } finally {
                     initializing = false;
@@ -93,7 +94,9 @@ document.addEventListener('alpine:init', () => {
                 if (editorInstance) {
                     try {
                         editorInstance.destroy();
-                    } catch (e) {}
+                    } catch {
+                        // ignore destroy errors
+                    }
                     editorInstance = null;
                 }
             },
@@ -101,10 +104,10 @@ document.addEventListener('alpine:init', () => {
             setContentSafe(html) {
                 if (!alive() || this._destroyed) return;
                 const incoming = html || '';
-                let current = '';
+                let current;
                 try {
                     current = editorInstance.getHTML();
-                } catch (e) {
+                } catch {
                     return;
                 }
                 const norm = (h) => (h === '<p></p>' ? '' : h);
@@ -114,7 +117,7 @@ document.addEventListener('alpine:init', () => {
                     editorInstance.commands.setContent(incoming, false);
                     if (target) target.value = incoming;
                     this._tick = (this._tick || 0) + 1;
-                } catch (e) {
+                } catch {
                     // stale transaction — swallow
                 } finally {
                     syncing = false;
@@ -178,8 +181,9 @@ document.addEventListener('alpine:init', () => {
                 try {
                     const res = await $wire.getPickableFiles('', null);
                     this._mediaFiles = res || [];
-                } catch (e) {
-                    console.error(e);
+                } catch {
+                    // eslint-disable-next-line no-console
+                    console.error('Failed to load media files');
                     this._mediaFiles = [];
                 }
                 this._mediaLoading = false;
@@ -218,7 +222,7 @@ document.addEventListener('alpine:init', () => {
                 if (!alive() || this._destroyed) return false;
                 try {
                     return editorInstance.isActive(name, attrs);
-                } catch (e) {
+                } catch {
                     return false;
                 }
             }

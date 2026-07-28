@@ -1,32 +1,43 @@
 <?php
 
-use Livewire\Volt\Component;
-use Livewire\Attributes\Layout;
-use Livewire\Attributes\On;
-use Livewire\Attributes\Computed;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Response;
 use App\Models\Leave;
 use App\Models\Setting;
 use App\Support\UserVisibility;
+use Carbon\Carbon;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Response;
+use Livewire\Attributes\Computed;
+use Livewire\Attributes\Layout;
+use Livewire\Attributes\On;
+use Livewire\Volt\Component;
 
 new #[Layout('components.layouts.app')] class extends Component
 {
     public string $statusFilter = '';
+
     public bool $showForm = false;
+
     public int $editingId = 0;
+
     public string $formType = 'casual';
+
     public int $formMemberId = 0;
+
     public string $formStartDate = '';
+
     public string $formEndDate = '';
+
     public string $formReason = '';
 
     public bool $showRejectModal = false;
+
     public int $rejectTargetId = 0;
+
     public string $rejectReason = '';
 
     public bool $showDetail = false;
+
     public int $detailId = 0;
 
     public function mount(): void
@@ -45,6 +56,7 @@ new #[Layout('components.layouts.app')] class extends Component
     public function isManager(): bool
     {
         $user = Auth::user();
+
         return in_array($user->role, ['super-admin', 'admin', 'manager']);
     }
 
@@ -53,7 +65,9 @@ new #[Layout('components.layouts.app')] class extends Component
         $userId = Auth::id();
         $isMgr = $this->isManager();
         $q = DB::table('leaves');
-        if (!$isMgr) $q->where('member_id', $userId);
+        if (! $isMgr) {
+            $q->where('member_id', $userId);
+        }
 
         return [
             'my_leaves' => (clone $q)->where('member_id', $userId)->count(),
@@ -69,26 +83,31 @@ new #[Layout('components.layouts.app')] class extends Component
             ->join('users', 'leaves.member_id', '=', 'users.id')
             ->leftJoin('users as approver', 'leaves.approved_by', '=', 'approver.id');
 
-        if (!$this->isManager()) $q->where('leaves.member_id', Auth::id());
-        if ($this->statusFilter) $q->where('leaves.status', $this->statusFilter);
+        if (! $this->isManager()) {
+            $q->where('leaves.member_id', Auth::id());
+        }
+        if ($this->statusFilter) {
+            $q->where('leaves.status', $this->statusFilter);
+        }
 
         return $q->select('leaves.*', 'users.name as member_name', 'approver.name as approver_name')
             ->orderByRaw("FIELD(leaves.status, 'pending', 'rejected', 'approved')")
             ->orderBy('leaves.created_at', 'desc')
             ->get()
             ->map(function ($l) {
-                $l->type_class = match($l->type) {
+                $l->type_class = match ($l->type) {
                     'sick' => 'badge-danger',
                     'casual' => 'badge-info',
                     'annual' => 'badge-success',
                     'personal' => 'badge-warning',
                     default => 'badge-gray',
                 };
-                $l->status_class = match($l->status) {
+                $l->status_class = match ($l->status) {
                     'approved' => 'badge-success',
                     'rejected' => 'badge-danger',
                     default => 'badge-warning',
                 };
+
                 return $l;
             });
     }
@@ -166,8 +185,9 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function submitRejection(): void
     {
-        if (!trim($this->rejectReason)) {
+        if (! trim($this->rejectReason)) {
             $this->dispatch('toast', message: 'Please provide a reason for rejection', type: 'error');
+
             return;
         }
         DB::table('leaves')->where('id', $this->rejectTargetId)->update([
@@ -210,6 +230,7 @@ new #[Layout('components.layouts.app')] class extends Component
             }
             fclose($file);
         };
+
         return Response::stream($callback, 200, $headers);
     }
 
@@ -246,8 +267,8 @@ new #[Layout('components.layouts.app')] class extends Component
         $settings = Setting::current();
         $maxPaid = (int) $settings->paid_leaves_per_year;
         $year = (int) now()->year;
-        $yearStart = \Carbon\Carbon::createFromDate($year, 1, 1);
-        $yearEnd = \Carbon\Carbon::createFromDate($year, 12, 31);
+        $yearStart = Carbon::createFromDate($year, 1, 1);
+        $yearEnd = Carbon::createFromDate($year, 12, 31);
 
         $yearLeaves = DB::table('leaves')
             ->where('member_id', $userId)
@@ -258,7 +279,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
         $used = 0;
         foreach ($yearLeaves as $l) {
-            $days = (int) \Carbon\Carbon::parse($l->start_date)->diffInDays(\Carbon\Carbon::parse($l->end_date)) + 1;
+            $days = (int) Carbon::parse($l->start_date)->diffInDays(Carbon::parse($l->end_date)) + 1;
             if (in_array($l->type, ['annual', 'casual'], true)) {
                 $used += $days;
             }
@@ -371,7 +392,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                     @endif
                                 </div>
                                 <div class="flex items-center gap-1">
-                                    <button type="button" wire:click="$dispatch('open-leave-detail', {{ $l->id }})" class="btn btn-ghost btn-sm" aria-label="View leave"><i class="fas fa-eye text-xs"></i></button>
+                                    <button type="button" wire:click="$dispatch('open-leave-detail', [{{ $l->id }}])" class="btn btn-ghost btn-sm" aria-label="View leave"><i class="fas fa-eye text-xs"></i></button>
                                     @if($this->isMgr)
                                     <button type="button" wire:click="$dispatch('open-confirm', { title: 'Delete Leave?', message: 'This leave request will be permanently removed.', type: 'danger', action: 'deleteLeave', params: [{{ $l->id }}] })" class="btn btn-ghost btn-sm text-red-500" aria-label="Delete leave"><i class="fas fa-trash text-xs"></i></button>
                                     @endif
