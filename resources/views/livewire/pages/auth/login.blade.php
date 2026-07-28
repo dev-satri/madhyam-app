@@ -13,11 +13,17 @@ use Livewire\Volt\Component;
 new #[Layout('components.layouts.guest')] class extends Component
 {
     public string $email = '';
+
     public string $password = '';
+
     public bool $remember = false;
+
     public string $loginMode = 'staff';
+
     public bool $showPassword = false;
+
     public string $errorMessage = '';
+
     public bool $loading = false;
 
     /**
@@ -56,6 +62,7 @@ new #[Layout('components.layouts.guest')] class extends Component
             // Rate-limit check first — never touch guard->attempt() while locked out.
             if ($this->isRateLimited()) {
                 $this->fireLockoutMessage();
+
                 return;
             }
 
@@ -69,6 +76,7 @@ new #[Layout('components.layouts.guest')] class extends Component
                     ? route('client.dashboard', absolute: false)
                     : route('dashboard', absolute: false);
                 $this->redirectIntended(default: $default, navigate: true);
+
                 return;
             }
 
@@ -78,6 +86,7 @@ new #[Layout('components.layouts.guest')] class extends Component
 
             if ($this->isRateLimited()) {
                 $this->fireLockoutMessage();
+
                 return;
             }
 
@@ -120,7 +129,7 @@ new #[Layout('components.layouts.guest')] class extends Component
     protected function throttleKey(): string
     {
         return Str::transliterate(
-            Str::lower($this->email).'|'.request()->ip().'|'.$this->loginMode
+            Str::lower($this->email) . '|' . request()->ip() . '|' . $this->loginMode
         );
     }
 
@@ -343,86 +352,94 @@ new #[Layout('components.layouts.guest')] class extends Component
                     </button>
                 </form>
 
-                {{-- Collapsible demo accounts --}}
-                <div class="mt-6 border-t border-gray-100 pt-4" x-data="{ open: false }">
-                    <button
-                        type="button"
-                        @click="open = !open"
-                        :aria-expanded="open"
-                        class="flex w-full items-center justify-between text-xs font-medium text-gray-500 hover:text-gray-700 transition-colors"
-                    >
-                        <span class="inline-flex items-center gap-1.5">
-                            <i class="fas fa-flask text-[10px]"></i>
-                            Try a demo account
-                        </span>
-                        <i
-                            class="fas fa-chevron-down text-[10px] transition-transform"
-                            :class="open && 'rotate-180'"
-                        ></i>
-                    </button>
+                @if (config('app.debug'))
+                    {{-- Collapsible demo accounts --}}
+                    <div class="mt-6 border-t border-gray-100 pt-4" x-data="{ open: false }">
+                        <button
+                            type="button"
+                            @click="open = !open"
+                            :aria-expanded="open"
+                            class="flex w-full items-center justify-between text-xs font-medium text-gray-500 hover:text-gray-700 transition-colors"
+                        >
+                            <span class="inline-flex items-center gap-1.5">
+                                <i class="fas fa-flask text-[10px]"></i>
+                                Try a demo account
+                            </span>
+                            <i
+                                class="fas fa-chevron-down text-[10px] transition-transform"
+                                :class="open && 'rotate-180'"
+                            ></i>
+                        </button>
 
-                    <div
-                        x-show="open"
-                        x-transition:enter="transition ease-out duration-150"
-                        x-transition:enter-start="opacity-0 -translate-y-1"
-                        x-transition:enter-end="opacity-100 translate-y-0"
-                        x-transition:leave="transition ease-in duration-100"
-                        x-transition:leave-start="opacity-100"
-                        x-transition:leave-end="opacity-0"
-                        class="mt-3"
-                        style="display: none"
-                    >
-                        @if ($loginMode === 'staff')
-                            <div class="grid grid-cols-2 gap-2">
-                                @foreach ([
+                        <div
+                            x-show="open"
+                            x-transition:enter="transition ease-out duration-150"
+                            x-transition:enter-start="opacity-0 -translate-y-1"
+                            x-transition:enter-end="opacity-100 translate-y-0"
+                            x-transition:leave="transition ease-in duration-100"
+                            x-transition:leave-start="opacity-100"
+                            x-transition:leave-end="opacity-0"
+                            class="mt-3"
+                            style="display: none"
+                        >
+                            @if ($loginMode === 'staff')
+                                <div class="grid grid-cols-2 gap-2">
+                                    @foreach ([
                                     ['label' => 'Super Admin', 'email' => 'superadmin@madhyam.com', 'password' => 'SuperAdmin@123'],
                                     ['label' => 'Admin', 'email' => 'admin@madhyam.com', 'password' => 'Admin@123'],
                                     ['label' => 'Editor', 'email' => 'staff.editor@madhyam.com', 'password' => 'Staff@123'],
                                     ['label' => 'Videographer', 'email' => 'staff.video@madhyam.com', 'password' => 'Staff@123'],
                                 ] as $account)
-                                    <button
-                                        type="button"
-                                        wire:click="fillDemo('{{ $account['email'] }}', '{{ $account['password'] }}')"
-                                        class="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 text-left transition-colors hover:border-brand-200 hover:bg-brand-50"
-                                    >
-                                        <p class="text-xs font-semibold text-gray-700">{{ $account['label'] }}</p>
-                                        <p class="text-[10px] text-gray-500 truncate">{{ $account['email'] }}</p>
-                                    </button>
-                                @endforeach
-                            </div>
-                        @else
-                            <div class="space-y-2">
-                                @foreach ([
+                                        <button
+                                            type="button"
+                                            wire:click="fillDemo('{{ $account['email'] }}', '{{ $account['password'] }}')"
+                                            class="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 text-left transition-colors hover:border-brand-200 hover:bg-brand-50"
+                                        >
+                                            <p class="text-xs font-semibold text-gray-700">{{ $account['label'] }}</p>
+                                            <p class="text-[10px] text-gray-500 truncate">{{ $account['email'] }}</p>
+                                        </button>
+                                    @endforeach
+                                </div>
+                            @else
+                                <div class="space-y-2">
+                                    @foreach ([
                                     ['label' => 'Himalayan Coffee Co.', 'email' => 'client1@madhyam.com', 'password' => 'Client@123'],
                                     ['label' => 'Trek Nepal Adventures', 'email' => 'client2@madhyam.com', 'password' => 'Client@123'],
                                 ] as $account)
-                                    <button
-                                        type="button"
-                                        wire:click="fillDemo('{{ $account['email'] }}', '{{ $account['password'] }}')"
-                                        class="w-full rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 text-left transition-colors hover:border-brand-200 hover:bg-brand-50"
-                                    >
-                                        <p class="text-xs font-semibold text-gray-700">{{ $account['label'] }}</p>
-                                        <p class="text-[10px] text-gray-500 truncate">{{ $account['email'] }}</p>
-                                    </button>
-                                @endforeach
-                            </div>
-                        @endif
+                                        <button
+                                            type="button"
+                                            wire:click="fillDemo('{{ $account['email'] }}', '{{ $account['password'] }}')"
+                                            class="w-full rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 text-left transition-colors hover:border-brand-200 hover:bg-brand-50"
+                                        >
+                                            <p class="text-xs font-semibold text-gray-700">{{ $account['label'] }}</p>
+                                            <p class="text-[10px] text-gray-500 truncate">{{ $account['email'] }}</p>
+                                        </button>
+                                    @endforeach
+                                </div>
+                            @endif
+                        </div>
                     </div>
-                </div>
+                @endif
             </div>
         </div>
 
         {{-- Footer --}}
         <div class="mt-6 text-center space-y-3">
             <p class="text-xs text-gray-400">&copy; 2026 Madhyam Agency. All rights reserved.</p>
-            <button
-                type="button"
-                wire:click="$dispatch('open-confirm', { title: 'Reset Demo Data?', message: 'This will re-seed the database and wipe all current data. Continue?', type: 'warning', action: 'resetDemoData', confirmLabel: 'Reset' })"
-                class="inline-flex items-center gap-1.5 rounded-md border border-red-200 bg-white px-2.5 py-1 text-xs font-medium text-red-600 shadow-sm transition-colors hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
-            >
-                <i class="fas fa-rotate-right text-[10px]"></i>
-                Reset Demo Data
-            </button>
+            @if (config('app.debug'))
+                <span
+                    class="inline-block rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-700"
+                    >{{ config('app.env', 'unknown') }}</span
+                >
+                <button
+                    type="button"
+                    wire:click="$dispatch('open-confirm', { title: 'Reset Demo Data?', message: 'This will re-seed the database and wipe all current data. Continue?', type: 'warning', action: 'resetDemoData', confirmLabel: 'Reset' })"
+                    class="inline-flex items-center gap-1.5 rounded-md border border-red-200 bg-white px-2.5 py-1 text-xs font-medium text-red-600 shadow-sm transition-colors hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
+                >
+                    <i class="fas fa-rotate-right text-[10px]"></i>
+                    Reset Demo Data
+                </button>
+            @endif
         </div>
     </div>
 
