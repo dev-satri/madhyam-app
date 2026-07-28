@@ -3,7 +3,10 @@
 namespace App\Providers;
 
 use App\Services\RbacService;
+use App\Services\SystemHealthService;
+use Illuminate\Console\Events\ScheduledTaskFinished;
 use Illuminate\Support\Facades\Blade;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -43,6 +46,13 @@ class AppServiceProvider extends ServiceProvider
             $user = auth()->user();
 
             return $user && $user->role === 'super-admin';
+        });
+
+        // Persist scheduler run history for the System Health tab.
+        // Laravel doesn't track last-run out of the box — hook into
+        // ScheduledTaskFinished and append to a JSON ledger.
+        Event::listen(ScheduledTaskFinished::class, function (ScheduledTaskFinished $event) {
+            app(SystemHealthService::class)->recordScheduledRun($event);
         });
     }
 }

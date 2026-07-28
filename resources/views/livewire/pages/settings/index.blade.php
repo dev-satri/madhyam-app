@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
 use App\Models\CustomRole;
 use App\Services\RbacService;
+use App\Services\SystemHealthService;
 
 new #[Layout('components.layouts.app')] class extends Component
 {
@@ -50,6 +51,13 @@ new #[Layout('components.layouts.app')] class extends Component
     public int $backupIntervalDays = 7;
     public bool $showClearConfirm = false;
     public $importFile = null;
+
+    // System Health tab (super-admin only)
+    public string $testMailTo = '';
+    public ?string $mailTestResult = null;
+    public bool $mailTestOk = false;
+    public ?string $lastActionOutput = null;
+    public ?string $expandedFailedUuid = null;
 
     public function mount(): void
     {
@@ -347,6 +355,103 @@ new #[Layout('components.layouts.app')] class extends Component
         $this->dispatch('toast', message: 'All data cleared. Please re-run seeders.', type: 'success');
     }
 
+    /* ---------------- System Health (super-admin) ---------------- */
+
+    private function guardSuperAdmin(): void
+    {
+        abort_unless(Auth::check() && Auth::user()->role === 'super-admin', 403);
+    }
+
+    #[Computed]
+    public function healthSnapshot(): array
+    {
+        if (!Auth::check() || Auth::user()->role !== 'super-admin') {
+            return ['queue' => [], 'failed' => [], 'scheduled' => []];
+        }
+        $svc = app(SystemHealthService::class);
+        return [
+            'queue' => $svc->queueStats(),
+            'failed' => $svc->failedJobs(25),
+            'scheduled' => $svc->scheduledCommands(),
+        ];
+    }
+
+    public function refreshHealth(): void
+    {
+        unset($this->healthSnapshot);
+    }
+
+    public function toggleFailedDetails(string $uuid): void
+    {
+        $this->expandedFailedUuid = $this->expandedFailedUuid === $uuid ? null : $uuid;
+    }
+
+    public function retryFailedJob(string $uuid): void
+    {
+        $this->guardSuperAdmin();
+        $this->lastActionOutput = app(SystemHealthService::class)->retryFailed($uuid);
+        unset($this->healthSnapshot);
+        $this->dispatch('toast', message: 'Job re-queued', type: 'success');
+    }
+
+    public function retryAllFailedJobs(): void
+    {
+        $this->guardSuperAdmin();
+        $this->lastActionOutput = app(SystemHealthService::class)->retryAllFailed();
+        unset($this->healthSnapshot);
+        $this->dispatch('toast', message: 'All failed jobs re-queued', type: 'success');
+    }
+
+    public function deleteFailedJob(string $uuid): void
+    {
+        $this->guardSuperAdmin();
+        $this->lastActionOutput = app(SystemHealthService::class)->deleteFailed($uuid);
+        unset($this->healthSnapshot);
+        $this->dispatch('toast', message: 'Failed job deleted', type: 'success');
+    }
+
+    public function flushAllFailedJobs(): void
+    {
+        $this->guardSuperAdmin();
+        $this->lastActionOutput = app(SystemHealthService::class)->flushAllFailed();
+        unset($this->healthSnapshot);
+        $this->dispatch('toast', message: 'Failed jobs cleared', type: 'success');
+    }
+
+    public function runScheduledCommand(string $key): void
+    {
+        $this->guardSuperAdmin();
+        $this->lastActionOutput = app(SystemHealthService::class)->runScheduledCommand($key);
+        unset($this->healthSnapshot);
+        $this->dispatch('toast', message: 'Command executed', type: 'success');
+    }
+
+    public function clearCacheType(string $type): void
+    {
+        $this->guardSuperAdmin();
+        $this->lastActionOutput = app(SystemHealthService::class)->clearCache($type);
+        $this->dispatch('toast', message: ucfirst($type).' cache cleared', type: 'success');
+    }
+
+    public function clearAllCachesNow(): void
+    {
+        $this->guardSuperAdmin();
+        $this->lastActionOutput = app(SystemHealthService::class)->clearAllCaches();
+        $this->dispatch('toast', message: 'All caches cleared', type: 'success');
+    }
+
+    public function sendTestMail(): void
+    {
+        $this->guardSuperAdmin();
+        $this->validate([
+            'testMailTo' => 'required|email',
+        ]);
+        $result = app(SystemHealthService::class)->sendTestMail($this->testMailTo);
+        $this->mailTestOk = $result['ok'];
+        $this->mailTestResult = $result['message'];
+        $this->dispatch('toast', message: $result['message'], type: $result['ok'] ? 'success' : 'error');
+    }
+
     public function render(): mixed
     {
         return <<<'blade'
@@ -367,6 +472,9 @@ new #[Layout('components.layouts.app')] class extends Component
                         <button wire:click="$set('activeTab', 'data-access')" class="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors {{ $activeTab === 'data-access' ? 'bg-[rgba(var(--brand-rgb),0.08)] text-[var(--brand)]' : 'text-gray-600 hover:bg-gray-50' }}"><i class="fas fa-database"></i> Data Access</button>
                         @endif
                         <button wire:click="$set('activeTab', 'backup')" class="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors {{ $activeTab === 'backup' ? 'bg-[rgba(var(--brand-rgb),0.08)] text-[var(--brand)]' : 'text-gray-600 hover:bg-gray-50' }}"><i class="fas fa-download"></i> Backup</button>
+                        @isSuperAdmin
+                        <button wire:click="$set('activeTab', 'system-health')" class="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors {{ $activeTab === 'system-health' ? 'bg-[rgba(var(--brand-rgb),0.08)] text-[var(--brand)]' : 'text-gray-600 hover:bg-gray-50' }}"><i class="fas fa-heartbeat"></i> System Health</button>
+                        @endisSuperAdmin
                     </div>
                 </div>
 
@@ -679,6 +787,211 @@ new #[Layout('components.layouts.app')] class extends Component
                             </div>
                             @endif
                         </div>
+                    @endif
+
+                    {{-- System Health (super-admin only) --}}
+                    @if($activeTab === 'system-health')
+                        @isSuperAdmin
+                        @php $snap = $this->healthSnapshot; @endphp
+                        <div class="space-y-6">
+                            <div class="flex items-start justify-between gap-4">
+                                <div>
+                                    <h2 class="font-bold text-lg">System Health</h2>
+                                    <p class="text-sm text-gray-500 mt-1">Monitor queue jobs, scheduled commands, caches, and mail. Super-admin only.</p>
+                                </div>
+                                <button wire:click="refreshHealth" class="btn btn-secondary btn-sm" wire:loading.attr="disabled" wire:target="refreshHealth">
+                                    <i class="fas fa-sync-alt mr-1"></i>
+                                    <span wire:loading.remove wire:target="refreshHealth">Refresh</span>
+                                    <span wire:loading wire:target="refreshHealth" style="display:none;">Refreshing…</span>
+                                </button>
+                            </div>
+
+                            {{-- Queue Health --}}
+                            <div class="bg-white rounded-2xl border border-gray-100 p-6 space-y-4">
+                                <div class="flex items-center justify-between gap-3">
+                                    <div class="flex items-center gap-3">
+                                        <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600"><i class="fas fa-tasks"></i></div>
+                                        <div>
+                                            <h3 class="font-semibold text-sm">Queue Health</h3>
+                                            <p class="text-xs text-gray-500">Pending, reserved, and failed jobs on the database driver</p>
+                                        </div>
+                                    </div>
+                                    @if(($snap['queue']['failed'] ?? 0) > 0)
+                                        <div class="flex flex-wrap gap-2">
+                                            <button type="button" wire:click="$dispatch('open-confirm', { title: 'Retry all failed jobs?', message: 'Every failed job will be re-queued for processing.', type: 'warning', action: 'retryAllFailedJobs', params: [] })" class="btn btn-secondary btn-sm"><i class="fas fa-redo mr-1"></i> Retry all</button>
+                                            <button type="button" wire:click="$dispatch('open-confirm', { title: 'Delete all failed jobs?', message: 'This permanently removes every entry from the failed_jobs table.', type: 'danger', action: 'flushAllFailedJobs', params: [] })" class="btn btn-danger btn-sm"><i class="fas fa-trash mr-1"></i> Flush all</button>
+                                        </div>
+                                    @endif
+                                </div>
+
+                                <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+                                    <div class="rounded-xl border border-gray-100 p-3">
+                                        <div class="text-xs text-gray-500">Pending</div>
+                                        <div class="text-2xl font-bold text-gray-900">{{ $snap['queue']['pending'] ?? 0 }}</div>
+                                    </div>
+                                    <div class="rounded-xl border border-gray-100 p-3">
+                                        <div class="text-xs text-gray-500">Reserved</div>
+                                        <div class="text-2xl font-bold text-gray-900">{{ $snap['queue']['reserved'] ?? 0 }}</div>
+                                    </div>
+                                    <div class="rounded-xl border {{ ($snap['queue']['failed'] ?? 0) > 0 ? 'border-red-200 bg-red-50' : 'border-gray-100' }} p-3">
+                                        <div class="text-xs {{ ($snap['queue']['failed'] ?? 0) > 0 ? 'text-red-600' : 'text-gray-500' }}">Failed</div>
+                                        <div class="text-2xl font-bold {{ ($snap['queue']['failed'] ?? 0) > 0 ? 'text-red-700' : 'text-gray-900' }}">{{ $snap['queue']['failed'] ?? 0 }}</div>
+                                    </div>
+                                    <div class="rounded-xl border border-gray-100 p-3">
+                                        <div class="text-xs text-gray-500">Oldest pending</div>
+                                        <div class="text-sm font-medium text-gray-800 mt-1">{{ $snap['queue']['oldest_pending_at'] ?? '—' }}</div>
+                                    </div>
+                                </div>
+
+                                @if(!empty($snap['failed']))
+                                    <div class="rounded-xl border border-gray-100 overflow-hidden">
+                                        <div class="bg-gray-50 px-4 py-2 border-b border-gray-100 text-xs font-semibold text-gray-600">Failed jobs ({{ count($snap['failed']) }})</div>
+                                        <div class="divide-y divide-gray-100">
+                                            @foreach($snap['failed'] as $job)
+                                                <div class="p-3">
+                                                    <div class="flex items-start justify-between gap-3">
+                                                        <div class="min-w-0 flex-1">
+                                                            <div class="font-medium text-sm text-gray-900 truncate">{{ $job['display'] }}</div>
+                                                            <div class="text-xs text-gray-500 mt-0.5">
+                                                                <span class="font-mono">{{ $job['queue'] }}</span> · failed {{ $job['failed_at'] }}
+                                                            </div>
+                                                            <div class="text-xs text-red-600 mt-1 truncate">{{ $job['exception_first_line'] }}</div>
+                                                        </div>
+                                                        <div class="flex items-center gap-1 flex-shrink-0">
+                                                            <button wire:click="toggleFailedDetails('{{ $job['uuid'] }}')" class="btn btn-icon btn-ghost" title="Details"><i class="fas fa-eye text-gray-400 text-xs"></i></button>
+                                                            <button wire:click="retryFailedJob('{{ $job['uuid'] }}')" class="btn btn-icon btn-ghost" title="Retry"><i class="fas fa-redo text-gray-400 hover:text-[var(--brand)] text-xs"></i></button>
+                                                            <button type="button" wire:click="$dispatch('open-confirm', { title: 'Delete this failed job?', message: 'It will be removed from the failed_jobs table permanently.', type: 'danger', action: 'deleteFailedJob', params: ['{{ $job['uuid'] }}'] })" class="btn btn-icon btn-ghost" title="Delete"><i class="fas fa-trash text-gray-400 hover:text-red-500 text-xs"></i></button>
+                                                        </div>
+                                                    </div>
+                                                    @if($expandedFailedUuid === $job['uuid'])
+                                                        <pre class="mt-2 rounded-lg bg-gray-900 text-gray-100 text-xs p-3 overflow-x-auto max-h-64">{{ $job['exception'] }}</pre>
+                                                    @endif
+                                                </div>
+                                            @endforeach
+                                        </div>
+                                    </div>
+                                @else
+                                    <div class="text-xs text-gray-500 rounded-lg bg-green-50 border border-green-100 px-3 py-2"><i class="fas fa-check-circle text-green-600 mr-1"></i> No failed jobs.</div>
+                                @endif
+                            </div>
+
+                            {{-- Scheduler --}}
+                            <div class="bg-white rounded-2xl border border-gray-100 p-6 space-y-4">
+                                <div class="flex items-center gap-3">
+                                    <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-50 text-amber-600"><i class="fas fa-clock"></i></div>
+                                    <div>
+                                        <h3 class="font-semibold text-sm">Scheduled Commands</h3>
+                                        <p class="text-xs text-gray-500">Cron entries and their last recorded runs (times in Asia/Kathmandu)</p>
+                                    </div>
+                                </div>
+
+                                @if(empty($snap['scheduled']))
+                                    <div class="text-xs text-gray-500 rounded-lg bg-gray-50 border border-gray-100 px-3 py-2">No scheduled commands registered.</div>
+                                @else
+                                    <div class="rounded-xl border border-gray-100 overflow-x-auto">
+                                        <table class="min-w-full text-sm">
+                                            <thead class="bg-gray-50 text-xs uppercase text-gray-500">
+                                                <tr>
+                                                    <th class="px-3 py-2 text-left font-semibold">Command</th>
+                                                    <th class="px-3 py-2 text-left font-semibold">Schedule</th>
+                                                    <th class="px-3 py-2 text-left font-semibold">Last run</th>
+                                                    <th class="px-3 py-2 text-left font-semibold">Next run</th>
+                                                    <th class="px-3 py-2 text-right font-semibold">Action</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody class="divide-y divide-gray-100">
+                                                @foreach($snap['scheduled'] as $cmd)
+                                                    <tr>
+                                                        <td class="px-3 py-2">
+                                                            <div class="font-mono text-xs text-gray-800">{{ $cmd['key'] }}</div>
+                                                            @if($cmd['description'] && $cmd['description'] !== $cmd['key'])
+                                                                <div class="text-xs text-gray-500 mt-0.5">{{ $cmd['description'] }}</div>
+                                                            @endif
+                                                        </td>
+                                                        <td class="px-3 py-2 text-xs text-gray-600 font-mono">{{ $cmd['expression'] }}</td>
+                                                        <td class="px-3 py-2 text-xs">
+                                                            @if($cmd['last_run_at'])
+                                                                <div class="text-gray-800">{{ $cmd['last_run_at'] }}</div>
+                                                                <div class="text-gray-400">
+                                                                    exit {{ $cmd['last_exit_code'] }} · {{ $cmd['last_duration_ms'] }}ms
+                                                                </div>
+                                                            @else
+                                                                <span class="text-gray-400">Never</span>
+                                                            @endif
+                                                        </td>
+                                                        <td class="px-3 py-2 text-xs">
+                                                            <div class="text-gray-800">{{ $cmd['next_run'] }}</div>
+                                                            <div class="text-gray-400">in {{ $cmd['next_in'] }}</div>
+                                                        </td>
+                                                        <td class="px-3 py-2 text-right">
+                                                            <button type="button" wire:click="$dispatch('open-confirm', { title: 'Run this command now?', message: 'The command will execute immediately outside its schedule.', type: 'warning', action: 'runScheduledCommand', params: ['{{ $cmd['key'] }}'] })" class="btn btn-secondary btn-sm"><i class="fas fa-play mr-1 text-xs"></i> Run now</button>
+                                                        </td>
+                                                    </tr>
+                                                @endforeach
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                @endif
+                            </div>
+
+                            {{-- Caches --}}
+                            <div class="bg-white rounded-2xl border border-gray-100 p-6 space-y-4">
+                                <div class="flex items-center gap-3">
+                                    <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-purple-50 text-purple-600"><i class="fas fa-broom"></i></div>
+                                    <div>
+                                        <h3 class="font-semibold text-sm">Caches</h3>
+                                        <p class="text-xs text-gray-500">Clear application, view, config, route, compiled, and event caches</p>
+                                    </div>
+                                </div>
+                                <div class="grid grid-cols-2 md:grid-cols-3 gap-2">
+                                    <button wire:click="clearCacheType('application')" class="btn btn-secondary btn-sm justify-center"><i class="fas fa-database mr-1 text-xs"></i> Application</button>
+                                    <button wire:click="clearCacheType('view')" class="btn btn-secondary btn-sm justify-center"><i class="fas fa-eye mr-1 text-xs"></i> Views</button>
+                                    <button wire:click="clearCacheType('config')" class="btn btn-secondary btn-sm justify-center"><i class="fas fa-cog mr-1 text-xs"></i> Config</button>
+                                    <button wire:click="clearCacheType('route')" class="btn btn-secondary btn-sm justify-center"><i class="fas fa-route mr-1 text-xs"></i> Routes</button>
+                                    <button wire:click="clearCacheType('compiled')" class="btn btn-secondary btn-sm justify-center"><i class="fas fa-file-code mr-1 text-xs"></i> Compiled</button>
+                                    <button wire:click="clearCacheType('event')" class="btn btn-secondary btn-sm justify-center"><i class="fas fa-bell mr-1 text-xs"></i> Events</button>
+                                </div>
+                                <button type="button" wire:click="$dispatch('open-confirm', { title: 'Clear ALL caches?', message: 'This runs cache:clear, view:clear, config:clear, route:clear, clear-compiled, and event:clear in sequence.', type: 'warning', action: 'clearAllCachesNow', params: [] })" class="btn btn-primary btn-sm w-full sm:w-auto"><i class="fas fa-broom mr-1"></i> Clear ALL caches</button>
+                            </div>
+
+                            {{-- Mail Test --}}
+                            <div class="bg-white rounded-2xl border border-gray-100 p-6 space-y-4">
+                                <div class="flex items-center gap-3">
+                                    <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-blue-600"><i class="fas fa-envelope"></i></div>
+                                    <div>
+                                        <h3 class="font-semibold text-sm">Mail Delivery Test</h3>
+                                        <p class="text-xs text-gray-500">Send a plain-text message using the current MAIL_MAILER configuration</p>
+                                    </div>
+                                </div>
+                                <div class="flex flex-col sm:flex-row gap-2">
+                                    <input type="email" wire:model="testMailTo" placeholder="you@example.com" class="form-input flex-1 min-w-0">
+                                    <button wire:click="sendTestMail" class="btn btn-primary btn-sm w-full sm:w-auto justify-center whitespace-nowrap" wire:loading.attr="disabled" wire:target="sendTestMail">
+                                        <span wire:loading.remove wire:target="sendTestMail"><i class="fas fa-paper-plane mr-1"></i> Send test</span>
+                                        <span wire:loading wire:target="sendTestMail" style="display:none;"><i class="fas fa-spinner fa-spin mr-1"></i> Sending…</span>
+                                    </button>
+                                </div>
+                                @error('testMailTo') <div class="text-xs text-red-500">{{ $message }}</div> @enderror
+                                @if($mailTestResult)
+                                    <div class="text-xs rounded-lg px-3 py-2 {{ $mailTestOk ? 'bg-green-50 border border-green-100 text-green-700' : 'bg-red-50 border border-red-100 text-red-700' }}">
+                                        <i class="fas {{ $mailTestOk ? 'fa-check-circle' : 'fa-exclamation-circle' }} mr-1"></i>{{ $mailTestResult }}
+                                    </div>
+                                @endif
+                            </div>
+
+                            {{-- Last action output --}}
+                            @if($lastActionOutput)
+                                <div class="bg-white rounded-2xl border border-gray-100 p-4 space-y-2">
+                                    <div class="flex items-center justify-between">
+                                        <h4 class="text-xs font-semibold text-gray-600 uppercase tracking-wide">Last action output</h4>
+                                        <button wire:click="$set('lastActionOutput', null)" class="text-xs text-gray-400 hover:text-gray-600">Dismiss</button>
+                                    </div>
+                                    <pre class="rounded-lg bg-gray-900 text-gray-100 text-xs p-3 overflow-x-auto max-h-48">{{ $lastActionOutput }}</pre>
+                                </div>
+                            @endif
+                        </div>
+                        @else
+                            <div class="bg-white rounded-2xl border border-gray-100 p-6 text-sm text-gray-500">System Health is available to super-admins only.</div>
+                        @endisSuperAdmin
                     @endif
                 </div>
             </div>
