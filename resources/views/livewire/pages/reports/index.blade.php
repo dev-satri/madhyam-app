@@ -1,54 +1,78 @@
 <?php
 
-use Livewire\Volt\Component;
-use Livewire\Attributes\Layout;
-use Livewire\Attributes\On;
-use Livewire\Attributes\Computed;
-use Livewire\WithFileUploads;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Storage;
 use App\Models\Invoice;
 use App\Models\InvoicePayment;
 use App\Models\User;
 use App\Notifications\InvoiceCreatedNotification;
 use App\Notifications\InvoicePaymentReceivedNotification;
-use App\Services\PaymentTracker;
 use App\Services\ActivityLogger;
 use App\Services\NotificationService;
+use App\Services\PaymentTracker;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Facades\Storage;
+use Livewire\Attributes\Computed;
+use Livewire\Attributes\Layout;
+use Livewire\Attributes\On;
+use Livewire\Volt\Component;
+use Livewire\WithFileUploads;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 new #[Layout('components.layouts.app')] class extends Component
 {
     use WithFileUploads;
 
     public string $activeTab = 'invoices';
+
     public string $search = '';
+
     public string $statusFilter = '';
+
     public string $clientFilter = '';
+
     public bool $showInvoiceForm = false;
+
     public bool $showRecordPayment = false;
+
     public bool $showDetail = false;
+
     public int $editingId = 0;
+
     public int $detailId = 0;
+
     public int $paymentInvoiceId = 0;
 
     // Invoice form fields
     public int $formClientId = 0;
+
     public string $formAmount = '';
+
     public string $formStatus = 'pending';
+
     public string $formDueDate = '';
+
     public string $formDescription = '';
+
     public string $formPaymentStatus = 'pending';
+
     public string $formDiscountAmount = '';
+
     public int $formTotalInstallments = 0;
+
     public int $formPaidInstallments = 0;
+
     public string $formAmountPerInstallment = '';
 
     // Record payment fields
     public string $payAmount = '';
+
     public string $payDate = '';
+
     public string $payMethod = 'cash';
+
     public string $payNote = '';
+
     public $payProof = null;
 
     public function mount(): void
@@ -72,6 +96,7 @@ new #[Layout('components.layouts.app')] class extends Component
         if ($account) {
             $query->where($column, $account->client_id);
         }
+
         return $query;
     }
 
@@ -111,18 +136,22 @@ new #[Layout('components.layouts.app')] class extends Component
         if ($this->search) {
             $q->where(function ($q) {
                 $q->where('clients.name', 'like', "%{$this->search}%")
-                  ->orWhere('invoices.description', 'like', "%{$this->search}%");
+                    ->orWhere('invoices.description', 'like', "%{$this->search}%");
             });
         }
-        if ($this->statusFilter) $q->where('invoices.status', $this->statusFilter);
-        if ($this->clientFilter) $q->where('invoices.client_id', $this->clientFilter);
+        if ($this->statusFilter) {
+            $q->where('invoices.status', $this->statusFilter);
+        }
+        if ($this->clientFilter) {
+            $q->where('invoices.client_id', $this->clientFilter);
+        }
 
         $invoices = $q->select('invoices.*', 'clients.name as client_name')
             ->orderBy('invoices.due_date', 'desc')
             ->get();
 
         $invoiceIds = $invoices->pluck('id')->toArray();
-        $payments = !empty($invoiceIds)
+        $payments = ! empty($invoiceIds)
             ? DB::table('invoice_payments')
                 ->whereIn('invoice_id', $invoiceIds)
                 ->selectRaw('invoice_id, SUM(amount) as total_paid')
@@ -138,6 +167,7 @@ new #[Layout('components.layouts.app')] class extends Component
                 $plan = is_string($inv->installment_plan) ? json_decode($inv->installment_plan, true) : $inv->installment_plan;
                 $inv->installment_progress = ($plan['paidInstallments'] ?? 0) . '/' . ($plan['totalInstallments'] ?? 0);
             }
+
             return $inv;
         });
     }
@@ -149,7 +179,9 @@ new #[Layout('components.layouts.app')] class extends Component
         $owned = $this->scopeToClient(DB::table('invoices'))
             ->where('id', $invoiceId)
             ->exists();
-        if (!$owned) return collect();
+        if (! $owned) {
+            return collect();
+        }
 
         return DB::table('invoice_payments')
             ->where('invoice_id', $invoiceId)
@@ -243,7 +275,7 @@ new #[Layout('components.layouts.app')] class extends Component
             // so clients without a portal login still receive the invoice.
             if ($verb === 'created' && $invoice->client && $invoice->client->email) {
                 $sent = [];
-                \Illuminate\Support\Facades\Notification::route('mail', $invoice->client->email)
+                Notification::route('mail', $invoice->client->email)
                     ->notify(new InvoiceCreatedNotification($invoice));
                 $sent[] = strtolower($invoice->client->email);
                 $invoice->client->accounts->each(function ($account) use ($invoice, &$sent) {
@@ -354,6 +386,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
         if ($payAmount > $context['remaining'] + 0.01) {
             $this->dispatch('toast', message: 'Payment amount (NPR ' . number_format($payAmount, 2) . ') exceeds remaining balance (NPR ' . number_format($context['remaining'], 2) . ')', type: 'error');
+
             return;
         }
 
@@ -410,7 +443,7 @@ new #[Layout('components.layouts.app')] class extends Component
             $payment = InvoicePayment::find($paymentId);
             if ($payment && $invoice->client && $invoice->client->email) {
                 $sent = [];
-                \Illuminate\Support\Facades\Notification::route('mail', $invoice->client->email)
+                Notification::route('mail', $invoice->client->email)
                     ->notify(new InvoicePaymentReceivedNotification($invoice, $payment));
                 $sent[] = strtolower($invoice->client->email);
                 $invoice->client->accounts->each(function ($account) use ($invoice, $payment, &$sent) {
@@ -448,7 +481,7 @@ new #[Layout('components.layouts.app')] class extends Component
                 app(NotificationService::class)->emailNotify(
                     to: $email,
                     subject: "Payment Received — NPR {$paymentAmount} from {$clientName}",
-                    body: "A payment of NPR {$paymentAmount} has been received from {$clientName} for Invoice #{$this->paymentInvoiceId}.\n\nMethod: " . ucfirst($this->payMethod) . "\nDate: {$this->payDate}\n\n" . ($invoice->status === 'paid' ? "This invoice is now FULLY PAID.\n\n" : "Remaining balance: NPR " . number_format($invoice->net_amount - $invoice->total_paid, 2) . "\n\n") . "View invoice: " . route('reports'),
+                    body: "A payment of NPR {$paymentAmount} has been received from {$clientName} for Invoice #{$this->paymentInvoiceId}.\n\nMethod: " . ucfirst($this->payMethod) . "\nDate: {$this->payDate}\n\n" . ($invoice->status === 'paid' ? "This invoice is now FULLY PAID.\n\n" : 'Remaining balance: NPR ' . number_format($invoice->net_amount - $invoice->total_paid, 2) . "\n\n") . 'View invoice: ' . route('reports'),
                 );
             }
         }
@@ -500,7 +533,7 @@ new #[Layout('components.layouts.app')] class extends Component
             $payment = InvoicePayment::where('invoice_id', $invoiceId)->latest()->first();
             if ($payment) {
                 $sent = [];
-                \Illuminate\Support\Facades\Notification::route('mail', $invoice->client->email)
+                Notification::route('mail', $invoice->client->email)
                     ->notify(new InvoicePaymentReceivedNotification($invoice, $payment));
                 $sent[] = strtolower($invoice->client->email);
                 $invoice->client->accounts->each(function ($account) use ($invoice, $payment, &$sent) {
@@ -532,7 +565,7 @@ new #[Layout('components.layouts.app')] class extends Component
             app(NotificationService::class)->emailNotify(
                 to: $email,
                 subject: "Invoice #{$invoiceId} Marked as Paid — {$clientName}",
-                body: "Invoice #{$invoiceId} for {$clientName} has been marked as paid.\n\n" . ($remaining > 0 ? "A final payment of NPR {$paymentAmount} was recorded to settle the remaining balance.\n\n" : "") . "View invoice: " . route('reports'),
+                body: "Invoice #{$invoiceId} for {$clientName} has been marked as paid.\n\n" . ($remaining > 0 ? "A final payment of NPR {$paymentAmount} was recorded to settle the remaining balance.\n\n" : '') . 'View invoice: ' . route('reports'),
             );
         }
 
@@ -567,7 +600,7 @@ new #[Layout('components.layouts.app')] class extends Component
         $this->dispatch('toast', message: 'Invoice deleted', type: 'success');
     }
 
-    public function exportCsv(): \Symfony\Component\HttpFoundation\StreamedResponse
+    public function exportCsv(): StreamedResponse
     {
         $invoices = $this->getInvoices();
 
@@ -661,6 +694,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
             $s->ot_days = $otCount;
             $s->leave_days = $leaveCount;
+
             return $s;
         });
     }
@@ -718,12 +752,16 @@ new #[Layout('components.layouts.app')] class extends Component
     {
         // Verify the payment's parent invoice is visible to the current viewer.
         $payment = DB::table('invoice_payments')->where('id', $paymentId)->first();
-        if (!$payment) return null;
+        if (! $payment) {
+            return null;
+        }
 
         $owned = $this->scopeToClient(DB::table('invoices'))
             ->where('id', $payment->invoice_id)
             ->exists();
-        if (!$owned) return null;
+        if (! $owned) {
+            return null;
+        }
 
         return $payment->proof_path ? Storage::url($payment->proof_path) : null;
     }
@@ -786,7 +824,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
         // Calculate actual remaining by subtracting payments
         $invoiceIds = $all->pluck('id')->toArray();
-        $payments = !empty($invoiceIds)
+        $payments = ! empty($invoiceIds)
             ? DB::table('invoice_payments')
                 ->whereIn('invoice_id', $invoiceIds)
                 ->selectRaw('invoice_id, SUM(amount) as total_paid')
@@ -886,13 +924,13 @@ new #[Layout('components.layouts.app')] class extends Component
                 {{-- Filters --}}
                 <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 items-start no-print">
                     <div><label class="form-label">Search</label><div class="relative"><i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs"></i><input type="text" wire:model.live.debounce.250ms="search" placeholder="Search invoices..." class="form-input pl-10 focus:ring-0"></div></div>
-                    <div><label class="form-label">Status</label><select wire:model="statusFilter" class="form-select">
+                    <div><label class="form-label">Status</label><select wire:model.live="statusFilter" class="form-select">
                         <option value="">All Status</option>
                         <option value="paid">Paid</option>
                         <option value="pending">Pending</option>
                         <option value="overdue">Overdue</option>
                     </select></div>
-                    <div><label class="form-label">Client</label><select wire:model="clientFilter" class="form-select">
+                    <div><label class="form-label">Client</label><select wire:model.live="clientFilter" class="form-select">
                         <option value="">All Clients</option>
                         @foreach($this->clients as $c)<option value="{{ $c->id }}">{{ $c->name }}</option>@endforeach
                     </select></div>
