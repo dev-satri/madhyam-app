@@ -1,29 +1,46 @@
 <?php
 
-use Livewire\Volt\Component;
-use Livewire\Attributes\Layout;
-use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\DB;
 use App\Services\RbacService;
 use App\Support\UserVisibility;
+use Carbon\Carbon;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
+use Livewire\Attributes\Layout;
+use Livewire\Volt\Component;
 
 new #[Layout('components.layouts.app')] class extends Component
 {
     public string $range = 'month';
+
     public $stats = [];
+
     public $revenueData = [];
+
     public $taskDistribution = [];
+
     public $platformData = [];
+
     public $stageData = [];
+
     public $workingHours = [];
+
     public $workload = [];
+
     public $deadlines = [];
+
     public $activities = [];
+
     public $teamPerformance = [];
+
     public string $backupReminder = '';
+
     public string $activityFilter = '';
+
     public string $activitySearch = '';
+
     public $allStaff = [];
+
+    public bool $isAdmin = false;
 
     public function mount(): void
     {
@@ -39,20 +56,19 @@ new #[Layout('components.layouts.app')] class extends Component
     public function loadData(): void
     {
         $user = Auth::user();
-        $isAdmin = in_array($user->role ?? '', ['super-admin', 'admin', 'manager']);
-        $isManagerPlus = $isAdmin;
+        $this->isAdmin = in_array($user->role ?? '', ['super-admin', 'admin', 'manager']);
         $userId = $user->id;
-        $rbac = new RbacService();
+        $rbac = new RbacService;
         $canSeeAllActivity = $rbac->hasDataAccess($user->role, 'seeAllActivity');
         $now = now();
 
-        $dateFilter = match($this->range) {
+        $dateFilter = match ($this->range) {
             'today' => $now->copy()->startOfDay(),
             'week' => $now->copy()->startOfWeek(),
             default => $now->copy()->startOfMonth(),
         };
 
-        if ($isAdmin) {
+        if ($this->isAdmin) {
             $this->stats = [
                 'type' => 'admin',
                 'clients' => DB::table('clients')->where('status', 'active')->count(),
@@ -79,55 +95,103 @@ new #[Layout('components.layouts.app')] class extends Component
             ->pluck('total', 'month')
             ->toArray();
 
-        $this->taskDistribution = DB::table('tasks')
-            ->select('status', DB::raw('COUNT(*) as count'))
-            ->groupBy('status')
-            ->get()
-            ->pluck('count', 'status')
-            ->toArray();
+        if ($this->isAdmin) {
+            $this->taskDistribution = DB::table('tasks')
+                ->select('status', DB::raw('COUNT(*) as count'))
+                ->groupBy('status')
+                ->get()
+                ->pluck('count', 'status')
+                ->toArray();
 
-        $this->platformData = DB::table('contents')
-            ->select('platform', DB::raw('COUNT(*) as count'))
-            ->groupBy('platform')
-            ->get()
-            ->pluck('count', 'platform')
-            ->toArray();
+            $this->platformData = DB::table('contents')
+                ->select('platform', DB::raw('COUNT(*) as count'))
+                ->groupBy('platform')
+                ->get()
+                ->pluck('count', 'platform')
+                ->toArray();
 
-        $this->stageData = DB::table('workflows')
-            ->select('stage', DB::raw('COUNT(*) as count'))
-            ->groupBy('stage')
-            ->get()
-            ->pluck('count', 'stage')
-            ->toArray();
+            $this->stageData = DB::table('workflows')
+                ->select('stage', DB::raw('COUNT(*) as count'))
+                ->groupBy('stage')
+                ->get()
+                ->pluck('count', 'stage')
+                ->toArray();
+        } else {
+            $this->taskDistribution = DB::table('tasks')
+                ->where('assignee', $userId)
+                ->select('status', DB::raw('COUNT(*) as count'))
+                ->groupBy('status')
+                ->get()
+                ->pluck('count', 'status')
+                ->toArray();
+        }
 
         $today = strtolower(substr(now()->englishDayOfWeek, 0, 3));
         $this->workingHours = DB::table('working_hours')
             ->where('day', $today)
             ->first();
 
-        $this->workload = DB::table('users')
-            ->leftJoin('tasks', 'users.id', '=', 'tasks.assignee')
-            ->select(
-                'users.id', 'users.name', 'users.role',
-                DB::raw("COUNT(CASE WHEN tasks.status IN ('todo','in-progress') THEN 1 END) as assigned"),
-                DB::raw("COUNT(CASE WHEN tasks.status = 'in-progress' THEN 1 END) as in_progress"),
-                DB::raw("COUNT(CASE WHEN tasks.status = 'completed' THEN 1 END) as completed"),
-                DB::raw("COUNT(CASE WHEN tasks.due_date < CURDATE() AND tasks.status != 'completed' THEN 1 END) as overdue")
-            )
-            ->groupBy('users.id', 'users.name', 'users.role')
-            ->get();
+        if ($this->isAdmin) {
+            $this->workload = DB::table('users')
+                ->leftJoin('tasks', 'users.id', '=', 'tasks.assignee')
+                ->select(
+                    'users.id',
+                    'users.name',
+                    'users.role',
+                    DB::raw("COUNT(CASE WHEN tasks.status IN ('todo','in-progress') THEN 1 END) as assigned"),
+                    DB::raw("COUNT(CASE WHEN tasks.status = 'in-progress' THEN 1 END) as in_progress"),
+                    DB::raw("COUNT(CASE WHEN tasks.status = 'completed' THEN 1 END) as completed"),
+                    DB::raw("COUNT(CASE WHEN tasks.due_date < CURDATE() AND tasks.status != 'completed' THEN 1 END) as overdue")
+                )
+                ->groupBy('users.id', 'users.name', 'users.role')
+                ->get();
+        }
 
         $this->deadlines = collect();
-        $workflowDeadlines = DB::table('workflows')->whereNotNull('deadline')->where('deadline', '>=', $now)->orderBy('deadline')->limit(10)->get()->map(fn($w) => (object)['type' => 'workflow', 'title' => $w->title, 'date' => $w->deadline, 'client_id' => $w->client_id]);
-        $taskDeadlines = DB::table('tasks')->whereNotNull('due_date')->where('due_date', '>=', $now)->where('status', '!=', 'completed')->orderBy('due_date')->limit(10)->get()->map(fn($t) => (object)['type' => 'task', 'title' => $t->title, 'date' => $t->due_date]);
+
+        if ($this->isAdmin) {
+            $workflowDeadlines = DB::table('workflows')
+                ->whereNotNull('deadline')
+                ->where('deadline', '>=', $now)
+                ->orderBy('deadline')
+                ->limit(10)
+                ->get()
+                ->map(fn ($w) => (object) ['type' => 'workflow', 'title' => $w->title, 'date' => $w->deadline, 'client_id' => $w->client_id]);
+            $taskDeadlines = DB::table('tasks')
+                ->whereNotNull('due_date')
+                ->where('due_date', '>=', $now)
+                ->where('status', '!=', 'completed')
+                ->orderBy('due_date')
+                ->limit(10)
+                ->get()
+                ->map(fn ($t) => (object) ['type' => 'task', 'title' => $t->title, 'date' => $t->due_date]);
+        } else {
+            $workflowDeadlines = DB::table('workflows')
+                ->where('assignee', $userId)
+                ->whereNotNull('deadline')
+                ->where('deadline', '>=', $now)
+                ->orderBy('deadline')
+                ->limit(10)
+                ->get()
+                ->map(fn ($w) => (object) ['type' => 'workflow', 'title' => $w->title, 'date' => $w->deadline]);
+            $taskDeadlines = DB::table('tasks')
+                ->where('assignee', $userId)
+                ->whereNotNull('due_date')
+                ->where('due_date', '>=', $now)
+                ->where('status', '!=', 'completed')
+                ->orderBy('due_date')
+                ->limit(10)
+                ->get()
+                ->map(fn ($t) => (object) ['type' => 'task', 'title' => $t->title, 'date' => $t->due_date]);
+        }
+
         $this->deadlines = $workflowDeadlines->concat($taskDeadlines)->sortBy('date')->take(10)->values();
 
-        // Activity Trace with user filter
         $actQ = DB::table('activity_logs')
             ->leftJoin('users', 'activity_logs.user_id', '=', 'users.id')
             ->select('activity_logs.*', 'users.name as user_name');
 
-        if (!$canSeeAllActivity) {
+        if (! $canSeeAllActivity) {
             $actQ->where('activity_logs.user_id', $userId);
         }
         if ($this->activityFilter) {
@@ -142,30 +206,47 @@ new #[Layout('components.layouts.app')] class extends Component
             DB::table('users')->select('id', 'name')
         )->orderBy('name')->get();
 
-        // Team Performance (completion % per member)
-        $this->teamPerformance = DB::table('users')
-            ->leftJoin('tasks', 'users.id', '=', 'tasks.assignee')
-            ->select(
-                'users.id', 'users.name', 'users.role',
-                DB::raw('COUNT(tasks.id) as total_tasks'),
-                DB::raw("COUNT(CASE WHEN tasks.status = 'completed' THEN 1 END) as completed_tasks")
-            )
-            ->groupBy('users.id', 'users.name', 'users.role')
-            ->havingRaw('COUNT(tasks.id) > 0')
-            ->get()
-            ->map(fn($m) => [
-                'id' => $m->id,
-                'name' => $m->name,
-                'role' => $m->role,
-                'total' => $m->total_tasks,
-                'completed' => $m->completed_tasks,
-                'pct' => $m->total_tasks > 0 ? round(($m->completed_tasks / $m->total_tasks) * 100) : 0,
-            ]);
+        if ($this->isAdmin) {
+            $this->teamPerformance = DB::table('users')
+                ->leftJoin('tasks', 'users.id', '=', 'tasks.assignee')
+                ->select(
+                    'users.id',
+                    'users.name',
+                    'users.role',
+                    DB::raw('COUNT(tasks.id) as total_tasks'),
+                    DB::raw("COUNT(CASE WHEN tasks.status = 'completed' THEN 1 END) as completed_tasks")
+                )
+                ->groupBy('users.id', 'users.name', 'users.role')
+                ->havingRaw('COUNT(tasks.id) > 0')
+                ->get()
+                ->map(fn ($m) => [
+                    'id' => $m->id,
+                    'name' => $m->name,
+                    'role' => $m->role,
+                    'total' => $m->total_tasks,
+                    'completed' => $m->completed_tasks,
+                    'pct' => $m->total_tasks > 0 ? round(($m->completed_tasks / $m->total_tasks) * 100) : 0,
+                ]);
+        } else {
+            $totalTasks = DB::table('tasks')->where('assignee', $userId)->count();
+            $completedTasks = DB::table('tasks')->where('assignee', $userId)->where('status', 'completed')->count();
+            $this->teamPerformance = collect();
+            if ($totalTasks > 0) {
+                $this->teamPerformance = collect([[
+                    'id' => $userId,
+                    'name' => $user->name,
+                    'role' => $user->role,
+                    'total' => $totalTasks,
+                    'completed' => $completedTasks,
+                    'pct' => round(($completedTasks / $totalTasks) * 100),
+                ]]);
+            }
+        }
 
         $settings = DB::table('settings')->first();
-        if ($settings && $isAdmin) {
+        if ($settings && $this->isAdmin) {
             $lastReminder = $settings->last_backup_reminder ?? null;
-            if (!$lastReminder || now()->diffInDays(\Carbon\Carbon::parse($lastReminder)) > ($settings->backup_reminder_days ?? 7)) {
+            if (! $lastReminder || now()->diffInDays(Carbon::parse($lastReminder)) > ($settings->backup_reminder_days ?? 7)) {
                 $this->backupReminder = 'Reminder: Please backup your data from Settings → Data & Backup';
             }
         }
@@ -191,47 +272,59 @@ new #[Layout('components.layouts.app')] class extends Component
         return <<<'blade'
         <script>
             function dashboardInit() {
+                let charts = {};
                 return {
+                    isAdmin: @js($isAdmin),
                     revenueData: @js($revenueData),
                     taskDist: @js($taskDistribution),
                     platformData: @js($platformData),
                     stageData: @js($stageData),
+                    chartVersion: 0,
                     init() {
-                        this.$nextTick(() => {
-                            const brand = getComputedStyle(document.documentElement).getPropertyValue('--brand').trim() || '#4f46e5';
+                        this.$nextTick(() => this.buildCharts());
+                        this.$watch('revenueData', () => { this.chartVersion++; this.buildCharts(); });
+                        this.$watch('taskDist', () => { this.chartVersion++; this.buildCharts(); });
+                        this.$watch('platformData', () => { this.chartVersion++; this.buildCharts(); });
+                        this.$watch('stageData', () => { this.chartVersion++; this.buildCharts(); });
+                    },
+                    buildCharts() {
+                        Object.values(charts).forEach(c => { try { c.destroy(); } catch (_) {} });
+                        charts = {};
+                        const brand = getComputedStyle(document.documentElement).getPropertyValue('--brand').trim() || '#4f46e5';
 
-                            const rCtx = document.getElementById('revenueChart');
-                            if (rCtx) {
-                                const labels = Object.keys(this.revenueData);
-                                const data = Object.values(this.revenueData);
-                                const gradient = rCtx.getContext('2d').createLinearGradient(0, 0, 0, 220);
-                                gradient.addColorStop(0, brand + '40');
-                                gradient.addColorStop(1, brand + '05');
-                                new Chart(rCtx, {
-                                    type: 'line',
-                                    data: { labels, datasets: [{ label: 'Revenue', data, borderColor: brand, backgroundColor: gradient, fill: true, tension: 0.4, pointRadius: 4, pointBackgroundColor: brand }] },
-                                    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, grid: { color: '#f1f5f9' } }, x: { grid: { display: false } } } }
-                                });
-                            }
+                        const rCtx = document.getElementById('revenueChart');
+                        if (rCtx && this.revenueData && Object.keys(this.revenueData).length) {
+                            const labels = Object.keys(this.revenueData);
+                            const data = Object.values(this.revenueData);
+                            const gradient = rCtx.getContext('2d').createLinearGradient(0, 0, 0, 220);
+                            gradient.addColorStop(0, brand + '40');
+                            gradient.addColorStop(1, brand + '05');
+                            charts.revenue = new Chart(rCtx, {
+                                type: 'line',
+                                data: { labels, datasets: [{ label: 'Revenue', data, borderColor: brand, backgroundColor: gradient, fill: true, tension: 0.4, pointRadius: 4, pointBackgroundColor: brand }] },
+                                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, grid: { color: '#f1f5f9' } }, x: { grid: { display: false } } } }
+                            });
+                        }
 
-                            const tCtx = document.getElementById('taskChart');
-                            if (tCtx) {
-                                const labels = Object.keys(this.taskDist).map(k => k.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()));
-                                const data = Object.values(this.taskDist);
-                                const colors = ['#94a3b8', '#3b82f6', '#22c55e', '#ef4444', '#f59e0b', '#8b5cf6'];
-                                new Chart(tCtx, {
-                                    type: 'doughnut',
-                                    data: { labels, datasets: [{ data, backgroundColor: colors.slice(0, data.length), borderWidth: 0 }] },
-                                    options: { responsive: true, maintainAspectRatio: false, cutout: '65%', plugins: { legend: { position: 'right', labels: { boxWidth: 10, padding: 8, font: { size: 11 } } }, datalabels: { display: false } } }
-                                });
-                            }
+                        const tCtx = document.getElementById('taskChart');
+                        if (tCtx && this.taskDist && Object.keys(this.taskDist).length) {
+                            const labels = Object.keys(this.taskDist).map(k => k.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()));
+                            const data = Object.values(this.taskDist);
+                            const colors = ['#94a3b8', '#3b82f6', '#22c55e', '#ef4444', '#f59e0b', '#8b5cf6'];
+                            charts.tasks = new Chart(tCtx, {
+                                type: 'doughnut',
+                                data: { labels, datasets: [{ data, backgroundColor: colors.slice(0, data.length), borderWidth: 0 }] },
+                                options: { responsive: true, maintainAspectRatio: false, cutout: '65%', plugins: { legend: { position: 'right', labels: { boxWidth: 10, padding: 8, font: { size: 11 } } }, datalabels: { display: false } } }
+                            });
+                        }
 
+                        if (this.isAdmin) {
                             const pCtx = document.getElementById('platformChart');
-                            if (pCtx) {
+                            if (pCtx && this.platformData && Object.keys(this.platformData).length) {
                                 const labels = Object.keys(this.platformData).map(k => k.charAt(0).toUpperCase() + k.slice(1));
                                 const data = Object.values(this.platformData);
                                 const colors = ['#E1306C', '#1877F2', '#000000', '#FF0000', '#1DA1F2', '#0A66C2'];
-                                new Chart(pCtx, {
+                                charts.platform = new Chart(pCtx, {
                                     type: 'bar',
                                     data: { labels, datasets: [{ label: 'Content', data, backgroundColor: colors, borderRadius: 6, barThickness: 28 }] },
                                     options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, grid: { color: '#f1f5f9' } }, x: { grid: { display: false } } } }
@@ -239,16 +332,16 @@ new #[Layout('components.layouts.app')] class extends Component
                             }
 
                             const sCtx = document.getElementById('stageChart');
-                            if (sCtx) {
+                            if (sCtx && this.stageData && Object.keys(this.stageData).length) {
                                 const labels = Object.keys(this.stageData).map(k => k.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()));
                                 const data = Object.values(this.stageData);
-                                new Chart(sCtx, {
+                                charts.stage = new Chart(sCtx, {
                                     type: 'bar',
                                     data: { labels, datasets: [{ label: 'Items', data, backgroundColor: brand, borderRadius: 6, barThickness: 28 }] },
                                     options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, grid: { color: '#f1f5f9' } }, y: { grid: { display: false } } } }
                                 });
                             }
-                        });
+                        }
                     }
                 };
             }
@@ -362,6 +455,7 @@ new #[Layout('components.layouts.app')] class extends Component
             @endif
 
             {{-- Charts Row --}}
+            @if($isAdmin)
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <div class="bg-white rounded-2xl border border-gray-100 p-5">
                     <h3 class="text-sm font-bold text-gray-900 mb-4">Revenue Trend</h3>
@@ -372,7 +466,14 @@ new #[Layout('components.layouts.app')] class extends Component
                     <div style="height:220px"><canvas id="taskChart"></canvas></div>
                 </div>
             </div>
+            @else
+            <div class="bg-white rounded-2xl border border-gray-100 p-5">
+                <h3 class="text-sm font-bold text-gray-900 mb-4">My Task Status</h3>
+                <div style="height:220px"><canvas id="taskChart"></canvas></div>
+            </div>
+            @endif
 
+            @if($isAdmin)
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <div class="bg-white rounded-2xl border border-gray-100 p-5">
                     <h3 class="text-sm font-bold text-gray-900 mb-4">Content by Platform</h3>
@@ -383,6 +484,7 @@ new #[Layout('components.layouts.app')] class extends Component
                     <div style="height:220px"><canvas id="stageChart"></canvas></div>
                 </div>
             </div>
+            @endif
 
             {{-- Working Hours + Deadlines --}}
             <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -398,7 +500,7 @@ new #[Layout('components.layouts.app')] class extends Component
                 </div>
 
                 <div class="lg:col-span-2 bg-white rounded-2xl border border-gray-100 p-5">
-                    <h3 class="text-sm font-bold text-gray-900 mb-3">Upcoming Deadlines</h3>
+                    <h3 class="text-sm font-bold text-gray-900 mb-3">{{ $isAdmin ? 'Upcoming Deadlines' : 'My Deadlines' }}</h3>
                     @if($deadlines->count())
                     <div class="space-y-2">
                         @foreach($deadlines as $d)
@@ -420,7 +522,8 @@ new #[Layout('components.layouts.app')] class extends Component
                 </div>
             </div>
 
-            {{-- Workload Table --}}
+            {{-- Workload Table (Admin only) --}}
+            @if($isAdmin)
             <div class="bg-white rounded-2xl border border-gray-100 overflow-hidden">
                 <div class="px-5 py-4 border-b border-gray-100">
                     <h3 class="text-sm font-bold text-gray-900">Staff Workload</h3>
@@ -445,11 +548,12 @@ new #[Layout('components.layouts.app')] class extends Component
                     </table>
                 </div>
             </div>
+            @endif
 
             {{-- Team Performance Progress Bars --}}
             @if($teamPerformance->count())
             <div class="bg-white rounded-2xl border border-gray-100 p-5">
-                <h3 class="text-sm font-bold text-gray-900 mb-4">Team Performance</h3>
+                <h3 class="text-sm font-bold text-gray-900 mb-4">{{ $isAdmin ? 'Team Performance' : 'My Completion' }}</h3>
                 <div class="space-y-3">
                     @foreach($teamPerformance as $m)
                     <div class="flex items-center gap-4">
@@ -473,7 +577,7 @@ new #[Layout('components.layouts.app')] class extends Component
                     <h3 class="text-sm font-bold text-gray-900">Recent Activity</h3>
                     <div class="flex items-center gap-2">
                         <select wire:model.live="activityFilter" class="form-select text-xs py-1.5 px-3">
-                            <option value="">All Staff</option>
+                            <option value="">{{ $isAdmin ? 'All Staff' : 'My Activity' }}</option>
                             @foreach($allStaff as $s)
                             <option value="{{ $s->id }}">{{ $s->name }}</option>
                             @endforeach
