@@ -56,7 +56,9 @@ new #[Layout('components.layouts.app')] class extends Component
     public function loadData(): void
     {
         $user = Auth::user();
-        $this->isAdmin = in_array($user->role ?? '', ['super-admin', 'admin', 'manager']);
+        // Manager falls into the staff dashboard view. Only super-admin + admin
+        // see agency-wide revenue/clients/workload tiles.
+        $this->isAdmin = in_array($user->role ?? '', ['super-admin', 'admin']);
         $userId = $user->id;
         $rbac = new RbacService;
         $canSeeAllActivity = $rbac->hasDataAccess($user->role, 'seeAllActivity');
@@ -67,36 +69,55 @@ new #[Layout('components.layouts.app')] class extends Component
             'week' => $now->copy()->startOfWeek(),
             default => $now->copy()->startOfMonth(),
         };
+        $rangeEnd = match ($this->range) {
+            'today' => $now->copy()->endOfDay(),
+            'week' => $now->copy()->endOfWeek(),
+            default => $now->copy()->endOfMonth(),
+        };
 
         if ($this->isAdmin) {
             $this->stats = [
                 'type' => 'admin',
-                'clients' => DB::table('clients')->where('status', 'active')->count(),
-                'projects' => DB::table('workflows')->count(),
-                'approvals' => DB::table('approvals')->where('status', 'pending')->count(),
+                'clients' => DB::table('clients')
+                    ->where('status', 'active')
+                    ->where('created_at', '>=', $dateFilter)
+                    ->count(),
+                'projects' => DB::table('workflows')->where('created_at', '>=', $dateFilter)->count(),
+                'approvals' => DB::table('approvals')->where('created_at', '>=', $dateFilter)->where('status', 'pending')->count(),
                 'revenue' => DB::table('invoice_payments')->where('created_at', '>=', $dateFilter)->sum('amount'),
             ];
         } else {
             $this->stats = [
                 'type' => 'staff',
-                'tasks' => DB::table('tasks')->where('assignee', $userId)->count(),
-                'workflows' => DB::table('workflows')->where('assignee', $userId)->count(),
-                'approvals' => DB::table('approvals')->where('submitted_by', $userId)->where('status', 'pending')->count(),
+                'tasks' => DB::table('tasks')->where('assignee', $userId)->where('created_at', '>=', $dateFilter)->count(),
+                'workflows' => DB::table('workflows')->where('assignee', $userId)->where('created_at', '>=', $dateFilter)->count(),
+                'approvals' => DB::table('approvals')->where('submitted_by', $userId)->where('created_at', '>=', $dateFilter)->where('status', 'pending')->count(),
                 'overdue' => DB::table('tasks')->where('assignee', $userId)->where('due_date', '<', now())->where('status', '!=', 'completed')->count(),
             ];
         }
 
+        // Revenue chart follows the active range filter.
+        //   today → group by hour (00..23)
+        //   week  → group by day (Mon..Sun)
+        //   month → group by day of month
+        $revBucket = match ($this->range) {
+            'today' => "DATE_FORMAT(created_at, '%H:00')",
+            'week'  => "DATE_FORMAT(created_at, '%a')",
+            default => "DATE_FORMAT(created_at, '%b %d')",
+        };
         $this->revenueData = DB::table('invoice_payments')
-            ->select(DB::raw("DATE_FORMAT(created_at, '%Y-%m') as month"), DB::raw('SUM(amount) as total'))
-            ->where('created_at', '>=', $now->copy()->subMonths(5)->startOfMonth())
-            ->groupBy('month')
-            ->orderBy('month')
+            ->select(DB::raw("$revBucket as bucket"), DB::raw('SUM(amount) as total'))
+            ->where('created_at', '>=', $dateFilter)
+            ->where('created_at', '<=', $rangeEnd)
+            ->groupBy('bucket')
+            ->orderByRaw('MIN(created_at)')
             ->get()
-            ->pluck('total', 'month')
+            ->pluck('total', 'bucket')
             ->toArray();
 
         if ($this->isAdmin) {
             $this->taskDistribution = DB::table('tasks')
+                ->where('created_at', '>=', $dateFilter)
                 ->select('status', DB::raw('COUNT(*) as count'))
                 ->groupBy('status')
                 ->get()
@@ -104,6 +125,7 @@ new #[Layout('components.layouts.app')] class extends Component
                 ->toArray();
 
             $this->platformData = DB::table('contents')
+                ->where('created_at', '>=', $dateFilter)
                 ->select('platform', DB::raw('COUNT(*) as count'))
                 ->groupBy('platform')
                 ->get()
@@ -119,6 +141,7 @@ new #[Layout('components.layouts.app')] class extends Component
         } else {
             $this->taskDistribution = DB::table('tasks')
                 ->where('assignee', $userId)
+                ->where('created_at', '>=', $dateFilter)
                 ->select('status', DB::raw('COUNT(*) as count'))
                 ->groupBy('status')
                 ->get()
@@ -132,19 +155,23 @@ new #[Layout('components.layouts.app')] class extends Component
             ->first();
 
         if ($this->isAdmin) {
-            $this->workload = DB::table('users')
-                ->leftJoin('tasks', 'users.id', '=', 'tasks.assignee')
-                ->select(
-                    'users.id',
-                    'users.name',
-                    'users.role',
-                    DB::raw("COUNT(CASE WHEN tasks.status IN ('todo','in-progress') THEN 1 END) as assigned"),
-                    DB::raw("COUNT(CASE WHEN tasks.status = 'in-progress' THEN 1 END) as in_progress"),
-                    DB::raw("COUNT(CASE WHEN tasks.status = 'completed' THEN 1 END) as completed"),
-                    DB::raw("COUNT(CASE WHEN tasks.due_date < CURDATE() AND tasks.status != 'completed' THEN 1 END) as overdue")
-                )
-                ->groupBy('users.id', 'users.name', 'users.role')
-                ->get();
+            $this->workload = UserVisibility::apply(
+                DB::table('users')
+                    ->leftJoin('tasks', function ($join) use ($dateFilter) {
+                        $join->on('users.id', '=', 'tasks.assignee')
+                            ->where('tasks.created_at', '>=', $dateFilter);
+                    })
+                    ->select(
+                        'users.id',
+                        'users.name',
+                        'users.role',
+                        DB::raw("COUNT(CASE WHEN tasks.status IN ('todo','in-progress') THEN 1 END) as assigned"),
+                        DB::raw("COUNT(CASE WHEN tasks.status = 'in-progress' THEN 1 END) as in_progress"),
+                        DB::raw("COUNT(CASE WHEN tasks.status = 'completed' THEN 1 END) as completed"),
+                        DB::raw("COUNT(CASE WHEN tasks.due_date < CURDATE() AND tasks.status != 'completed' THEN 1 END) as overdue")
+                    )
+                    ->groupBy('users.id', 'users.name', 'users.role')
+            )->get();
         }
 
         $this->deadlines = collect();
@@ -153,6 +180,7 @@ new #[Layout('components.layouts.app')] class extends Component
             $workflowDeadlines = DB::table('workflows')
                 ->whereNotNull('deadline')
                 ->where('deadline', '>=', $now)
+                ->where('deadline', '<=', $rangeEnd)
                 ->orderBy('deadline')
                 ->limit(10)
                 ->get()
@@ -160,6 +188,7 @@ new #[Layout('components.layouts.app')] class extends Component
             $taskDeadlines = DB::table('tasks')
                 ->whereNotNull('due_date')
                 ->where('due_date', '>=', $now)
+                ->where('due_date', '<=', $rangeEnd)
                 ->where('status', '!=', 'completed')
                 ->orderBy('due_date')
                 ->limit(10)
@@ -170,6 +199,7 @@ new #[Layout('components.layouts.app')] class extends Component
                 ->where('assignee', $userId)
                 ->whereNotNull('deadline')
                 ->where('deadline', '>=', $now)
+                ->where('deadline', '<=', $rangeEnd)
                 ->orderBy('deadline')
                 ->limit(10)
                 ->get()
@@ -178,6 +208,7 @@ new #[Layout('components.layouts.app')] class extends Component
                 ->where('assignee', $userId)
                 ->whereNotNull('due_date')
                 ->where('due_date', '>=', $now)
+                ->where('due_date', '<=', $rangeEnd)
                 ->where('status', '!=', 'completed')
                 ->orderBy('due_date')
                 ->limit(10)
@@ -189,7 +220,16 @@ new #[Layout('components.layouts.app')] class extends Component
 
         $actQ = DB::table('activity_logs')
             ->leftJoin('users', 'activity_logs.user_id', '=', 'users.id')
-            ->select('activity_logs.*', 'users.name as user_name');
+            ->select('activity_logs.*', 'users.name as user_name')
+            ->where('activity_logs.time', '>=', $dateFilter);
+
+        // Hide super-admin activity rows from non-super-admin viewers.
+        // Left-joined rows (deleted users / system actions) still show through the null check.
+        if (! UserVisibility::canSeeSuperAdmins($user)) {
+            $actQ->where(function ($q) {
+                $q->whereNull('users.role')->orWhere('users.role', '!=', 'super-admin');
+            });
+        }
 
         if (! $canSeeAllActivity) {
             $actQ->where('activity_logs.user_id', $userId);
@@ -207,18 +247,22 @@ new #[Layout('components.layouts.app')] class extends Component
         )->orderBy('name')->get();
 
         if ($this->isAdmin) {
-            $this->teamPerformance = DB::table('users')
-                ->leftJoin('tasks', 'users.id', '=', 'tasks.assignee')
-                ->select(
-                    'users.id',
-                    'users.name',
-                    'users.role',
-                    DB::raw('COUNT(tasks.id) as total_tasks'),
-                    DB::raw("COUNT(CASE WHEN tasks.status = 'completed' THEN 1 END) as completed_tasks")
-                )
-                ->groupBy('users.id', 'users.name', 'users.role')
-                ->havingRaw('COUNT(tasks.id) > 0')
-                ->get()
+            $this->teamPerformance = UserVisibility::apply(
+                DB::table('users')
+                    ->leftJoin('tasks', function ($join) use ($dateFilter) {
+                        $join->on('users.id', '=', 'tasks.assignee')
+                            ->where('tasks.created_at', '>=', $dateFilter);
+                    })
+                    ->select(
+                        'users.id',
+                        'users.name',
+                        'users.role',
+                        DB::raw('COUNT(tasks.id) as total_tasks'),
+                        DB::raw("COUNT(CASE WHEN tasks.status = 'completed' THEN 1 END) as completed_tasks")
+                    )
+                    ->groupBy('users.id', 'users.name', 'users.role')
+                    ->havingRaw('COUNT(tasks.id) > 0')
+            )->get()
                 ->map(fn ($m) => [
                     'id' => $m->id,
                     'name' => $m->name,
@@ -228,8 +272,8 @@ new #[Layout('components.layouts.app')] class extends Component
                     'pct' => $m->total_tasks > 0 ? round(($m->completed_tasks / $m->total_tasks) * 100) : 0,
                 ]);
         } else {
-            $totalTasks = DB::table('tasks')->where('assignee', $userId)->count();
-            $completedTasks = DB::table('tasks')->where('assignee', $userId)->where('status', 'completed')->count();
+            $totalTasks = DB::table('tasks')->where('assignee', $userId)->where('created_at', '>=', $dateFilter)->count();
+            $completedTasks = DB::table('tasks')->where('assignee', $userId)->where('status', 'completed')->where('created_at', '>=', $dateFilter)->count();
             $this->teamPerformance = collect();
             if ($totalTasks > 0) {
                 $this->teamPerformance = collect([[
@@ -250,6 +294,8 @@ new #[Layout('components.layouts.app')] class extends Component
                 $this->backupReminder = 'Reminder: Please backup your data from Settings → Data & Backup';
             }
         }
+
+        $this->dispatch('dashboard-data', revenueData: $this->revenueData, taskDist: $this->taskDistribution, platformData: $this->platformData, stageData: $this->stageData, isAdmin: $this->isAdmin);
     }
 
     public function dismissBackup(): void
@@ -270,32 +316,32 @@ new #[Layout('components.layouts.app')] class extends Component
     public function render(): mixed
     {
         return <<<'blade'
+        <div class="space-y-6" x-data="dashboardInit()" wire:loading.class="opacity-60" wire:target="setRange, loadData">
         <script>
             function dashboardInit() {
                 let charts = {};
                 return {
-                    isAdmin: @js($isAdmin),
-                    revenueData: @js($revenueData),
-                    taskDist: @js($taskDistribution),
-                    platformData: @js($platformData),
-                    stageData: @js($stageData),
-                    chartVersion: 0,
                     init() {
-                        this.$nextTick(() => this.buildCharts());
-                        this.$watch('revenueData', () => { this.chartVersion++; this.buildCharts(); });
-                        this.$watch('taskDist', () => { this.chartVersion++; this.buildCharts(); });
-                        this.$watch('platformData', () => { this.chartVersion++; this.buildCharts(); });
-                        this.$watch('stageData', () => { this.chartVersion++; this.buildCharts(); });
+                        this.buildCharts();
+                        this.$wire.on('dashboard-data', (data) => {
+                            this.buildCharts(data.revenueData, data.taskDist, data.platformData, data.stageData, data.isAdmin);
+                        });
                     },
-                    buildCharts() {
+                    buildCharts(revenueData, taskDist, platformData, stageData, isAdmin) {
+                        revenueData = revenueData || @js($revenueData);
+                        taskDist = taskDist || @js($taskDistribution);
+                        platformData = platformData || @js($platformData);
+                        stageData = stageData || @js($stageData);
+                        isAdmin = isAdmin !== undefined ? isAdmin : @js($isAdmin);
+
                         Object.values(charts).forEach(c => { try { c.destroy(); } catch (_) {} });
                         charts = {};
                         const brand = getComputedStyle(document.documentElement).getPropertyValue('--brand').trim() || '#4f46e5';
 
                         const rCtx = document.getElementById('revenueChart');
-                        if (rCtx && this.revenueData && Object.keys(this.revenueData).length) {
-                            const labels = Object.keys(this.revenueData);
-                            const data = Object.values(this.revenueData);
+                        if (rCtx && revenueData && Object.keys(revenueData).length) {
+                            const labels = Object.keys(revenueData);
+                            const data = Object.values(revenueData);
                             const gradient = rCtx.getContext('2d').createLinearGradient(0, 0, 0, 220);
                             gradient.addColorStop(0, brand + '40');
                             gradient.addColorStop(1, brand + '05');
@@ -307,9 +353,9 @@ new #[Layout('components.layouts.app')] class extends Component
                         }
 
                         const tCtx = document.getElementById('taskChart');
-                        if (tCtx && this.taskDist && Object.keys(this.taskDist).length) {
-                            const labels = Object.keys(this.taskDist).map(k => k.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()));
-                            const data = Object.values(this.taskDist);
+                        if (tCtx && taskDist && Object.keys(taskDist).length) {
+                            const labels = Object.keys(taskDist).map(k => k.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()));
+                            const data = Object.values(taskDist);
                             const colors = ['#94a3b8', '#3b82f6', '#22c55e', '#ef4444', '#f59e0b', '#8b5cf6'];
                             charts.tasks = new Chart(tCtx, {
                                 type: 'doughnut',
@@ -318,11 +364,11 @@ new #[Layout('components.layouts.app')] class extends Component
                             });
                         }
 
-                        if (this.isAdmin) {
+                        if (isAdmin) {
                             const pCtx = document.getElementById('platformChart');
-                            if (pCtx && this.platformData && Object.keys(this.platformData).length) {
-                                const labels = Object.keys(this.platformData).map(k => k.charAt(0).toUpperCase() + k.slice(1));
-                                const data = Object.values(this.platformData);
+                            if (pCtx && platformData && Object.keys(platformData).length) {
+                                const labels = Object.keys(platformData).map(k => k.charAt(0).toUpperCase() + k.slice(1));
+                                const data = Object.values(platformData);
                                 const colors = ['#E1306C', '#1877F2', '#000000', '#FF0000', '#1DA1F2', '#0A66C2'];
                                 charts.platform = new Chart(pCtx, {
                                     type: 'bar',
@@ -332,9 +378,9 @@ new #[Layout('components.layouts.app')] class extends Component
                             }
 
                             const sCtx = document.getElementById('stageChart');
-                            if (sCtx && this.stageData && Object.keys(this.stageData).length) {
-                                const labels = Object.keys(this.stageData).map(k => k.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()));
-                                const data = Object.values(this.stageData);
+                            if (sCtx && stageData && Object.keys(stageData).length) {
+                                const labels = Object.keys(stageData).map(k => k.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()));
+                                const data = Object.values(stageData);
                                 charts.stage = new Chart(sCtx, {
                                     type: 'bar',
                                     data: { labels, datasets: [{ label: 'Items', data, backgroundColor: brand, borderRadius: 6, barThickness: 28 }] },
@@ -346,7 +392,6 @@ new #[Layout('components.layouts.app')] class extends Component
                 };
             }
         </script>
-        <div class="space-y-6" x-data="dashboardInit()" wire:loading.class="opacity-60" wire:target="setRange, loadData">
             {{-- Backup Reminder --}}
             @if($backupReminder)
             <div class="flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
