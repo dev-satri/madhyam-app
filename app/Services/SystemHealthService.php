@@ -2,29 +2,32 @@
 
 namespace App\Services;
 
+use Cron\CronExpression;
 use Illuminate\Console\Events\ScheduledTaskFinished;
 use Illuminate\Console\Scheduling\Schedule;
+use Illuminate\Mail\Message;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Mail\Message;
 
 class SystemHealthService
 {
     private const RUN_LEDGER = 'system-health/schedule-runs.json';
+
     private const RUNS_PER_COMMAND = 20;
+
     private const TZ = 'Asia/Kathmandu';
 
     private const ALLOWED_CACHES = [
         'application' => 'cache:clear',
-        'view'        => 'view:clear',
-        'config'      => 'config:clear',
-        'route'       => 'route:clear',
-        'compiled'    => 'clear-compiled',
-        'event'       => 'event:clear',
+        'view' => 'view:clear',
+        'config' => 'config:clear',
+        'route' => 'route:clear',
+        'compiled' => 'clear-compiled',
+        'event' => 'event:clear',
     ];
 
     /* ---------------------------------------------------------------
@@ -73,24 +76,28 @@ class SystemHealthService
     {
         // queue:retry accepts one or more UUIDs (or "all").
         Artisan::call('queue:retry', ['id' => [$uuid]]);
+
         return trim(Artisan::output());
     }
 
     public function retryAllFailed(): string
     {
         Artisan::call('queue:retry', ['id' => ['all']]);
+
         return trim(Artisan::output());
     }
 
     public function deleteFailed(string $uuid): string
     {
         Artisan::call('queue:forget', ['id' => $uuid]);
+
         return trim(Artisan::output());
     }
 
     public function flushAllFailed(): string
     {
         Artisan::call('queue:flush');
+
         return trim(Artisan::output());
     }
 
@@ -114,7 +121,7 @@ class SystemHealthService
 
             try {
                 $next = Carbon::parse(
-                    (new \Cron\CronExpression($event->expression))->getNextRunDate('now')
+                    (new CronExpression($event->expression))->getNextRunDate('now')
                 )->timezone(self::TZ);
                 $nextStr = $next->format('Y-m-d H:i');
                 $nextRelative = $now->diffForHumans($next, ['syntax' => Carbon::DIFF_ABSOLUTE, 'parts' => 2]);
@@ -138,6 +145,7 @@ class SystemHealthService
 
         // Stable sort — earliest next run first
         usort($out, fn ($a, $b) => strcmp($a['next_run'], $b['next_run']));
+
         return $out;
     }
 
@@ -167,6 +175,7 @@ class SystemHealthService
                 return trim(Artisan::output()) ?: 'Command finished with no output.';
             }
         }
+
         return 'Scheduled command not found.';
     }
 
@@ -192,6 +201,7 @@ class SystemHealthService
             return 'Unknown cache type.';
         }
         Artisan::call(self::ALLOWED_CACHES[$type]);
+
         return trim(Artisan::output()) ?: 'Cleared.';
     }
 
@@ -202,6 +212,7 @@ class SystemHealthService
             Artisan::call($cmd);
             $lines[] = str_pad($type, 12) . ' — ' . (trim(Artisan::output()) ?: 'ok');
         }
+
         return implode("\n", $lines);
     }
 
@@ -213,14 +224,16 @@ class SystemHealthService
     {
         try {
             Mail::raw(
-                "This is a Madhyam System Health test message.\n\nSent at " . Carbon::now(self::TZ)->format('Y-m-d H:i:s T') . ".",
+                "This is a Madhyam System Health test message.\n\nSent at " . Carbon::now(self::TZ)->format('Y-m-d H:i:s T') . '.',
                 function (Message $m) use ($to) {
                     $m->to($to)->subject('Madhyam — Mail delivery test');
                 }
             );
+
             return ['ok' => true, 'message' => "Test mail dispatched to {$to}."];
         } catch (\Throwable $e) {
             Log::warning('System health test mail failed: ' . $e->getMessage());
+
             return ['ok' => false, 'message' => 'Failed: ' . $e->getMessage()];
         }
     }
@@ -232,6 +245,7 @@ class SystemHealthService
     private function commandKey(string $raw): string
     {
         $sub = $this->extractArtisanSubcommand($raw);
+
         return $sub ?: trim($raw);
     }
 
@@ -244,6 +258,7 @@ class SystemHealthService
         if (preg_match("/['\"]?artisan['\"]?\s+([^'\"\s].*)$/", $raw, $m)) {
             return trim($m[1]);
         }
+
         return null;
     }
 
@@ -254,6 +269,7 @@ class SystemHealthService
         }
         $json = Storage::disk('local')->get(self::RUN_LEDGER);
         $data = json_decode($json, true);
+
         return is_array($data) ? $data : [];
     }
 

@@ -55,8 +55,9 @@ new class extends Component
         try {
             DB::table('activity_logs')->insert([
                 'user_id' => $user->id,
-                'action' => 'Password changed',
-                'created_at' => now(),
+                'user' => $user->name ?? 'User',
+                'text' => 'Password changed',
+                'time' => now(),
             ]);
         } catch (\Exception $e) {
             // activity log table may not exist yet

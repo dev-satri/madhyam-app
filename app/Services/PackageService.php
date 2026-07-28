@@ -278,7 +278,6 @@ class PackageService
             'user' => 'System',
             'text' => "Package upgraded from {$client->package} to {$newPackageSlug} for client: {$client->name}",
             'time' => now(),
-            'created_at' => now(),
         ]);
 
         return true;

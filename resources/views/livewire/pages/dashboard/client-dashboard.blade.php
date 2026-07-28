@@ -3,14 +3,12 @@
 use Livewire\Volt\Component;
 use Livewire\Attributes\Layout;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\DB;
 use App\Models\Workflow;
 use App\Models\Approval;
 use App\Models\Content;
 use App\Models\WorkingHour;
 use App\Models\WorkflowStage;
 use App\Services\PackageService;
-use App\Services\NotificationService;
 
 new #[Layout('components.layouts.app')] class extends Component {
     private mixed $cachedClient = null;
@@ -20,9 +18,6 @@ new #[Layout('components.layouts.app')] class extends Component {
     public array $packageAlerts = [];
     // Per-deliverable-type breakdown: [{type, used, limit, percent, over}, ...].
     public array $packageDeliverables = [];
-    public array $upgradeOptions = [];
-    public bool $showUpgradeModal = false;
-    public string $selectedUpgrade = '';
 
     public function mount(): void
     {
@@ -40,54 +35,6 @@ new #[Layout('components.layouts.app')] class extends Component {
         $this->packageUsage = $data['usage'];
         $this->packageAlerts = $data['alerts'] ?? [];
         $this->packageDeliverables = $data['deliverables'] ?? [];
-    }
-
-    public function openUpgradeModal(): void
-    {
-        $client = $this->getClient();
-        if (!$client) return;
-
-        $this->upgradeOptions = PackageService::getUpgradeOptions($client->id);
-        $this->selectedUpgrade = '';
-        $this->showUpgradeModal = true;
-    }
-
-    public function selectUpgrade(string $slug): void
-    {
-        $this->selectedUpgrade = $slug;
-    }
-
-    public function confirmUpgrade(): void
-    {
-        if (empty($this->selectedUpgrade)) {
-            $this->dispatch('toast', message: 'Please select a package', type: 'error');
-            return;
-        }
-
-        $client = $this->getClient();
-        if (!$client) return;
-
-        $oldPkg = DB::table('packages')->where('slug', $client->package)->first();
-        $oldPackageName = $oldPkg?->name ?? 'None';
-        $success = PackageService::upgradePackage($client->id, $this->selectedUpgrade);
-
-        if ($success) {
-            $newPackageName = DB::table('packages')->where('slug', $this->selectedUpgrade)->value('name') ?? 'Unknown';
-
-            // Notify admin/staff about the upgrade
-            app(NotificationService::class)->sendNotification(
-                text: "Client '{$client->name}' upgraded from {$oldPackageName} to {$newPackageName}",
-                type: 'success',
-                link: route('clients', absolute: false),
-                forRole: 'admin',
-            );
-
-            $this->showUpgradeModal = false;
-            $this->loadPackageData();
-            $this->dispatch('toast', message: 'Package upgraded successfully!', type: 'success');
-        } else {
-            $this->dispatch('toast', message: 'Failed to upgrade package', type: 'error');
-        }
     }
 
     public function getClient()
@@ -288,9 +235,6 @@ new #[Layout('components.layouts.app')] class extends Component {
                         class="fas {{ $alert['type'] === 'danger' ? 'fa-exclamation-circle text-red-500' : 'fa-exclamation-triangle text-amber-500' }}"
                     ></i>
                     <span class="flex-1">{{ $alert['message'] }}</span>
-                    <button wire:click="openUpgradeModal" class="text-xs font-semibold underline hover:no-underline">
-                        Upgrade Now
-                    </button>
                 </div>
             @endforeach
         </div>
@@ -317,9 +261,6 @@ new #[Layout('components.layouts.app')] class extends Component {
                     </h3>
                     <p class="text-sm text-gray-500">NPR {{ number_format($packageLimits['monthly_amount'] ?? 0) }}/month</p>
                 </div>
-                <button wire:click="openUpgradeModal" class="btn btn-primary">
-                    <i class="fas fa-arrow-up mr-1"></i> Upgrade Package
-                </button>
             </div>
 
             @php
@@ -586,127 +527,4 @@ new #[Layout('components.layouts.app')] class extends Component {
             </div>
         </div>
     </div>
-
-    {{-- Upgrade Package Modal --}}
-    @if ($showUpgradeModal)
-        <div
-            class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
-            wire:click.self="$set('showUpgradeModal', false)"
-            x-on:keydown.escape.window="$wire.set('showUpgradeModal', false)"
-        >
-            <div class="modal-box w-full max-w-4xl mx-4 max-h-[90vh] overflow-y-auto">
-                <div class="sticky top-0 bg-white flex items-center justify-between p-4 border-b z-10">
-                    <div>
-                        <h3 class="font-bold text-lg">Upgrade Your Package</h3>
-                        <p class="text-xs text-gray-500 mt-0.5">Choose a plan that fits your needs</p>
-                    </div>
-                    <button wire:click="$set('showUpgradeModal', false)" class="text-gray-400 hover:text-gray-600">
-                        <i class="fas fa-times"></i>
-                    </button>
-                </div>
-                <div class="p-4">
-                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                        @foreach ($upgradeOptions as $option)
-                            @php
-                        $isCurrent = $option['is_current'];
-                        $isSelected = $selectedUpgrade === $option['slug'];
-                    @endphp
-                            <div
-                                wire:click="{{ $isCurrent ? '' : "selectUpgrade('{$option['slug']}')" }}"
-                                class="relative rounded-xl border-2 p-4 transition-all {{ $isCurrent ? 'border-[var(--brand)] bg-[var(--brand)]/5' : ($isSelected ? 'border-[var(--brand)] bg-[var(--brand)]/10 shadow-lg' : 'border-gray-200 hover:border-gray-300 hover:shadow-md cursor-pointer') }}"
-                            >
-                                @if ($isCurrent)
-                                    <span
-                                        class="absolute -top-2.5 left-4 bg-[var(--brand)] text-white text-[10px] font-bold px-2 py-0.5 rounded-full"
-                                        >CURRENT</span
-                                    >
-                                @endif
-
-                                @if ($isSelected)
-                                    <div class="absolute top-3 right-3">
-                                        <div
-                                            class="w-5 h-5 rounded-full bg-[var(--brand)] flex items-center justify-center"
-                                        >
-                                            <i class="fas fa-check text-white text-[10px]"></i>
-                                        </div>
-                                    </div>
-                                @endif
-
-                                <h4 class="font-bold text-base text-gray-900">{{ $option['name'] }}</h4>
-                                <p class="text-2xl font-extrabold text-[var(--brand)] mt-2">NPR {{ number_format($option['monthly_amount']) }}<span class="text-xs font-normal text-gray-400">/mo</span></p>
-
-                                <div class="mt-4 space-y-2 text-xs text-gray-600">
-                                    <div class="flex items-center gap-2">
-                                        <i
-                                            class="fas fa-file-alt w-4 text-center {{ $option['content_limit'] >= ($packageLimits['content_limit'] ?? 0) ? 'text-green-500' : 'text-gray-400' }}"
-                                        ></i>
-                                        <span>{{ $option['content_limit'] }} content/month</span>
-                                    </div>
-                                    <div class="flex items-center gap-2">
-                                        <i
-                                            class="fas fa-columns w-4 text-center {{ $option['workflow_limit'] >= ($packageLimits['workflow_limit'] ?? 0) ? 'text-green-500' : 'text-gray-400' }}"
-                                        ></i>
-                                        <span>{{ $option['workflow_limit'] }} workflow items</span>
-                                    </div>
-                                    <div class="flex items-center gap-2">
-                                        <i
-                                            class="fas fa-hdd w-4 text-center {{ $option['storage_limit_mb'] >= ($packageLimits['storage_limit_mb'] ?? 0) ? 'text-green-500' : 'text-gray-400' }}"
-                                        ></i>
-                                        <span>{{ $option['storage_limit_mb'] }}MB storage</span>
-                                    </div>
-                                    <div class="flex items-center gap-2">
-                                        <i
-                                            class="fas fa-redo w-4 text-center {{ $option['revision_limit'] >= ($packageLimits['revision_limit'] ?? 0) ? 'text-green-500' : 'text-gray-400' }}"
-                                        ></i>
-                                        <span>{{ $option['revision_limit'] }} revisions</span>
-                                    </div>
-                                    @if ($option['priority_support'])
-                                        <div class="flex items-center gap-2">
-                                            <i class="fas fa-headset w-4 text-center text-amber-500"></i>
-                                            <span class="font-medium">Priority Support</span>
-                                        </div>
-                                    @endif
-                                </div>
-
-                                @if (!empty($option['included_platforms']))
-                                    <div class="flex flex-wrap gap-1 mt-3">
-                                        @foreach (array_slice($option['included_platforms'], 0, 4) as $platform)
-                                            <span
-                                                class="text-[9px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-600"
-                                                >{{ ucfirst($platform) }}</span
-                                            >
-                                        @endforeach
-                                        @if (count($option['included_platforms']) > 4)
-                                            <span
-                                                class="text-[9px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-600"
-                                                >+{{ count($option['included_platforms']) - 4 }}</span
-                                            >
-                                        @endif
-                                    </div>
-                                @endif
-                            </div>
-                        @endforeach
-                    </div>
-
-                    @if (!empty($selectedUpgrade))
-                        @php
-                    $newPkg = collect($upgradeOptions)->firstWhere('slug', $selectedUpgrade);
-                    $priceDiff = $newPkg['monthly_amount'] - ($packageLimits['monthly_amount'] ?? 0);
-                @endphp
-                        <div class="mt-6 bg-gray-50 rounded-xl p-4">
-                            <div class="flex items-center justify-between">
-                                <div>
-                                    <p class="text-sm font-medium text-gray-700">Upgrading to <span class="font-bold text-[var(--brand)]">{{ $newPkg['name'] }}</span></p>
-                                    <p class="text-xs text-gray-500 mt-0.5">Additional NPR {{ number_format($priceDiff) }}/month</p>
-                                </div>
-                                <button wire:click="confirmUpgrade" class="btn btn-primary">
-                                    <i class="fas fa-arrow-up mr-1"></i> Confirm Upgrade
-                                </button>
-                            </div>
-                        </div>
-                    @endif
-                </div>
-            </div>
-        </div>
-    @endif
 </div>

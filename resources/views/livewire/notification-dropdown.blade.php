@@ -28,26 +28,30 @@ new class extends Component
         $clientId = $isClient ? ($user->client_id ?? null) : null;
 
         try {
-            $all = DB::table('notifications')
+            $query = DB::table('notifications')
                 ->where(function ($q) use ($user, $isClient) {
-                    $q->where('for_role', $user->role)
-                      ->orWhere('for_role', 'all');
-                    // Staff-guarded: also include rows targeted at this specific
-                    // user via the new user_id column (Laravel Notification
-                    // pattern: assignment, deadline, comment mentions).
-                    if (!$isClient) {
-                        $q->orWhere('user_id', $user->id);
+                    if ($isClient) {
+                        $q->where('for_role', 'client')
+                          ->orWhere('for_role', 'all');
+                    } else {
+                        $q->where('for_role', $user->role)
+                          ->orWhere('for_role', 'all')
+                          ->orWhere('user_id', $user->id);
                     }
-                })
-                ->where(function ($q) use ($isClient, $clientId) {
-                    if ($isClient && $clientId) {
+                });
+
+            if ($isClient) {
+                $query->where(function ($q) use ($clientId) {
+                    if ($clientId) {
                         $q->whereNull('client_id')
                           ->orWhere('client_id', $clientId);
+                    } else {
+                        $q->whereNull('client_id');
                     }
-                })
-                ->latest()
-                ->limit(20)
-                ->get();
+                });
+            }
+
+            $all = $query->latest()->limit(20)->get();
 
             $unread = $all->where('read', false);
             $read = $all->where('read', true)->take(5);
@@ -82,22 +86,30 @@ new class extends Component
         $isClient = Auth::guard('client')->check();
         $clientId = $isClient ? ($user->client_id ?? null) : null;
 
-        DB::table('notifications')
+        $query = DB::table('notifications')
             ->where(function ($q) use ($user, $isClient) {
-                $q->where('for_role', $user->role)
-                  ->orWhere('for_role', 'all');
-                if (!$isClient) {
-                    $q->orWhere('user_id', $user->id);
+                if ($isClient) {
+                    $q->where('for_role', 'client')
+                      ->orWhere('for_role', 'all');
+                } else {
+                    $q->where('for_role', $user->role)
+                      ->orWhere('for_role', 'all')
+                      ->orWhere('user_id', $user->id);
                 }
-            })
-            ->where(function ($q) use ($isClient, $clientId) {
-                if ($isClient && $clientId) {
+            });
+
+        if ($isClient) {
+            $query->where(function ($q) use ($clientId) {
+                if ($clientId) {
                     $q->whereNull('client_id')
                       ->orWhere('client_id', $clientId);
+                } else {
+                    $q->whereNull('client_id');
                 }
-            })
-            ->where('read', false)
-            ->update(['read' => true]);
+            });
+        }
+
+        $query->where('read', false)->update(['read' => true]);
 
         $this->loadNotifications();
     }
