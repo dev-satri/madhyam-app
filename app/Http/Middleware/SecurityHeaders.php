@@ -18,10 +18,15 @@ class SecurityHeaders
 
         $csp = implode('; ', [
             "default-src 'self'",
-            "script-src 'self' cdn.jsdelivr.net cdnjs.cloudflare.com fonts.googleapis.com 'unsafe-inline' 'unsafe-eval'",
+            // static.cloudflareinsights.com hosts the beacon.min.js that Cloudflare
+            // Web Analytics auto-injects at the edge — must be allowlisted or the
+            // browser blocks every page load with a CSP violation.
+            "script-src 'self' cdn.jsdelivr.net cdnjs.cloudflare.com fonts.googleapis.com static.cloudflareinsights.com 'unsafe-inline' 'unsafe-eval'",
             "style-src 'self' 'unsafe-inline' fonts.googleapis.com cdnjs.cloudflare.com",
             "img-src 'self' data:",
             "font-src 'self' fonts.gstatic.com cdnjs.cloudflare.com",
+            // Livewire/Alpine talk back to 'self'; the CF beacon POSTs to cloudflareinsights.com.
+            "connect-src 'self' cloudflareinsights.com",
         ]);
         $response->headers->set('Content-Security-Policy', $csp);
 
