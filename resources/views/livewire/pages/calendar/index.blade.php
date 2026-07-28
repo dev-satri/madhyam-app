@@ -83,12 +83,28 @@ new #[Layout('components.layouts.app')] class extends Component
     {
         $this->currentMonth = (int) now()->month;
         $this->currentYear = (int) now()->year;
-        // Client filter list is a staff-only affordance — never expose the full
-        // client roster to a client-portal session.
+        $this->loadClients();
+        $this->loadMonthContent();
+    }
+
+    // Refresh on every request so the filter dropdown (which triggers no method
+    // itself) and the form dropdown stay in sync with the clients table even
+    // when the component was preserved by wire:navigate.
+    public function hydrate(): void
+    {
+        $this->loadClients();
+    }
+
+    // Client filter list is a staff-only affordance — never expose the full
+    // client roster to a client-portal session.
+    protected function loadClients(): void
+    {
+        // Staff can plan for any non-deleted client — inactive/pending accounts
+        // still need scheduled content. Only the client-portal guard gets an
+        // empty list (they don't see the picker at all).
         $this->clients = Auth::guard('client')->check()
             ? []
-            : DB::table('clients')->where('status', 'active')->orderBy('name')->get()->toArray();
-        $this->loadMonthContent();
+            : DB::table('clients')->whereNull('deleted_at')->orderBy('name')->get()->toArray();
     }
 
     public function prevMonth(): void
@@ -266,6 +282,7 @@ new #[Layout('components.layouts.app')] class extends Component
     public function openForm(?string $date = null): void
     {
         $this->resetForm();
+        $this->loadClients();
         $this->selectedDate = $date ?? now()->format('Y-m-d');
         $this->formDate = $this->selectedDate;
         $this->formDueDate = '';
@@ -275,6 +292,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function editContent(int $id): void
     {
+        $this->loadClients();
         $content = DB::table('contents')->where('id', $id)->first();
         if (! $content) {
             return;
