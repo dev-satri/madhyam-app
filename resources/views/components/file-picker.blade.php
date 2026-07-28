@@ -52,52 +52,36 @@
         },
         syncToJson() {
             if (!this.jsonTarget) return;
-            const el = document.querySelector(`[wire\\:model="
-    ${this.jsonTarget}"]`);
-    if
-    (el)
-    {
-    const
-    json="JSON.stringify(this.attached);"
-    el.value="json;"
-    el.dispatchEvent(new
-    Event('input',
-    { bubbles: true }
-    ));
-    }
-    },
-    removeAttached(idx)
-    {
-    this.attached.splice(idx,
-    1);
-    if
-    (!window.__filePickerData)
-    window.__filePickerData={};
-    window.__filePickerData[this.target]="JSON.parse(JSON.stringify(this.attached));"
-    this.syncToJson();
-    },
-    confirm()
-    {
-    this.attached="JSON.parse(JSON.stringify(this.selected));"
-    if
-    (!window.__filePickerData)
-    window.__filePickerData={};
-    window.__filePickerData[this.target]="this.attached;"
-    this.syncToJson();
-    this.open="false;"
-    },
-    openPicker()
-    {
-    this.selected="JSON.parse(JSON.stringify(this.attached));"
-    this.search=""
-    ;
-    this.driveUrl=""
-    ;
-    this.driveName=""
-    ;
-    this.open="true;"
-    this.loadFiles();
-    }
+            const selector = '[wire\\:model=\'' + this.jsonTarget + '\']';
+            const el = document.querySelector(selector);
+            if (el) {
+                el.value = JSON.stringify(this.attached);
+                el.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+        },
+        async removeAttached(idx) {
+            const current = [...this.attached];
+            current.splice(idx, 1);
+            this.attached = current;
+            await $wire.set(this.target, current);
+            this.syncToJson();
+        },
+        async confirm() {
+            const payload = JSON.parse(JSON.stringify(this.selected));
+            this.attached = payload;
+            await $wire.set(this.target, payload);
+            this.syncToJson();
+            $dispatch('files-picked', { files: payload });
+            this.open = false;
+        },
+        openPicker() {
+            this.selected = JSON.parse(JSON.stringify(this.attached));
+            this.search = '';
+            this.driveUrl = '';
+            this.driveName = '';
+            this.open = true;
+            this.loadFiles();
+        },
     }"
 >
     {{-- Trigger + inline preview --}}
