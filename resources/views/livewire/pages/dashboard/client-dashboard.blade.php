@@ -298,29 +298,26 @@ new #[Layout('components.layouts.app')] class extends Component {
 
     {{-- My Package Usage --}}
     @if (!empty($packageLimits))
-        <div class="bg-gradient-to-r from-[var(--brand)] to-[var(--brand)]/80 rounded-2xl p-6 mb-6 text-white">
+        <div class="bg-white rounded-2xl border border-gray-100 p-6 mb-6">
             <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
                 <div>
                     <div class="flex items-center gap-2">
                         <span
-                            class="badge bg-white/20 text-white"
+                            class="badge bg-[rgba(var(--brand-rgb),0.08)] text-[var(--brand)]"
                             >{{ $packageLimits['package_name'] ?? 'Basic' }}</span
                         >
                         @if ($packageLimits['priority_support'] ?? false)
-                            <span class="badge bg-amber-400/20 text-amber-200"
+                            <span class="badge bg-amber-100 text-amber-700"
                                 ><i class="fas fa-headset mr-1"></i>Priority Support</span
                             >
                         @endif
                     </div>
-                    <h3 class="text-lg font-bold mt-2">
+                    <h3 class="text-lg font-bold mt-2 text-gray-900">
                         Your Package: {{ $packageLimits['package_name'] ?? 'Basic' }}
                     </h3>
-                    <p class="text-sm text-white/70">NPR {{ number_format($packageLimits['monthly_amount'] ?? 0) }}/month</p>
+                    <p class="text-sm text-gray-500">NPR {{ number_format($packageLimits['monthly_amount'] ?? 0) }}/month</p>
                 </div>
-                <button
-                    wire:click="openUpgradeModal"
-                    class="bg-white text-[var(--brand)] px-4 py-2 rounded-xl font-semibold text-sm hover:bg-white/90 transition-colors"
-                >
+                <button wire:click="openUpgradeModal" class="btn btn-primary">
                     <i class="fas fa-arrow-up mr-1"></i> Upgrade Package
                 </button>
             </div>
@@ -343,98 +340,98 @@ new #[Layout('components.layouts.app')] class extends Component {
 
             <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 {{-- Content --}}
-                <div class="bg-white/10 rounded-xl p-4">
+                <div class="rounded-xl border border-gray-100 p-4">
                     <div class="flex items-center justify-between mb-2">
-                        <span class="text-xs font-medium text-white/70"
+                        <span class="text-xs font-medium text-gray-500"
                             ><i class="fas fa-file-alt mr-1"></i>Content</span
                         >
-                        <span class="text-xs font-bold {{ $contentPct >= 90 ? 'text-red-300' : 'text-white' }}"
+                        <span class="text-xs font-bold {{ $contentPct >= 90 ? 'text-red-600' : 'text-gray-900' }}"
                             >{{ $contentPct }}%</span
                         >
                     </div>
-                    <p class="text-2xl font-extrabold">{{ $contentUsed }}<span class="text-sm font-normal text-white/60">/{{ $contentLimit }}</span></p>
-                    <div class="mt-2 h-2 bg-white/20 rounded-full overflow-hidden">
+                    <p class="text-2xl font-extrabold text-gray-900">{{ $contentUsed }}<span class="text-sm font-normal text-gray-400">/{{ $contentLimit }}</span></p>
+                    <div class="mt-2 h-2 bg-gray-100 rounded-full overflow-hidden">
                         <div
-                            class="h-full rounded-full {{ $contentPct >= 90 ? 'bg-red-400' : ($contentPct >= 70 ? 'bg-amber-400' : 'bg-white') }}"
+                            class="h-full rounded-full {{ $contentPct >= 90 ? 'bg-red-500' : ($contentPct >= 70 ? 'bg-amber-500' : 'bg-[var(--brand)]') }}"
                             style="width: {{ $contentPct }}%"
                         ></div>
                     </div>
-                    <p class="text-[10px] text-white/50 mt-1">{{ $contentLimit - $contentUsed }} remaining this month</p>
+                    <p class="text-[10px] text-gray-400 mt-1">{{ $contentLimit - $contentUsed }} remaining this month</p>
                 </div>
 
                 {{-- Workflow --}}
-                <div class="bg-white/10 rounded-xl p-4">
+                <div class="rounded-xl border border-gray-100 p-4">
                     <div class="flex items-center justify-between mb-2">
-                        <span class="text-xs font-medium text-white/70"
+                        <span class="text-xs font-medium text-gray-500"
                             ><i class="fas fa-columns mr-1"></i>Workflow</span
                         >
-                        <span class="text-xs font-bold {{ $workflowPct >= 90 ? 'text-red-300' : 'text-white' }}"
+                        <span class="text-xs font-bold {{ $workflowPct >= 90 ? 'text-red-600' : 'text-gray-900' }}"
                             >{{ $workflowPct }}%</span
                         >
                     </div>
-                    <p class="text-2xl font-extrabold">{{ $workflowUsed }}<span class="text-sm font-normal text-white/60">/{{ $workflowLimit }}</span></p>
-                    <div class="mt-2 h-2 bg-white/20 rounded-full overflow-hidden">
+                    <p class="text-2xl font-extrabold text-gray-900">{{ $workflowUsed }}<span class="text-sm font-normal text-gray-400">/{{ $workflowLimit }}</span></p>
+                    <div class="mt-2 h-2 bg-gray-100 rounded-full overflow-hidden">
                         <div
-                            class="h-full rounded-full {{ $workflowPct >= 90 ? 'bg-red-400' : ($workflowPct >= 70 ? 'bg-amber-400' : 'bg-white') }}"
+                            class="h-full rounded-full {{ $workflowPct >= 90 ? 'bg-red-500' : ($workflowPct >= 70 ? 'bg-amber-500' : 'bg-[var(--brand)]') }}"
                             style="width: {{ $workflowPct }}%"
                         ></div>
                     </div>
-                    <p class="text-[10px] text-white/50 mt-1">{{ $workflowLimit - $workflowUsed }} remaining this month</p>
+                    <p class="text-[10px] text-gray-400 mt-1">{{ $workflowLimit - $workflowUsed }} remaining this month</p>
                 </div>
 
                 {{-- Storage --}}
-                <div class="bg-white/10 rounded-xl p-4">
+                <div class="rounded-xl border border-gray-100 p-4">
                     <div class="flex items-center justify-between mb-2">
-                        <span class="text-xs font-medium text-white/70"><i class="fas fa-hdd mr-1"></i>Storage</span>
-                        <span class="text-xs font-bold {{ $storagePct >= 90 ? 'text-red-300' : 'text-white' }}"
+                        <span class="text-xs font-medium text-gray-500"><i class="fas fa-hdd mr-1"></i>Storage</span>
+                        <span class="text-xs font-bold {{ $storagePct >= 90 ? 'text-red-600' : 'text-gray-900' }}"
                             >{{ $storagePct }}%</span
                         >
                     </div>
-                    <p class="text-2xl font-extrabold">{{ $storageUsed }}<span class="text-sm font-normal text-white/60">/{{ $storageLimit }}MB</span></p>
-                    <div class="mt-2 h-2 bg-white/20 rounded-full overflow-hidden">
+                    <p class="text-2xl font-extrabold text-gray-900">{{ $storageUsed }}<span class="text-sm font-normal text-gray-400">/{{ $storageLimit }}MB</span></p>
+                    <div class="mt-2 h-2 bg-gray-100 rounded-full overflow-hidden">
                         <div
-                            class="h-full rounded-full {{ $storagePct >= 90 ? 'bg-red-400' : ($storagePct >= 70 ? 'bg-amber-400' : 'bg-white') }}"
+                            class="h-full rounded-full {{ $storagePct >= 90 ? 'bg-red-500' : ($storagePct >= 70 ? 'bg-amber-500' : 'bg-[var(--brand)]') }}"
                             style="width: {{ $storagePct }}%"
                         ></div>
                     </div>
-                    <p class="text-[10px] text-white/50 mt-1">{{ $storageLimit - $storageUsed }}MB remaining</p>
+                    <p class="text-[10px] text-gray-400 mt-1">{{ $storageLimit - $storageUsed }}MB remaining</p>
                 </div>
 
                 {{-- Approvals --}}
-                <div class="bg-white/10 rounded-xl p-4">
+                <div class="rounded-xl border border-gray-100 p-4">
                     <div class="flex items-center justify-between mb-2">
-                        <span class="text-xs font-medium text-white/70"
+                        <span class="text-xs font-medium text-gray-500"
                             ><i class="fas fa-check-double mr-1"></i>Approvals</span
                         >
                     </div>
-                    <p class="text-2xl font-extrabold">{{ $approvalUsed }}</p>
-                    <p class="text-[10px] text-white/50 mt-3">items submitted for review</p>
+                    <p class="text-2xl font-extrabold text-gray-900">{{ $approvalUsed }}</p>
+                    <p class="text-[10px] text-gray-400 mt-3">items submitted for review</p>
                 </div>
             </div>
 
             @if (!empty($packageDeliverables))
-                <div class="mt-5 pt-5 border-t border-white/15">
-                    <p class="text-xs font-semibold text-white/70 uppercase tracking-wider mb-3">
+                <div class="mt-5 pt-5 border-t border-gray-100">
+                    <p class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
                         <i class="fas fa-box-open mr-1"></i>Deliverables this month
                     </p>
                     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                         @foreach ($packageDeliverables as $d)
                             @php
                                 $pct = $d['percent'];
-                                $barCls = $pct >= 100 ? 'bg-red-400' : ($pct >= 80 ? 'bg-amber-400' : 'bg-white');
-                                $pctCls = $pct >= 100 ? 'text-red-300' : ($pct >= 80 ? 'text-amber-200' : 'text-white');
+                                $barCls = $pct >= 100 ? 'bg-red-500' : ($pct >= 80 ? 'bg-amber-500' : 'bg-[var(--brand)]');
+                                $pctCls = $pct >= 100 ? 'text-red-600' : ($pct >= 80 ? 'text-amber-600' : 'text-gray-900');
                                 $remaining = max(0, $d['limit'] - $d['used']);
                             @endphp
-                            <div class="bg-white/10 rounded-xl p-3">
+                            <div class="rounded-xl border border-gray-100 p-3">
                                 <div class="flex items-center justify-between mb-1">
-                                    <span class="text-xs font-medium text-white/70">{{ ucfirst($d['type']) }}</span>
+                                    <span class="text-xs font-medium text-gray-500">{{ ucfirst($d['type']) }}</span>
                                     <span class="text-xs font-bold {{ $pctCls }}">{{ $pct }}%</span>
                                 </div>
-                                <p class="text-lg font-extrabold">{{ $d['used'] }}<span class="text-xs font-normal text-white/60">/{{ $d['limit'] }}</span></p>
-                                <div class="mt-1.5 h-1.5 bg-white/20 rounded-full overflow-hidden">
+                                <p class="text-lg font-extrabold text-gray-900">{{ $d['used'] }}<span class="text-xs font-normal text-gray-400">/{{ $d['limit'] }}</span></p>
+                                <div class="mt-1.5 h-1.5 bg-gray-100 rounded-full overflow-hidden">
                                     <div class="h-full rounded-full {{ $barCls }}" style="width: {{ $pct }}%"></div>
                                 </div>
-                                <p class="text-[10px] text-white/50 mt-1">{{ $remaining }} left</p>
+                                <p class="text-[10px] text-gray-400 mt-1">{{ $remaining }} left</p>
                             </div>
                         @endforeach
                     </div>
@@ -443,10 +440,10 @@ new #[Layout('components.layouts.app')] class extends Component {
 
             @if (!empty($packageLimits['included_platforms']))
                 <div class="mt-4 flex flex-wrap items-center gap-2">
-                    <span class="text-xs text-white/60">Platforms:</span>
+                    <span class="text-xs text-gray-500">Platforms:</span>
                     @foreach ($packageLimits['included_platforms'] as $platform)
                         <span
-                            class="text-xs px-2 py-0.5 rounded-full bg-white/10 text-white/80"
+                            class="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600"
                             >{{ ucfirst($platform) }}</span
                         >
                     @endforeach
@@ -460,13 +457,8 @@ new #[Layout('components.layouts.app')] class extends Component {
         <div class="lg:col-span-2 space-y-6">
             {{-- My Projects --}}
             <div class="bg-white rounded-2xl border border-gray-100">
-                <div class="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+                <div class="px-6 py-4 border-b border-gray-100">
                     <h2 class="text-base font-bold text-gray-900">My Projects</h2>
-                    <a
-                        href="{{ route('client.workflow') }}"
-                        class="text-xs font-semibold text-[var(--brand)] hover:underline"
-                        >View all</a
-                    >
                 </div>
                 <div class="p-6">
                     @if ($this->myProjects->isEmpty())
