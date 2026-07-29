@@ -18,11 +18,12 @@ class Workflow extends Model
     protected $fillable = [
         'title', 'client_id', 'content_id', 'type', 'stage', 'deadline', 'assignee',
         'priority', 'notes', 'description_html', 'tags', 'status', 'submitted_by', 'revision_notes',
+        'attachments',
     ];
 
     protected $casts = [
         'deadline' => 'date',
-        'tags' => 'array',
+        'attachments' => 'array',
     ];
 
     public function client(): BelongsTo

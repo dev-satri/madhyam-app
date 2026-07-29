@@ -179,11 +179,19 @@ document.addEventListener('alpine:init', () => {
                 this._mediaLoading = true;
                 this._mediaSearch = '';
                 try {
-                    const res = await $wire.getPickableFiles('', null);
+                    const wire = this.$wire || (typeof $wire !== 'undefined' ? $wire : null);
+                    if (!wire) {
+                        // eslint-disable-next-line no-console
+                        console.error('Livewire $wire not available');
+                        this._mediaFiles = [];
+                        this._mediaLoading = false;
+                        return;
+                    }
+                    const res = await wire.getPickableFiles('', null);
                     this._mediaFiles = res || [];
-                } catch {
+                } catch (e) {
                     // eslint-disable-next-line no-console
-                    console.error('Failed to load media files');
+                    console.error('Failed to load media files:', e);
                     this._mediaFiles = [];
                 }
                 this._mediaLoading = false;
@@ -191,29 +199,49 @@ document.addEventListener('alpine:init', () => {
             _selectMediaFile(file) {
                 const url = file.url;
                 if (!url) return;
-                safe(() => {
-                    if (this._pickMode === 'image') {
-                        editorInstance.chain().focus().setImage({ src: url }).run();
-                    } else {
-                        editorInstance.chain().focus().setLink({ href: url }).run();
-                    }
-                });
+                const mode = this._pickMode;
                 this._showMediaPicker = false;
                 this._tick++;
+                this.$nextTick(() => {
+                    if (!alive()) {
+                        editorInstance?.commands.focus();
+                    }
+                    try {
+                        if (mode === 'image') {
+                            editorInstance.chain().focus().setImage({ src: url }).run();
+                        } else {
+                            editorInstance.chain().focus().setLink({ href: url }).run();
+                        }
+                    } catch (e) {
+                        // eslint-disable-next-line no-console
+                        console.error('Failed to insert media:', e);
+                    }
+                    this._tick++;
+                });
             },
             _submitManualUrl() {
                 const url = this._manualUrl;
                 if (!url) return;
-                safe(() => {
-                    if (this._pickMode === 'image') {
-                        editorInstance.chain().focus().setImage({ src: url }).run();
-                    } else {
-                        editorInstance.chain().focus().setLink({ href: url }).run();
-                    }
-                });
+                const mode = this._pickMode;
                 this._manualUrl = '';
                 this._showMediaPicker = false;
                 this._tick++;
+                this.$nextTick(() => {
+                    if (!alive()) {
+                        editorInstance?.commands.focus();
+                    }
+                    try {
+                        if (mode === 'image') {
+                            editorInstance.chain().focus().setImage({ src: url }).run();
+                        } else {
+                            editorInstance.chain().focus().setLink({ href: url }).run();
+                        }
+                    } catch (e) {
+                        // eslint-disable-next-line no-console
+                        console.error('Failed to insert media URL:', e);
+                    }
+                    this._tick++;
+                });
             },
 
             isActive(name, attrs) {

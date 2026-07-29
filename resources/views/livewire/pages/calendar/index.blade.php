@@ -12,9 +12,11 @@ use Illuminate\Support\Facades\DB;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\On;
 use Livewire\Volt\Component;
+use Livewire\WithFileUploads;
 
 new #[Layout('components.layouts.app')] class extends Component
 {
+    use WithFileUploads;
     public string $viewMode = 'month';
 
     public int $currentMonth;
@@ -59,11 +61,15 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public array $formAttachments = [];
 
+    public string $formAttachmentsJson = '[]';
+
     public string $commentText = '';
 
-    public array $commentAttachments = [];
+    public string $commentAttachments = '[]';
 
-    public string $commentAttachmentsJson = '[]';
+    public $newFileUpload = null;
+
+
 
     public ?int $selectedContentId = null;
 
@@ -93,6 +99,11 @@ new #[Layout('components.layouts.app')] class extends Component
     public function hydrate(): void
     {
         $this->loadClients();
+    }
+
+    public function updatedFormAttachmentsJson(string $value): void
+    {
+        $this->formAttachments = json_decode($value, true) ?: [];
     }
 
     // Client filter list is a staff-only affordance — never expose the full
@@ -322,6 +333,7 @@ new #[Layout('components.layouts.app')] class extends Component
         } else {
             $this->formAttachments = is_array($raw) ? $raw : [];
         }
+        $this->formAttachmentsJson = json_encode($this->formAttachments);
         $this->showForm = true;
         $this->showDayDetail = false;
     }
@@ -351,7 +363,7 @@ new #[Layout('components.layouts.app')] class extends Component
                     'caption' => $this->caption,
                     'hashtags' => $this->hashtags,
                     'reference_file' => $this->referenceFile,
-                    'attachments' => $this->formAttachments ? json_encode(array_values($this->formAttachments)) : null,
+                    'attachments' => $this->formAttachments ? array_values($this->formAttachments) : null,
                     'updated_at' => now(),
                 ]);
                 $this->dispatch('toast', message: 'Content updated successfully', type: 'success');
@@ -370,7 +382,7 @@ new #[Layout('components.layouts.app')] class extends Component
                             'caption' => $this->caption,
                             'hashtags' => $this->hashtags,
                             'reference_file' => $this->referenceFile,
-                            'attachments' => $this->formAttachments ? json_encode(array_values($this->formAttachments)) : null,
+                            'attachments' => $this->formAttachments ? array_values($this->formAttachments) : null,
                             'created_by' => auth()->id(),
                             'created_at' => now(),
                             'updated_at' => now(),
@@ -528,6 +540,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
             $platform = ucfirst($content->platform ?? 'general');
             $type = ucfirst($content->type ?? 'post');
+            $contentAttachments = $content->attachments ? (is_string($content->attachments) ? $content->attachments : json_encode($content->attachments)) : null;
             DB::table('approvals')->insert([
                 'title' => $content->title . " ({$platform} / {$type})",
                 'client_id' => $content->client_id,
@@ -536,6 +549,7 @@ new #[Layout('components.layouts.app')] class extends Component
                 'status' => 'pending',
                 'approval_stage' => 'first',
                 'submitted_by' => auth()->id(),
+                'attachments' => $contentAttachments,
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
@@ -556,6 +570,39 @@ new #[Layout('components.layouts.app')] class extends Component
         $this->showDayDetail = false;
     }
 
+    public function getDiscussionAttachments(): array
+    {
+        if (!$this->selectedContentId) return [];
+        $atts = [];
+
+        $raw = DB::table('contents')->where('id', $this->selectedContentId)->value('attachments');
+        if (!is_null($raw)) {
+            if (is_string($raw)) $raw = json_decode($raw, true);
+            if (is_array($raw)) $atts = array_values(array_filter($raw, fn($a) => is_array($a)));
+        }
+
+        $wfAtts = DB::table('workflows')->where('content_id', $this->selectedContentId)->whereNotNull('attachments')->get();
+        foreach ($wfAtts as $wf) {
+            if (empty($wf->attachments)) continue;
+            $decoded = is_string($wf->attachments) ? json_decode($wf->attachments, true) : $wf->attachments;
+            if (is_array($decoded)) {
+                $atts = array_merge($atts, array_values(array_filter($decoded, fn($a) => is_array($a))));
+            }
+        }
+
+        $atts = array_map(function ($a) {
+            if (empty($a['url']) && !empty($a['id'])) {
+                $file = DB::table('files')->where('id', $a['id'])->first();
+                if ($file && $file->path) {
+                    $a['url'] = \Illuminate\Support\Facades\Storage::url($file->path);
+                }
+            }
+            return $a;
+        }, $atts);
+
+        return array_values(array_filter($atts, fn($a) => !empty($a['url'])));
+    }
+
     public function getContentDiscussionComments()
     {
         if (! $this->selectedContentId) {
@@ -569,13 +616,36 @@ new #[Layout('components.layouts.app')] class extends Component
             ->get();
     }
 
-    public function addContentComment(): void
+    public function addContentComment(string $attachmentsJson = '[]'): void
     {
-        if (! $this->commentText || ! $this->selectedContentId) {
+        $hasText = trim($this->commentText) !== '';
+        $attachments = json_decode($attachmentsJson, true) ?: [];
+        $hasFiles = !empty($attachments);
+
+        if (!$hasText && !$hasFiles) {
             return;
         }
 
-        $attachments = json_decode($this->commentAttachmentsJson, true) ?: [];
+        if (!$this->selectedContentId) {
+            return;
+        }
+
+        if ($hasFiles && !$hasText) {
+            $existingRaw = DB::table('contents')->where('id', $this->selectedContentId)->value('attachments');
+            $existing = $existingRaw ? (json_decode($existingRaw, true) ?: []) : [];
+            $merged = array_values(array_merge($existing, $attachments));
+
+            DB::table('contents')->where('id', $this->selectedContentId)->update([
+                'attachments' => json_encode($merged),
+                'updated_at' => now(),
+            ]);
+
+            $this->commentAttachments = '[]';
+            $this->loadMonthContent();
+            $this->dispatch('contentUpdated');
+            $this->dispatch('toast', message: 'Files attached', type: 'success');
+            return;
+        }
 
         Comment::create([
             'commentable_type' => Content::class,
@@ -591,7 +661,7 @@ new #[Layout('components.layouts.app')] class extends Component
         );
 
         $this->commentText = '';
-        $this->commentAttachments = [];
+        $this->commentAttachments = '[]';
         $this->dispatch('tiptap-set-content', name: 'calComment', html: '');
         $this->dispatch('toast', message: 'Comment added', type: 'success');
     }
@@ -608,13 +678,49 @@ new #[Layout('components.layouts.app')] class extends Component
             $q->where('name', 'like', "%{$search}%");
         }
 
-        return $q->limit(30)->get()->map(fn ($f) => [
+        return $q->get()->map(fn ($f) => [
             'id' => $f->id,
             'name' => $f->name,
             'url' => $f->getUrl(),
             'type' => $f->type,
             'size_label' => $f->size_readable,
         ])->toArray();
+    }
+
+    public function updatedNewFileUpload(): void
+    {
+        if (!$this->newFileUpload) return;
+
+        $file = $this->newFileUpload;
+        $path = $file->store('files/' . now()->format('Y/m'), 'public');
+
+        $ext = strtolower($file->getClientOriginalExtension());
+        $typeMap = ['jpg'=>'image','jpeg'=>'image','png'=>'image','gif'=>'image','webp'=>'image','svg'=>'image',
+            'mp4'=>'video','mov'=>'video','avi'=>'video','webm'=>'video','mkv'=>'video',
+            'mp3'=>'audio','wav'=>'audio','ogg'=>'audio','aac'=>'audio','m4a'=>'audio'];
+        $fileType = $typeMap[$ext] ?? 'document';
+
+        $fileModel = File::create([
+            'name' => $file->getClientOriginalName(),
+            'path' => $path,
+            'type' => $fileType,
+            'size' => $file->getSize(),
+            'storage_type' => 'local',
+            'uploaded_by' => auth()->id(),
+            'client_id' => $this->formClientId ?: null,
+        ]);
+
+        $att = [
+            'id' => $fileModel->id,
+            'name' => $fileModel->name,
+            'url' => $fileModel->getUrl(),
+            'type' => $fileModel->type,
+        ];
+
+        $this->formAttachments[] = $att;
+        $this->formAttachmentsJson = json_encode($this->formAttachments);
+        $this->newFileUpload = null;
+        $this->dispatch('toast', message: 'File uploaded and attached', type: 'success');
     }
 
     private function resetForm(): void
@@ -631,6 +737,7 @@ new #[Layout('components.layouts.app')] class extends Component
         $this->hashtags = '';
         $this->referenceFile = '';
         $this->formAttachments = [];
+        $this->formAttachmentsJson = '[]';
     }
 
     #[On('confirm-resolved')]
@@ -852,6 +959,19 @@ new #[Layout('components.layouts.app')] class extends Component
                                 </td>
                                 <td>
                                     <span class="font-semibold text-gray-900">{{ $item->title }}</span>
+                                    @php
+                                        $hasContentAttachments = false;
+                                        if ($item->attachments) {
+                                            $contentAtts = is_string($item->attachments) ? json_decode($item->attachments, true) : $item->attachments;
+                                            $hasContentAttachments = is_array($contentAtts) && count($contentAtts) > 0;
+                                        }
+                                    @endphp
+                                    @if ($hasContentAttachments)
+                                        <i
+                                            class="fas fa-paperclip text-xs text-gray-400 ml-1"
+                                            title="{{ count($contentAtts) }} attachment(s)"
+                                        ></i>
+                                    @endif
                                 </td>
                                 <td>
                                     <span class="text-gray-600">{{ $item->client_name ?? '-' }}</span>
@@ -1040,6 +1160,26 @@ new #[Layout('components.layouts.app')] class extends Component
                                 <span wire:error="title" class="text-red-500 text-xs mt-1 block"></span>
                             </div>
 
+                            {{-- Attachments — prominent, top of form --}}
+                            <div
+                                class="md:col-span-2 border border-dashed border-gray-200 rounded-xl bg-gray-50/50 p-4"
+                            >
+                                <label class="form-label mb-2"
+                                    ><i class="fas fa-paperclip text-gray-400 mr-1"></i> Attachments</label
+                                >
+                                <x-file-picker
+                                    :clientId="$formClientId"
+                                    wire="formAttachmentsJson"
+                                    :initial="$formAttachments"
+                                    wireClientId="formClientId"
+                                />
+                                @if ($this->editingId && count($formAttachments) > 0)
+                                    <div class="mt-3">
+                                        @include ('livewire.partials.attachment-display', ['attachments' => $formAttachments, 'label' => ''])
+                                    </div>
+                                @endif
+                            </div>
+
                             <div>
                                 <label class="form-label">Client</label>
                                 <select wire:model="formClientId" class="form-select">
@@ -1088,11 +1228,6 @@ new #[Layout('components.layouts.app')] class extends Component
                                     class="form-input"
                                     placeholder="File name or URL"
                                 />
-                            </div>
-
-                            <div class="md:col-span-2">
-                                <label class="form-label">Attachments</label>
-                                <x-file-picker :clientId="$formClientId" wire="formAttachments" />
                             </div>
 
                             {{-- Platforms Multi-Select --}}
@@ -1398,123 +1533,211 @@ new #[Layout('components.layouts.app')] class extends Component
             $discContent = \App\Models\Content::with('client')->find($selectedContentId);
             $discComments = $this->getContentDiscussionComments();
         @endphp
-        <div
-            class="modal-overlay z-50"
-            wire:click.self="$set('showContentDiscussion', false)"
-            x-on:keydown.escape.window="$wire.set('showContentDiscussion', false)"
-        >
-            <div class="modal-box max-w-lg" x-on:click.stop>
-                <div class="modal-header">
-                    <h3 class="text-base font-bold text-gray-900 truncate pr-2">
-                        <i class="fas fa-comments text-[var(--brand)] mr-2"></i>
-                        {{ $discContent->title ?? 'Discussion' }}
-                    </h3>
-                    <button
-                        wire:click="$set('showContentDiscussion', false)"
-                        class="flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors flex-shrink-0"
-                    >
-                        <i class="fas fa-times text-sm"></i>
-                    </button>
-                </div>
-
-                <div class="modal-body space-y-4">
-                    {{-- Content info --}}
-                    <div class="flex items-center gap-2 text-xs text-gray-500">
-                        @if ($discContent->client)
-                            <span class="text-gray-600">{{ $discContent->client->name }}</span>
-                            <span>·</span>
-                        @endif
-                        <span class="capitalize">{{ $discContent->type }}</span>
-                        <span>·</span>
-                        <span class="capitalize">{{ str_replace('-', ' ', $discContent->status) }}</span>
+        @if ($discContent)
+            @php
+            $calTypeBadge = match($discContent->type) {
+                'reel'     => 'bg-pink-50 text-pink-700 border-pink-200',
+                'post'     => 'bg-blue-50 text-blue-700 border-blue-200',
+                'story'    => 'bg-purple-50 text-purple-700 border-purple-200',
+                'video'    => 'bg-red-50 text-red-700 border-red-200',
+                'carousel' => 'bg-amber-50 text-amber-700 border-amber-200',
+                'blog'     => 'bg-green-50 text-green-700 border-green-200',
+                default    => 'bg-gray-50 text-gray-600 border-gray-200',
+            };
+            $calStatusBadge = match($discContent->status) {
+                'published'  => 'bg-emerald-50 text-emerald-700 border-emerald-200',
+                'draft'      => 'bg-gray-50 text-gray-600 border-gray-200',
+                'scheduled'  => 'bg-blue-50 text-blue-700 border-blue-200',
+                'in-review'  => 'bg-amber-50 text-amber-700 border-amber-200',
+                default      => 'bg-gray-50 text-gray-600 border-gray-200',
+            };
+        @endphp
+            <div
+                class="modal-overlay z-50"
+                wire:click.self="$set('showContentDiscussion', false)"
+                x-on:keydown.escape.window="$wire.set('showContentDiscussion', false)"
+            >
+                <div class="modal-box max-w-2xl" x-on:click.stop>
+                    {{-- Header --}}
+                    <div class="modal-header border-b border-gray-100 pb-3">
+                        <div class="flex-1 min-w-0">
+                            <div class="flex flex-wrap items-center gap-1.5 mb-1.5">
+                                <span
+                                    class="inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-semibold border {{ $calTypeBadge }}"
+                                    >{{ ucfirst($discContent->type) }}</span
+                                >
+                                <span
+                                    class="inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-semibold border {{ $calStatusBadge }}"
+                                    >{{ ucwords(str_replace('-', ' ', $discContent->status)) }}</span
+                                >
+                            </div>
+                            <h3 class="text-lg font-bold text-gray-900 leading-snug">{{ $discContent->title }}</h3>
+                        </div>
+                        <button
+                            wire:click="$set('showContentDiscussion', false)"
+                            class="btn btn-ghost btn-icon btn-sm"
+                            aria-label="Close"
+                        >
+                            <i class="fas fa-times"></i>
+                        </button>
                     </div>
 
-                    {{-- Comment list --}}
-                    <div class="space-y-3 max-h-60 overflow-y-auto">
-                        @forelse ($discComments as $comment)
-                            <div class="flex gap-2.5">
-                                <div
-                                    class="flex-shrink-0 w-6 h-6 rounded-full bg-[rgba(var(--brand-rgb),0.1)] flex items-center justify-center text-[9px] font-bold text-[var(--brand)]"
-                                >
-                                    {{ strtoupper(substr($comment->user->name ?? '?', 0, 1)) }}
+                    <div class="modal-body space-y-4 max-h-[70vh] overflow-y-auto">
+                        {{-- Caption --}}
+                        @if ($discContent->caption)
+                            <div>
+                                <p class="text-[11px] uppercase tracking-wide font-semibold text-gray-400 mb-1">Caption</p>
+                                <p class="text-sm text-gray-700 whitespace-pre-line leading-relaxed">{{ $discContent->caption }}</p>
+                            </div>
+                        @endif
+
+                        {{-- Metadata --}}
+                        <div class="grid grid-cols-2 sm:grid-cols-3 gap-4 text-sm">
+                            <div>
+                                <p class="text-[11px] uppercase tracking-wide font-semibold text-gray-400 mb-1">Client</p>
+                                <p class="text-gray-800 text-xs flex items-center gap-1.5"><i class="fas fa-building text-gray-400"></i> {{ $discContent->client->name ?? '—' }}</p>
+                            </div>
+                            <div>
+                                <p class="text-[11px] uppercase tracking-wide font-semibold text-gray-400 mb-1">Platform</p>
+                                <p class="text-gray-800 text-xs flex items-center gap-1.5"><i class="fas fa-share-nodes text-gray-400"></i> {{ ucfirst($discContent->platform ?? '—') }}</p>
+                            </div>
+                            <div>
+                                <p class="text-[11px] uppercase tracking-wide font-semibold text-gray-400 mb-1">Date</p>
+                                <p class="text-gray-800 text-xs flex items-center gap-1.5">
+                                    <i class="fas fa-calendar-alt text-gray-400"></i>
+                                    {{ $discContent->date ? $discContent->date->format('M d, Y') : '—' }}
+                                </p>
+                            </div>
+                            @if ($discContent->due_date)
+                                <div>
+                                    <p class="text-[11px] uppercase tracking-wide font-semibold text-gray-400 mb-1">Due Date</p>
+                                    <p class="text-gray-800 text-xs flex items-center gap-1.5"><i class="fas fa-clock text-gray-400"></i> {{ $discContent->due_date->format('M d, Y') }}</p>
                                 </div>
-                                <div class="flex-1 min-w-0">
-                                    <div class="flex items-center gap-2 mb-0.5">
-                                        <span
-                                            class="text-xs font-semibold text-gray-800"
-                                            >{{ $comment->user->name ?? 'Unknown' }}</span
-                                        >
-                                        <span
-                                            class="text-[10px] text-gray-400"
-                                            >{{ $comment->created_at->diffForHumans() }}</span
-                                        >
-                                    </div>
-                                    <div class="comment-body text-sm text-gray-600">{!! $comment->body !!}</div>
-                                    @if ($comment->attachments)
-                                        <div class="flex flex-wrap gap-1 mt-1">
-                                            @foreach ($comment->attachments as $att)
-                                                @if (($att['type'] ?? '') === 'image')
-                                                    <a href="{{ $att['url'] }}" target="_blank" class="block"
-                                                        ><img
-                                                            src="{{ $att['url'] }}"
-                                                            class="rounded-lg max-h-20 border border-gray-100"
-                                                    /></a>
-                                                @else
-                                                    <a
-                                                        href="{{ $att['url'] }}"
-                                                        target="_blank"
-                                                        class="inline-flex items-center gap-1 bg-gray-100 rounded-lg px-2 py-1 text-xs text-gray-600 hover:bg-gray-200"
-                                                    >
-                                                        <i
-                                                            class="fas {{ ($att['type'] ?? '') === 'drive' ? 'fa-google-drive text-blue-500' : 'fa-file text-gray-400' }}"
-                                                        ></i>
-                                                        {{ $att['name'] ?? 'File' }}
-                                                    </a>
-                                                @endif
-                                            @endforeach
-                                        </div>
-                                    @endif
+                            @endif
+                            <div>
+                                <p class="text-[11px] uppercase tracking-wide font-semibold text-gray-400 mb-1">Created By</p>
+                                <p class="text-gray-800 text-xs flex items-center gap-1.5"><i class="fas fa-user text-gray-400"></i> {{ $discContent->creator->name ?? '—' }}</p>
+                            </div>
+                        </div>
+
+                        {{-- Hashtags --}}
+                        @if ($discContent->hashtags && trim($discContent->hashtags) !== '')
+                            <div>
+                                <p class="text-[11px] uppercase tracking-wide font-semibold text-gray-400 mb-1.5">Hashtags</p>
+                                <div class="flex flex-wrap gap-1.5">
+                                    @foreach (explode(',', $discContent->hashtags) as $tag)
+                                        @php $tag = trim($tag); @endphp
+                                        @if ($tag !== '')
+                                            <span
+                                                class="inline-flex items-center rounded-md bg-gray-100 text-gray-700 px-2 py-0.5 text-xs"
+                                            >
+                                                <i class="fas fa-hashtag text-gray-400 text-[9px] mr-1"></i>{{ $tag }}
+                                            </span>
+                                        @endif
+                                    @endforeach
                                 </div>
                             </div>
-                        @empty
-                            <p class="text-xs text-gray-400 text-center py-3">No comments yet. Start the discussion.</p>
-                        @endforelse
-                    </div>
+                        @endif
 
-                    {{-- Comment form --}}
-                    <div class="border-t border-gray-100 pt-3">
-                        <x-tiptap-editor wire="commentText" name="calComment" placeholder="Add a comment..." />
-                        <div class="flex items-center justify-between mt-2">
-                            <x-file-picker
-                                :clientId="$discContent->client_id"
-                                wire="commentAttachments"
-                                wire-json="commentAttachmentsJson"
-                            />
-                            <input type="hidden" wire:model="commentAttachmentsJson" />
-                            <button
-                                wire:click="addContentComment"
-                                wire:loading.attr="disabled"
-                                wire:target="addContentComment"
-                                class="btn btn-primary btn-sm"
-                                :disabled="!$wire.commentText"
-                            >
-                                <i
-                                    class="fas fa-paper-plane text-xs"
-                                    wire:loading.remove
-                                    wire:target="addContentComment"
-                                ></i>
-                                <i
-                                    class="fas fa-spinner fa-spin text-xs"
-                                    wire:loading
-                                    wire:target="addContentComment"
-                                ></i>
-                                Send
-                            </button>
+                        {{-- Attachments --}}
+                        @php $cAtts = $this->getDiscussionAttachments(); @endphp
+                        @if (count($cAtts) > 0)
+                            <div>
+                                @include ('livewire.partials.attachment-display', ['attachments' => $cAtts, 'label' => 'Attachments'])
+                            </div>
+                        @endif
+
+                        {{-- Discussion --}}
+                        <div class="border-t border-gray-100 pt-4">
+                            <h4 class="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                                <i class="fas fa-comments text-gray-400"></i> Discussion
+                            </h4>
+
+                            <div class="space-y-3 max-h-48 overflow-y-auto mb-3">
+                                @forelse ($discComments as $comment)
+                                    <div class="flex gap-2.5">
+                                        <div
+                                            class="flex-shrink-0 w-6 h-6 rounded-full bg-[rgba(var(--brand-rgb),0.1)] flex items-center justify-center text-[9px] font-bold text-[var(--brand)]"
+                                        >
+                                            {{ strtoupper(substr($comment->user->name ?? '?', 0, 1)) }}
+                                        </div>
+                                        <div class="flex-1 min-w-0">
+                                            <div class="flex items-center gap-2 mb-0.5">
+                                                <span
+                                                    class="text-xs font-semibold text-gray-800"
+                                                    >{{ $comment->user->name ?? 'Unknown' }}</span
+                                                >
+                                                <span
+                                                    class="text-[10px] text-gray-400"
+                                                    >{{ $comment->created_at->diffForHumans() }}</span
+                                                >
+                                            </div>
+                                            <div class="comment-body text-sm text-gray-600">{!! $comment->body !!}</div>
+                                            @if ($comment->attachments)
+                                                <div class="flex flex-wrap gap-1 mt-1">
+                                                    @foreach ($comment->attachments as $att)
+                                                        @if (($att['type'] ?? '') === 'image')
+                                                            <a href="{{ $att['url'] }}" target="_blank" class="block"
+                                                                ><img
+                                                                    src="{{ $att['url'] }}"
+                                                                    class="rounded-lg max-h-20 border border-gray-100"
+                                                            /></a>
+                                                        @else
+                                                            <a
+                                                                href="{{ $att['url'] }}"
+                                                                target="_blank"
+                                                                class="inline-flex items-center gap-1 bg-gray-100 rounded-lg px-2 py-1 text-xs text-gray-600 hover:bg-gray-200"
+                                                            >
+                                                                <i
+                                                                    class="fas {{ ($att['type'] ?? '') === 'drive' ? 'fa-google-drive text-blue-500' : 'fa-file text-gray-400' }}"
+                                                                ></i>
+                                                                {{ $att['name'] ?? 'File' }}
+                                                            </a>
+                                                        @endif
+                                                    @endforeach
+                                                </div>
+                                            @endif
+                                        </div>
+                                    </div>
+                                @empty
+                                    <p class="text-xs text-gray-400 text-center py-2">No comments yet. Start the discussion.</p>
+                                @endforelse
+                            </div>
+
+                            {{-- Comment form --}}
+                            <div class="border-t border-gray-100 pt-3">
+                                <x-tiptap-editor wire="commentText" name="calComment" placeholder="Add a comment..." />
+                                <div class="flex items-center justify-between mt-2">
+                                    <x-file-picker
+                                        :clientId="$discContent->client_id"
+                                        wire="commentAttachments"
+                                        :initial="$commentAttachments"
+                                    />
+                                    <button
+                                        @click="$wire.addContentComment($wire.get('commentAttachments'))"
+                                        wire:loading.attr="disabled"
+                                        class="btn btn-primary btn-sm"
+                                        x-data
+                                    >
+                                        <i
+                                            class="fas fa-paper-plane text-xs"
+                                            wire:loading.remove
+                                            wire:target="addContentComment"
+                                        ></i>
+                                        <i
+                                            class="fas fa-spinner fa-spin text-xs"
+                                            wire:loading
+                                            wire:target="addContentComment"
+                                        ></i>
+                                        Send
+                                    </button>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
             </div>
-        </div>
+        @endif
     @endif
 
     @script

@@ -15,10 +15,12 @@ use Livewire\Attributes\Layout;
 use Livewire\Attributes\On;
 use Livewire\Volt\Component;
 use Livewire\WithPagination;
+use Livewire\WithFileUploads;
 
 new #[Layout('components.layouts.app')] class extends Component
 {
     use WithPagination;
+    use WithFileUploads;
 
     public string $statusFilter = '';
 
@@ -52,9 +54,13 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public array $formAttachments = [];
 
-    public array $commentAttachments = [];
+    public string $formAttachmentsJson = '[]';
 
-    public string $commentAttachmentsJson = '[]';
+    public string $commentAttachments = '[]';
+
+    public $newFileUpload = null;
+
+
 
     public int $detailId = 0;
 
@@ -71,6 +77,11 @@ new #[Layout('components.layouts.app')] class extends Component
     public string $reasonText = '';
 
     public function mount(): void {}
+
+    public function updatedFormAttachmentsJson(string $value): void
+    {
+        $this->formAttachments = json_decode($value, true) ?: [];
+    }
 
     public function getAvailableContent(): Collection
     {
@@ -581,6 +592,7 @@ new #[Layout('components.layouts.app')] class extends Component
         $this->formType = $row->type ?? 'post';
         $this->formReferenceFile = $row->reference_file ?? '';
         $this->formAttachments = is_array($row->attachments ?? null) ? ($row->attachments ?? []) : json_decode($row->attachments ?? '[]', true) ?? [];
+        $this->formAttachmentsJson = json_encode($this->formAttachments);
         $this->showDetail = false;
         $this->showForm = true;
     }
@@ -598,6 +610,7 @@ new #[Layout('components.layouts.app')] class extends Component
         $this->formType = 'post';
         $this->formReferenceFile = '';
         $this->formAttachments = [];
+        $this->formAttachmentsJson = '[]';
         $this->showForm = true;
     }
 
@@ -614,7 +627,7 @@ new #[Layout('components.layouts.app')] class extends Component
             'content_id' => $this->formContentId ?: null,
             'notes' => $this->formNotes,
             'reference_file' => $this->formReferenceFile ?: null,
-            'attachments' => $this->formAttachments ? json_encode(array_values($this->formAttachments)) : null,
+            'attachments' => $this->formAttachments ? array_values($this->formAttachments) : null,
         ];
         if ($this->editingId > 0) {
             DB::table('approvals')->where('id', $this->editingId)->update($data + ['updated_at' => now()]);
@@ -629,6 +642,7 @@ new #[Layout('components.layouts.app')] class extends Component
         }
         $this->showForm = false;
         $this->formAttachments = [];
+        $this->formAttachmentsJson = '[]';
         $this->resetPage();
     }
 
@@ -636,6 +650,7 @@ new #[Layout('components.layouts.app')] class extends Component
     {
         $this->showForm = false;
         $this->formAttachments = [];
+        $this->formAttachmentsJson = '[]';
     }
 
     public function openReasonModal(int $id, string $action): void
@@ -757,14 +772,89 @@ new #[Layout('components.layouts.app')] class extends Component
             ->get();
     }
 
-    public function addDiscussionComment(): void
+    public function getDetailAttachments(): array
     {
-        if (! $this->commentText || ! $this->detailId) {
+        if (!$this->detailId) return [];
+        $atts = [];
+
+        $approval = DB::table('approvals')->where('id', $this->detailId)->first();
+        if (!$approval) return [];
+
+        if (!empty($approval->attachments)) {
+            $raw = $approval->attachments;
+            if (is_string($raw)) $raw = json_decode($raw, true);
+            if (is_array($raw)) $atts = array_values(array_filter($raw, fn($a) => is_array($a)));
+        }
+
+        if (!empty($approval->content_id)) {
+            $contentAtts = DB::table('contents')->where('id', $approval->content_id)->value('attachments');
+            if (!empty($contentAtts)) {
+                if (is_string($contentAtts)) $contentAtts = json_decode($contentAtts, true);
+                if (is_array($contentAtts)) {
+                    $validContentAtts = array_values(array_filter($contentAtts, fn($a) => is_array($a)));
+                    $atts = array_merge($atts, $validContentAtts);
+                }
+            }
+        }
+
+        $atts = array_map(function ($a) {
+            if (empty($a['url']) && !empty($a['id'])) {
+                $file = DB::table('files')->where('id', $a['id'])->first();
+                if ($file && $file->path) {
+                    $a['url'] = Storage::url($file->path);
+                }
+            }
+            return $a;
+        }, $atts);
+
+        return array_values(array_filter($atts, fn($a) => !empty($a['url'])));
+    }
+
+    public function getLinkedContent()
+    {
+        if (!$this->detailId) return null;
+
+        $appr = DB::table('approvals')->where('id', $this->detailId)->first();
+        if (!$appr || empty($appr->content_id)) return null;
+
+        return DB::table('contents')
+            ->leftJoin('clients', 'contents.client_id', '=', 'clients.id')
+            ->select('contents.*', 'clients.name as client_name')
+            ->where('contents.id', $appr->content_id)
+            ->first();
+    }
+
+    public function addDiscussionComment(string $attachmentsJson = '[]'): void
+    {
+        $hasText = trim($this->commentText) !== '';
+        $attachments = json_decode($attachmentsJson, true) ?: [];
+        $hasFiles = !empty($attachments);
+
+        if (!$hasText && !$hasFiles) {
+            return;
+        }
+
+        if (! $this->detailId) {
             return;
         }
 
         $actor = Auth::user() ?? Auth::guard('client')->user();
-        $attachments = json_decode($this->commentAttachmentsJson, true) ?: [];
+
+        if ($hasFiles && !$hasText) {
+            $existingRaw = DB::table('approvals')->where('id', $this->detailId)->value('attachments');
+            $existing = $existingRaw ? (json_decode($existingRaw, true) ?: []) : [];
+            $merged = array_values(array_merge($existing, $attachments));
+
+            DB::table('approvals')->where('id', $this->detailId)->update([
+                'attachments' => json_encode($merged),
+                'updated_at' => now(),
+            ]);
+
+            $this->commentAttachments = '[]';
+            $this->resetPage();
+            $this->dispatch('toast', message: 'Files attached', type: 'success');
+            return;
+        }
 
         Comment::create([
             'commentable_type' => Approval::class,
@@ -777,7 +867,7 @@ new #[Layout('components.layouts.app')] class extends Component
         app(ActivityLogger::class)->record($actor, "Commented on approval #{$this->detailId}");
 
         $this->commentText = '';
-        $this->commentAttachments = [];
+        $this->commentAttachments = '[]';
         $this->dispatch('tiptap-set-content', name: 'apprComment', html: '');
         $this->dispatch('toast', message: 'Comment added', type: 'success');
     }
@@ -794,13 +884,49 @@ new #[Layout('components.layouts.app')] class extends Component
             $q->where('name', 'like', "%{$search}%");
         }
 
-        return $q->limit(30)->get()->map(fn ($f) => [
+        return $q->get()->map(fn ($f) => [
             'id' => $f->id,
             'name' => $f->name,
             'url' => $f->getUrl(),
             'type' => $f->type,
             'size_label' => $f->size_readable,
         ])->toArray();
+    }
+
+    public function updatedNewFileUpload(): void
+    {
+        if (!$this->newFileUpload) return;
+
+        $file = $this->newFileUpload;
+        $path = $file->store('files/' . now()->format('Y/m'), 'public');
+
+        $ext = strtolower($file->getClientOriginalExtension());
+        $typeMap = ['jpg'=>'image','jpeg'=>'image','png'=>'image','gif'=>'image','webp'=>'image','svg'=>'image',
+            'mp4'=>'video','mov'=>'video','avi'=>'video','webm'=>'video','mkv'=>'video',
+            'mp3'=>'audio','wav'=>'audio','ogg'=>'audio','aac'=>'audio','m4a'=>'audio'];
+        $fileType = $typeMap[$ext] ?? 'document';
+
+        $fileModel = File::create([
+            'name' => $file->getClientOriginalName(),
+            'path' => $path,
+            'type' => $fileType,
+            'size' => $file->getSize(),
+            'storage_type' => 'local',
+            'uploaded_by' => auth()->id(),
+            'client_id' => $this->formClientId ?: null,
+        ]);
+
+        $att = [
+            'id' => $fileModel->id,
+            'name' => $fileModel->name,
+            'url' => $fileModel->getUrl(),
+            'type' => $fileModel->type,
+        ];
+
+        $this->formAttachments[] = $att;
+        $this->formAttachmentsJson = json_encode($this->formAttachments);
+        $this->newFileUpload = null;
+        $this->dispatch('toast', message: 'File uploaded and attached', type: 'success');
     }
 
     public function render(): mixed
@@ -958,168 +1084,257 @@ new #[Layout('components.layouts.app')] class extends Component
 
             <div>{{ $this->approvals->links() }}</div>
 
-            {{-- Detail Modal --}}
+            {{-- ========== APPROVAL DETAIL MODAL ========== --}}
             @if($showDetail)
             @php $appr = $this->getDetailApproval(); $comments = $this->getDetailComments(); @endphp
-            <div wire:transition.opacity.duration.150ms class="modal-overlay" wire:click.self="$set('showDetail',false)" x-on:keydown.escape.window="$wire.set('showDetail',false)">
-                <div class="modal-box max-w-3xl">
-                    <div class="modal-header">
-                        <h3 class="text-base font-bold text-gray-900">{{ $appr->title ?? 'Approval Details' }}</h3>
-                        <div class="flex items-center gap-2">
-                            @if($this->isManager && in_array($appr->status ?? '', ['pending', 'revision']))
-                            <button wire:click="$set('showDetail',false); edit({{ $appr->id }})" class="btn btn-secondary btn-sm"><i class="fas fa-pen text-xs"></i> Edit</button>
-                            @endif
-                            <button wire:click="$set('showDetail',false)" class="btn btn-ghost btn-icon btn-sm" aria-label="Close"><i class="fas fa-times"></i></button>
+            @if($appr)
+            @php
+                $apprStatusBadge = match($appr->status) {
+                    'approved' => 'bg-emerald-50 text-emerald-700 border-emerald-200',
+                    'rejected' => 'bg-red-50 text-red-700 border-red-200',
+                    'revision' => 'bg-amber-50 text-amber-700 border-amber-200',
+                    default    => 'bg-blue-50 text-blue-700 border-blue-200',
+                };
+                $apprTypeBadge = match($appr->type) {
+                    'reel'     => 'bg-pink-50 text-pink-700 border-pink-200',
+                    'post'     => 'bg-blue-50 text-blue-700 border-blue-200',
+                    'story'    => 'bg-purple-50 text-purple-700 border-purple-200',
+                    'video'    => 'bg-red-50 text-red-700 border-red-200',
+                    'carousel' => 'bg-amber-50 text-amber-700 border-amber-200',
+                    'blog'     => 'bg-green-50 text-green-700 border-green-200',
+                    default    => 'bg-gray-50 text-gray-600 border-gray-200',
+                };
+                $linkedContent = $this->getLinkedContent();
+                $contentAttachments = [];
+                if ($linkedContent) {
+                    $raw = $linkedContent->attachments;
+                    if (!is_null($raw)) {
+                        if (is_string($raw)) $raw = json_decode($raw, true);
+                        if (is_array($raw)) $contentAttachments = array_values(array_filter($raw, fn($a) => is_array($a)));
+                    }
+                    $contentAttachments = array_map(function ($a) {
+                        if (empty($a['url']) && !empty($a['id'])) {
+                            $file = DB::table('files')->where('id', $a['id'])->first();
+                            if ($file && $file->path) {
+                                $a['url'] = Storage::url($file->path);
+                            }
+                        }
+                        return $a;
+                    }, $contentAttachments);
+                    $contentAttachments = array_values(array_filter($contentAttachments, fn($a) => !empty($a['url'])));
+                }
+            @endphp
+            <div wire:transition.opacity.duration.150ms class="modal-overlay" x-data x-on:keydown.escape.window="$wire.set('showDetail', false)">
+                <div class="modal-box max-w-3xl" x-on:click.stop>
+
+                    {{-- Header --}}
+                    <div class="modal-header border-b border-gray-100 pb-3">
+                        <div class="flex-1 min-w-0">
+                            <div class="flex flex-wrap items-center gap-1.5 mb-1.5">
+                                <span class="inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-semibold border {{ $apprStatusBadge }}">{{ ucfirst($appr->status) }}</span>
+                                @if ($appr->type)
+                                    <span class="inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-semibold border {{ $apprTypeBadge }}">{{ ucfirst($appr->type) }}</span>
+                                @endif
+                            </div>
+                            <h3 class="text-lg font-bold text-gray-900 leading-snug">{{ $appr->title ?? 'Approval Details' }}</h3>
                         </div>
+                        <button wire:click="$set('showDetail', false)" class="btn btn-ghost btn-icon btn-sm" aria-label="Close"><i class="fas fa-times"></i></button>
                     </div>
-                    <div class="modal-body space-y-4">
-                        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                            {{-- Preview region --}}
-                            <div class="space-y-3">
-                                @if($appr->reference_file)
-                                <div>
-                                    @if($this->isImage($appr->reference_file))
-                                    <img src="{{ $this->fileUrl($appr->reference_file) }}" alt="Reference file" class="w-full rounded-xl object-contain border border-gray-200 max-h-80" loading="lazy" />
-                                    @else
-                                    <a href="{{ $this->fileUrl($appr->reference_file) }}" target="_blank" class="inline-flex items-center gap-1 text-sm text-[var(--brand)] hover:underline"><i class="fas fa-paperclip"></i> View attachment</a>
-                                    @endif
-                                </div>
-                                @endif
-                                @if($appr->attachments && count(json_decode($appr->attachments, true) ?? []))
-                                <div>
-                                    <h4 class="text-sm font-semibold text-gray-900 mb-1">Attachments</h4>
-                                    <div class="flex flex-wrap gap-1.5">
-                                        @foreach(json_decode($appr->attachments, true) ?? [] as $att)
-                                            @if(isset($att['url']))
-                                                @if(($att['type'] ?? '') === 'image' && str_starts_with($att['url'] ?? '', '/'))
-                                                    <a href="{{ $att['url'] }}" target="_blank" class="block"><img src="{{ $att['url'] }}" class="rounded-lg max-h-24 border border-gray-100"></a>
-                                                @else
-                                                    <a href="{{ $att['url'] }}" target="_blank" class="inline-flex items-center gap-1 bg-gray-100 rounded-lg px-2 py-1 text-xs text-gray-600 hover:bg-gray-200">
-                                                        <i class="fas {{ ($att['type'] ?? '') === 'drive' ? 'fa-google-drive text-blue-500' : 'fa-file text-gray-400' }}"></i>
-                                                        {{ $att['name'] ?? 'File' }}
-                                                    </a>
-                                                @endif
+
+                    <div class="modal-body space-y-5 max-h-[70vh] overflow-y-auto">
+
+                        {{-- Approval Attachments --}}
+                        @php $aAtts = $this->getDetailAttachments(); @endphp
+                        @if (count($aAtts) > 0)
+                            <div>
+                                @include('livewire.partials.attachment-display', ['attachments' => $aAtts, 'label' => 'Approval Attachments'])
+                            </div>
+                        @endif
+
+                        {{-- Notes --}}
+                        @if($appr->notes)
+                            <div>
+                                <p class="text-[11px] uppercase tracking-wide font-semibold text-gray-400 mb-1">Notes</p>
+                                <p class="text-sm text-gray-700 whitespace-pre-line leading-relaxed">{{ $appr->notes }}</p>
+                            </div>
+                        @endif
+
+                        {{-- Metadata --}}
+                        <div class="grid grid-cols-2 sm:grid-cols-3 gap-4 text-sm">
+                            <div>
+                                <p class="text-[11px] uppercase tracking-wide font-semibold text-gray-400 mb-1">Client</p>
+                                <p class="text-gray-800 text-xs flex items-center gap-1.5"><i class="fas fa-building text-gray-400"></i> {{ $appr->client_name ?? '—' }}</p>
+                            </div>
+                            <div>
+                                <p class="text-[11px] uppercase tracking-wide font-semibold text-gray-400 mb-1">Submitted By</p>
+                                <p class="text-gray-800 text-xs flex items-center gap-1.5"><i class="fas fa-user text-gray-400"></i> {{ $appr->submitter_name ?? '—' }}</p>
+                            </div>
+                            <div>
+                                <p class="text-[11px] uppercase tracking-wide font-semibold text-gray-400 mb-1">Date</p>
+                                <p class="text-gray-800 text-xs flex items-center gap-1.5"><i class="fas fa-calendar-alt text-gray-400"></i> {{ $appr->created_at ? \Carbon\Carbon::parse($appr->created_at)->format('M d, Y') : '—' }}</p>
+                            </div>
+                        </div>
+
+                        {{-- Linked Content --}}
+                        @if($linkedContent)
+                            <div class="bg-gray-50 border border-gray-200 rounded-xl p-4">
+                                <p class="text-[11px] uppercase tracking-wide font-semibold text-gray-400 mb-3 flex items-center gap-1.5">
+                                    <i class="fas fa-link text-gray-400"></i> Linked Content
+                                </p>
+                                <div class="space-y-3">
+                                    <div>
+                                        <p class="text-sm font-semibold text-gray-900">{{ $linkedContent->title }}</p>
+                                        <div class="flex flex-wrap items-center gap-2 mt-1">
+                                            @if($linkedContent->platform)
+                                                <span class="inline-flex items-center rounded-md bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 text-[11px] font-semibold">{{ ucfirst($linkedContent->platform) }}</span>
                                             @endif
-                                        @endforeach
+                                            @if($linkedContent->type)
+                                                <span class="inline-flex items-center rounded-md bg-purple-50 text-purple-700 border border-purple-200 px-2 py-0.5 text-[11px] font-semibold">{{ ucfirst($linkedContent->type) }}</span>
+                                            @endif
+                                            @if($linkedContent->status)
+                                                <span class="inline-flex items-center rounded-md bg-gray-100 text-gray-600 border border-gray-200 px-2 py-0.5 text-[11px] font-semibold">{{ ucwords(str_replace('-', ' ', $linkedContent->status)) }}</span>
+                                            @endif
+                                        </div>
                                     </div>
-                                </div>
-                                @endif
-                                @if($appr->notes)<div><h4 class="text-sm font-semibold text-gray-900 mb-1">Notes</h4><p class="text-sm text-gray-600">{{ $appr->notes }}</p></div>@endif
-                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
-                                    <div><span class="text-gray-500">Status:</span> <span class="badge badge-{{ $appr->status ?? '' }}">{{ ucfirst($appr->status ?? '') }}</span></div>
-                                    <div><span class="text-gray-500">Type:</span> {{ ucfirst($appr->type ?? '—') }}</div>
-                                    <div><span class="text-gray-500">Client:</span> {{ $appr->client_name ?? '—' }}</div>
-                                    <div><span class="text-gray-500">Submitted by:</span> {{ $appr->submitter_name ?? '—' }}</div>
-                                    <div class="col-span-2"><span class="text-gray-500">Date:</span> {{ $appr->created_at ? \Carbon\Carbon::parse($appr->created_at)->format('M d, Y') : '—' }}</div>
+                                    @if($linkedContent->caption)
+                                        <div>
+                                            <p class="text-[11px] uppercase tracking-wide font-semibold text-gray-400 mb-0.5">Caption</p>
+                                            <p class="text-sm text-gray-600 whitespace-pre-line">{{ Str::limit($linkedContent->caption, 200) }}</p>
+                                        </div>
+                                    @endif
+                                    @if($linkedContent->date)
+                                        <div class="flex items-center gap-4 text-xs text-gray-500">
+                                            <span><i class="fas fa-calendar-alt mr-1"></i>{{ \Carbon\Carbon::parse($linkedContent->date)->format('M d, Y') }}</span>
+                                            @if($linkedContent->due_date)
+                                                <span><i class="fas fa-clock mr-1"></i>Due {{ \Carbon\Carbon::parse($linkedContent->due_date)->format('M d, Y') }}</span>
+                                            @endif
+                                        </div>
+                                    @endif
+                                    @if($linkedContent->hashtags && trim($linkedContent->hashtags) !== '')
+                                        <div class="flex flex-wrap gap-1">
+                                            @foreach(explode(',', $linkedContent->hashtags) as $tag)
+                                                @php $tag = trim($tag); @endphp
+                                                @if($tag !== '')
+                                                    <span class="inline-flex items-center rounded-md bg-gray-100 text-gray-600 px-2 py-0.5 text-[11px]">{{ $tag }}</span>
+                                                @endif
+                                            @endforeach
+                                        </div>
+                                    @endif
+                                    @if(count($contentAttachments) > 0)
+                                        <div class="border-t border-gray-200 pt-3">
+                                            @include('livewire.partials.attachment-display', ['attachments' => $contentAttachments, 'label' => 'Content Attachments'])
+                                        </div>
+                                    @endif
                                 </div>
                             </div>
+                        @endif
 
-                            {{-- Thread region --}}
-                            <div class="space-y-3">
-                                @if(in_array($appr->status ?? '', ['approved','rejected']))
-                                <div class="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-sm text-amber-700">
-                                    <i class="fas fa-lock mr-1"></i> Decision finalized — no further actions can be taken.
-                                </div>
-                                @endif
+                        {{-- Action Buttons --}}
+                        @if(in_array($appr->status, ['approved','rejected']))
+                            <div class="bg-amber-50 border border-amber-200 rounded-lg px-4 py-2.5 text-sm text-amber-700 flex items-center gap-2">
+                                <i class="fas fa-lock"></i> Decision finalized — no further actions can be taken.
+                            </div>
+                        @endif
 
-                                @if($appr->status === 'pending')
-                                <div class="flex items-center gap-2">
-                                    <button type="button" wire:click="$dispatch('open-confirm', { title: 'Approve this item?', message: 'This will mark the item as approved.', type: 'info', action: 'updateStatus', params: [{{ $appr->id }}, 'approved'] })" class="btn btn-success btn-sm"><i class="fas fa-check text-xs"></i> Approve</button>
-                                    <button type="button" wire:click="openReasonModal({{ $appr->id }}, 'revision')" class="btn btn-secondary btn-sm"><i class="fas fa-pen text-xs"></i> Request Revision</button>
-                                    @if($this->isManager)
+                        @if($appr->status === 'pending')
+                            <div class="flex items-center gap-2">
+                                <button type="button" wire:click="$dispatch('open-confirm', { title: 'Approve this item?', message: 'This will mark the item as approved.', type: 'info', action: 'updateStatus', params: [{{ $appr->id }}, 'approved'] })" class="btn btn-success btn-sm"><i class="fas fa-check text-xs"></i> Approve</button>
+                                <button type="button" wire:click="openReasonModal({{ $appr->id }}, 'revision')" class="btn btn-secondary btn-sm"><i class="fas fa-pen text-xs"></i> Request Revision</button>
+                                @if($this->isManager)
                                     <button type="button" wire:click="openReasonModal({{ $appr->id }}, 'rejected')" class="btn btn-danger btn-sm"><i class="fas fa-times text-xs"></i> Reject</button>
-                                    @endif
-                                </div>
-                                @elseif($appr->status === 'revision')
-                                <div class="flex items-center gap-2">
-                                    <button type="button" wire:click="$dispatch('open-confirm', { title: 'Approve this item?', message: 'This will mark the item as approved.', type: 'info', action: 'updateStatus', params: [{{ $appr->id }}, 'approved'] })" class="btn btn-success btn-sm"><i class="fas fa-check text-xs"></i> Approve</button>
-                                    @if($this->isManager)
-                                    <button type="button" wire:click="openReasonModal({{ $appr->id }}, 'rejected')" class="btn btn-danger btn-sm"><i class="fas fa-times text-xs"></i> Reject</button>
-                                    @endif
-                                </div>
                                 @endif
+                            </div>
+                        @elseif($appr->status === 'revision')
+                            <div class="flex items-center gap-2">
+                                <button type="button" wire:click="$dispatch('open-confirm', { title: 'Approve this item?', message: 'This will mark the item as approved.', type: 'info', action: 'updateStatus', params: [{{ $appr->id }}, 'approved'] })" class="btn btn-success btn-sm"><i class="fas fa-check text-xs"></i> Approve</button>
+                                @if($this->isManager)
+                                    <button type="button" wire:click="openReasonModal({{ $appr->id }}, 'rejected')" class="btn btn-danger btn-sm"><i class="fas fa-times text-xs"></i> Reject</button>
+                                @endif
+                            </div>
+                        @endif
 
-                                <div>
-                                    <h4 class="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
-                                        <i class="fas fa-comments text-gray-400"></i> Discussion
-                                    </h4>
+                        {{-- Discussion --}}
+                        <div class="border-t border-gray-100 pt-4">
+                            <h4 class="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                                <i class="fas fa-comments text-gray-400"></i> Discussion
+                            </h4>
 
-                                    {{-- Legacy comments --}}
-                                    @if($comments->count())
-                                    <div class="space-y-2 max-h-40 overflow-y-auto mb-3">
-                                        @foreach($comments as $c)
-                                        <div class="{{ $c->is_system ? 'bg-blue-50' : 'bg-gray-50' }} rounded-lg px-3 py-2">
+                            {{-- Legacy comments --}}
+                            @if($comments->count())
+                                <div class="space-y-2 max-h-40 overflow-y-auto mb-3">
+                                    @foreach($comments as $c)
+                                        <div class="{{ $c->is_system ? 'bg-blue-50 border border-blue-100' : 'bg-gray-50 border border-gray-100' }} rounded-lg px-3 py-2">
                                             <p class="text-sm font-medium {{ $c->is_system ? 'text-blue-700' : 'text-gray-900' }}">{{ $c->user_name }} <span class="text-[10px] text-gray-400 font-normal">{{ \Carbon\Carbon::parse($c->created_at)->diffForHumans() }}</span></p>
                                             <p class="text-sm {{ $c->is_system ? 'text-blue-600 italic' : 'text-gray-600' }}">{{ $c->text }}</p>
                                         </div>
-                                        @endforeach
-                                    </div>
-                                    @endif
+                                    @endforeach
+                                </div>
+                            @endif
 
-                                    {{-- New discussion --}}
-                                    @php $discussionComments = $this->getDiscussionComments(); @endphp
-                                    <div class="space-y-3 max-h-60 overflow-y-auto mb-4">
-                                        @forelse($discussionComments as $comment)
-                                            <div class="flex gap-3">
-                                                <div class="flex-shrink-0 w-7 h-7 rounded-full bg-[rgba(var(--brand-rgb),0.1)] flex items-center justify-center text-[10px] font-bold text-[var(--brand)]">
-                                                    {{ strtoupper(substr($comment->user->name ?? '?', 0, 1)) }}
-                                                </div>
-                                                <div class="flex-1 min-w-0">
-                                                    <div class="flex items-center gap-2 mb-0.5">
-                                                        <span class="text-xs font-semibold text-gray-800">{{ $comment->user->name ?? 'Unknown' }}</span>
-                                                        <span class="text-[10px] text-gray-400">{{ $comment->created_at->diffForHumans() }}</span>
-                                                    </div>
-                                                    <div class="comment-body text-sm text-gray-600">{!! $comment->body !!}</div>
-                                                    @if($comment->attachments)
-                                                        <div class="flex flex-wrap gap-1 mt-1.5">
-                                                            @foreach($comment->attachments as $att)
-                                                                @if(($att['type'] ?? '') === 'image')
-                                                                    <a href="{{ $att['url'] }}" target="_blank" class="block"><img src="{{ $att['url'] }}" class="rounded-lg max-h-24 border border-gray-100"></a>
-                                                                @else
-                                                                    <a href="{{ $att['url'] }}" target="_blank" class="inline-flex items-center gap-1 bg-gray-100 rounded-lg px-2 py-1 text-xs text-gray-600 hover:bg-gray-200">
-                                                                        <i class="fas {{ ($att['type'] ?? '') === 'drive' ? 'fa-google-drive text-blue-500' : 'fa-file text-gray-400' }}"></i>
-                                                                        {{ $att['name'] ?? 'File' }}
-                                                                    </a>
-                                                                @endif
-                                                            @endforeach
-                                                        </div>
-                                                    @endif
-                                                </div>
+                            {{-- New discussion --}}
+                            @php $discussionComments = $this->getDiscussionComments(); @endphp
+                            <div class="space-y-3 max-h-48 overflow-y-auto mb-3">
+                                @forelse($discussionComments as $comment)
+                                    <div class="flex gap-2.5">
+                                        <div class="flex-shrink-0 w-6 h-6 rounded-full bg-[rgba(var(--brand-rgb),0.1)] flex items-center justify-center text-[9px] font-bold text-[var(--brand)]">
+                                            {{ strtoupper(substr($comment->user->name ?? '?', 0, 1)) }}
+                                        </div>
+                                        <div class="flex-1 min-w-0">
+                                            <div class="flex items-center gap-2 mb-0.5">
+                                                <span class="text-xs font-semibold text-gray-800">{{ $comment->user->name ?? 'Unknown' }}</span>
+                                                <span class="text-[10px] text-gray-400">{{ $comment->created_at->diffForHumans() }}</span>
                                             </div>
-                                        @empty
-                                            @if($comments->count() === 0)
-                                            <p class="text-xs text-gray-400 text-center py-2">No comments yet. Start the discussion.</p>
+                                            <div class="comment-body text-sm text-gray-600">{!! $comment->body !!}</div>
+                                            @if($comment->attachments)
+                                                <div class="flex flex-wrap gap-1 mt-1">
+                                                    @foreach($comment->attachments as $att)
+                                                        @if(($att['type'] ?? '') === 'image')
+                                                            <a href="{{ $att['url'] }}" target="_blank" class="block"><img src="{{ $att['url'] }}" class="rounded-lg max-h-20 border border-gray-100"></a>
+                                                        @else
+                                                            <a href="{{ $att['url'] }}" target="_blank" class="inline-flex items-center gap-1 bg-gray-100 rounded-lg px-2 py-1 text-xs text-gray-600 hover:bg-gray-200">
+                                                                <i class="fas {{ ($att['type'] ?? '') === 'drive' ? 'fa-google-drive text-blue-500' : 'fa-file text-gray-400' }}"></i>
+                                                                {{ $att['name'] ?? 'File' }}
+                                                            </a>
+                                                        @endif
+                                                    @endforeach
+                                                </div>
                                             @endif
-                                        @endforelse
-                                    </div>
-
-                                    {{-- Comment form --}}
-                                    <div class="border-t border-gray-100 pt-3">
-                                        <x-tiptap-editor wire="commentText" name="apprComment" placeholder="Add a comment..." />
-                                        <div class="flex items-center justify-between mt-2">
-                                            <x-file-picker :clientId="$appr->client_id ?? null" wire="commentAttachments" wire-json="commentAttachmentsJson" />
-                                            <input type="hidden" wire:model="commentAttachmentsJson">
-                                            <button wire:click="addDiscussionComment"
-                                                    wire:loading.attr="disabled" wire:target="addDiscussionComment"
-                                                    class="btn btn-primary btn-sm" :disabled="!$wire.commentText">
-                                                <i class="fas fa-paper-plane text-xs" wire:loading.remove wire:target="addDiscussionComment"></i>
-                                                <i class="fas fa-spinner fa-spin text-xs" wire:loading wire:target="addDiscussionComment"></i>
-                                                Send
-                                            </button>
                                         </div>
                                     </div>
-                                </div>
+                                @empty
+                                    @if($comments->count() === 0)
+                                        <p class="text-xs text-gray-400 text-center py-2">No comments yet. Start the discussion.</p>
+                                    @endif
+                                @endforelse
+                            </div>
 
-                                @if($this->isManager && $appr->status !== 'pending')
-                                <div class="pt-2 border-t border-gray-100">
-                                    <button type="button" wire:click="$dispatch('open-confirm', { title: 'Delete Approval?', message: 'This approval and its comments will be removed.', type: 'danger', action: 'deleteApproval', params: [{{ $appr->id }}] })" class="btn btn-ghost btn-sm text-red-500" aria-label="Delete approval"><i class="fas fa-trash text-xs"></i> Delete</button>
+                            {{-- Comment form --}}
+                            <div class="border-t border-gray-100 pt-3">
+                                <x-tiptap-editor wire="commentText" name="apprComment" placeholder="Add a comment..." />
+                                <div class="flex items-center justify-between mt-2">
+                                    <x-file-picker :clientId="$appr->client_id ?? null" wire="commentAttachments" :initial="$commentAttachments" />
+                                    <button @click="$wire.addDiscussionComment($wire.get('commentAttachments'))"
+                                            wire:loading.attr="disabled"
+                                            class="btn btn-primary btn-sm"
+                                            x-data>
+                                        <i class="fas fa-paper-plane text-xs" wire:loading.remove wire:target="addDiscussionComment"></i>
+                                        <i class="fas fa-spinner fa-spin text-xs" wire:loading wire:target="addDiscussionComment"></i>
+                                        Send
+                                    </button>
                                 </div>
-                                @endif
                             </div>
                         </div>
+
+                        {{-- Delete (manager only, non-pending) --}}
+                        @if($this->isManager && $appr->status !== 'pending')
+                            <div class="pt-2 border-t border-gray-100">
+                                <button type="button" wire:click="$dispatch('open-confirm', { title: 'Delete Approval?', message: 'This approval and its comments will be removed.', type: 'danger', action: 'deleteApproval', params: [{{ $appr->id }}] })" class="btn btn-ghost btn-sm text-red-500" aria-label="Delete approval"><i class="fas fa-trash text-xs"></i> Delete</button>
+                            </div>
+                        @endif
                     </div>
                 </div>
             </div>
+            @endif
             @endif
 
             {{-- Create / Edit Form Modal --}}
@@ -1129,6 +1344,16 @@ new #[Layout('components.layouts.app')] class extends Component
                     <div class="modal-header"><h3 class="text-base font-bold text-gray-900">{{ $editingId > 0 ? 'Edit Approval' : 'New Approval' }}</h3><button wire:click="$set('showForm',false)" class="btn btn-ghost btn-icon btn-sm" aria-label="Close"><i class="fas fa-times"></i></button></div>
                     <div class="modal-body space-y-4">
                         <div><label class="form-label">Title</label><input type="text" wire:model="formTitle" class="form-input" placeholder="Approval title" /></div>
+                        {{-- Attachments — prominent, top of form --}}
+                        <div class="border border-dashed border-gray-200 rounded-xl bg-gray-50/50 p-4">
+                            <label class="form-label mb-2"><i class="fas fa-paperclip text-gray-400 mr-1"></i> Attachments</label>
+                            <x-file-picker :clientId="$formClientId ?: null" wire="formAttachmentsJson" :initial="$formAttachments" wireClientId="formClientId" />
+                            @if ($editingId > 0 && count($formAttachments) > 0)
+                                <div class="mt-3">
+                                    @include('livewire.partials.attachment-display', ['attachments' => $formAttachments, 'label' => ''])
+                                </div>
+                            @endif
+                        </div>
                         <div><label class="form-label">Type</label><select wire:model="formType" class="form-select"><option value="post">Post</option><option value="reel">Reel</option><option value="story">Story</option><option value="video">Video</option><option value="carousel">Carousel</option><option value="blog">Blog</option></select></div>
                         <div><label class="form-label">Client</label><select wire:model="formClientId" class="form-select"><option value="0">Internal / Own Company</option>@foreach($this->clients as $c)<option value="{{ $c->id }}">{{ $c->name }}</option>@endforeach</select></div>
                         @if ($formClientId)
@@ -1136,11 +1361,6 @@ new #[Layout('components.layouts.app')] class extends Component
                         @endif
                         <div><label class="form-label">Notes</label><textarea wire:model="formNotes" class="form-textarea" rows="3" placeholder="Notes..."></textarea></div>
                         <div><label class="form-label">Reference File</label><input type="text" wire:model="formReferenceFile" class="form-input" placeholder="Path or URL" /></div>
-                        <div>
-                            <label class="form-label">Attachments</label>
-                            <x-file-picker :clientId="$formClientId ?: null" wire="formAttachments" />
-                            <p class="text-[11px] text-gray-400 mt-1">Attach files from Media library or paste drive links for review</p>
-                        </div>
                         <div class="flex justify-end gap-2 pt-2">
                             <button wire:click="cancelForm" class="btn btn-secondary btn-sm">Cancel</button>
                             <button wire:click="createOrUpdate" class="btn btn-primary btn-sm" wire:loading.attr="disabled"><i class="fas fa-save text-xs"></i> Save</button>

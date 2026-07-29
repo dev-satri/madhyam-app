@@ -18,12 +18,14 @@ class Task extends Model
         'title', 'type', 'client_id', 'workflow_id', 'assignee', 'due_date', 'priority',
         'status', 'description', 'description_html', 'location', 'checklist',
         'reference_file', 'submission_file', 'submission_notes', 'progress',
+        'attachments',
     ];
 
     protected $casts = [
         'due_date' => 'date',
         'progress' => 'integer',
         'checklist' => 'array',
+        'attachments' => 'array',
     ];
 
     public function client(): BelongsTo

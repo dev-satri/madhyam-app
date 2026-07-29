@@ -1,6 +1,7 @@
 <?php
 
 use Livewire\Volt\Component;
+use Livewire\WithFileUploads;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\On;
 use Livewire\Attributes\Computed;
@@ -19,6 +20,8 @@ use App\Support\UserVisibility;
 
 new #[Layout('components.layouts.app')] class extends Component
 {
+    use WithFileUploads;
+
     public string $search = '';
     public string $clientFilter = '';
     public string $typeFilter = '';
@@ -38,6 +41,9 @@ new #[Layout('components.layouts.app')] class extends Component
     public string $formStage = '';
     public ?string $formDeadline = null;
     public string $formTags = '';
+
+    public array $formAttachments = [];
+    public string $formAttachmentsJson = '[]';
 
     public bool $showStageManager = false;
     public array $stages = [];
@@ -67,8 +73,10 @@ new #[Layout('components.layouts.app')] class extends Component
 
     // Discussion
     public string $commentText = '';
-    public array $commentAttachments = [];
-    public string $commentAttachmentsJson = '[]';
+    public string $commentAttachments = '[]';
+
+    public $newFileUpload = null;
+
 
     public function mount(): void
     {
@@ -76,6 +84,11 @@ new #[Layout('components.layouts.app')] class extends Component
         if (!empty($this->stages) && !$this->formStage) {
             $this->formStage = $this->stages[0]['key'] ?? '';
         }
+    }
+
+    public function updatedFormAttachmentsJson(string $value): void
+    {
+        $this->formAttachments = json_decode($value, true) ?: [];
     }
 
     public function loadStages(): void
@@ -438,7 +451,23 @@ new #[Layout('components.layouts.app')] class extends Component
         $this->formAssignee = $workflow->assignee;
         $this->formStage = $workflow->stage;
         $this->formDeadline = $workflow->deadline?->format('Y-m-d');
-        $this->formTags = is_array($workflow->tags) ? implode(',', $workflow->tags) : ($workflow->tags ?? '');
+        $rawTags = $workflow->tags;
+        if (is_array($rawTags)) {
+            $this->formTags = implode(',', $rawTags);
+        } elseif (is_string($rawTags) && str_starts_with(trim($rawTags), '[')) {
+            $decoded = json_decode($rawTags, true);
+            $this->formTags = is_array($decoded) ? implode(',', $decoded) : $rawTags;
+        } else {
+            $this->formTags = $rawTags ?? '';
+        }
+        $raw = $workflow->attachments;
+        if (is_string($raw)) {
+            $decoded = json_decode($raw, true);
+            $this->formAttachments = is_array($decoded) ? $decoded : [];
+        } else {
+            $this->formAttachments = is_array($raw) ? $raw : [];
+        }
+        $this->formAttachmentsJson = json_encode($this->formAttachments);
         $this->showForm = true;
     }
 
@@ -466,7 +495,8 @@ new #[Layout('components.layouts.app')] class extends Component
             'assignee'    => $this->formAssignee,
             'stage'       => $this->formStage,
             'deadline'    => $this->formDeadline,
-            'tags'        => $this->formTags,
+            'tags'        => $this->formTags ? trim($this->formTags) : '',
+            'attachments' => $this->formAttachments ? array_values($this->formAttachments) : null,
             'submitted_by'=> auth()->id(),
         ];
 
@@ -635,6 +665,43 @@ new #[Layout('components.layouts.app')] class extends Component
         return Workflow::with(['client', 'stageInfo', 'assigneeUser'])->find($this->detailId);
     }
 
+    public function getDetailAttachments(): array
+    {
+        if (!$this->detailId) return [];
+        $workflow = Workflow::find($this->detailId);
+        if (!$workflow) return [];
+
+        $atts = [];
+        $raw = $workflow->attachments;
+        if (!is_null($raw)) {
+            if (is_string($raw)) $raw = json_decode($raw, true);
+            if (is_array($raw)) $atts = array_values(array_filter($raw, fn($a) => is_array($a)));
+        }
+
+        if (!empty($workflow->content_id)) {
+            $contentAtts = DB::table('contents')->where('id', $workflow->content_id)->value('attachments');
+            if (!empty($contentAtts)) {
+                if (is_string($contentAtts)) $contentAtts = json_decode($contentAtts, true);
+                if (is_array($contentAtts)) {
+                    $validContentAtts = array_values(array_filter($contentAtts, fn($a) => is_array($a)));
+                    $atts = array_merge($atts, $validContentAtts);
+                }
+            }
+        }
+
+        $atts = array_map(function ($a) {
+            if (empty($a['url']) && !empty($a['id'])) {
+                $file = DB::table('files')->where('id', $a['id'])->first();
+                if ($file && $file->path) {
+                    $a['url'] = \Illuminate\Support\Facades\Storage::url($file->path);
+                }
+            }
+            return $a;
+        }, $atts);
+
+        return array_values(array_filter($atts, fn($a) => !empty($a['url'])));
+    }
+
     public function getComments()
     {
         if (!$this->detailId) return collect();
@@ -680,11 +747,33 @@ new #[Layout('components.layouts.app')] class extends Component
         return $allAttachments;
     }
 
-    public function addComment(): void
+    public function addComment(string $attachmentsJson = '[]'): void
     {
-        if (!$this->commentText || !$this->detailId) return;
+        $hasText = trim($this->commentText) !== '';
+        $attachments = json_decode($attachmentsJson, true) ?: [];
+        $hasFiles = !empty($attachments);
 
-        $attachments = json_decode($this->commentAttachmentsJson, true) ?: [];
+        if (!$hasText && !$hasFiles) {
+            return;
+        }
+
+        if (!$this->detailId) return;
+
+        if ($hasFiles && !$hasText) {
+            $existingRaw = DB::table('workflows')->where('id', $this->detailId)->value('attachments');
+            $existing = $existingRaw ? (json_decode($existingRaw, true) ?: []) : [];
+            $merged = array_values(array_merge($existing, $attachments));
+
+            DB::table('workflows')->where('id', $this->detailId)->update([
+                'attachments' => json_encode($merged),
+                'updated_at' => now(),
+            ]);
+
+            $this->commentAttachments = '[]';
+            $this->dispatch('workflowUpdated');
+            $this->dispatch('toast', message: 'Files attached', type: 'success');
+            return;
+        }
 
         \App\Models\Comment::create([
             'commentable_type' => Workflow::class,
@@ -700,7 +789,7 @@ new #[Layout('components.layouts.app')] class extends Component
         );
 
         $this->commentText = '';
-        $this->commentAttachments = [];
+        $this->commentAttachments = '[]';
         $this->dispatch('tiptap-set-content', name: 'wfComment', html: '');
         $this->dispatch('toast', message: 'Comment added', type: 'success');
     }
@@ -717,13 +806,49 @@ new #[Layout('components.layouts.app')] class extends Component
             $q->where('name', 'like', "%{$search}%");
         }
 
-        return $q->limit(30)->get()->map(fn ($f) => [
+        return $q->get()->map(fn ($f) => [
             'id' => $f->id,
             'name' => $f->name,
             'url' => $f->getUrl(),
             'type' => $f->type,
             'size_label' => $f->size_readable,
         ])->toArray();
+    }
+
+    public function updatedNewFileUpload(): void
+    {
+        if (!$this->newFileUpload) return;
+
+        $file = $this->newFileUpload;
+        $path = $file->store('files/' . now()->format('Y/m'), 'public');
+
+        $ext = strtolower($file->getClientOriginalExtension());
+        $typeMap = ['jpg'=>'image','jpeg'=>'image','png'=>'image','gif'=>'image','webp'=>'image','svg'=>'image',
+            'mp4'=>'video','mov'=>'video','avi'=>'video','webm'=>'video','mkv'=>'video',
+            'mp3'=>'audio','wav'=>'audio','ogg'=>'audio','aac'=>'audio','m4a'=>'audio'];
+        $fileType = $typeMap[$ext] ?? 'document';
+
+        $fileModel = \App\Models\File::create([
+            'name' => $file->getClientOriginalName(),
+            'path' => $path,
+            'type' => $fileType,
+            'size' => $file->getSize(),
+            'storage_type' => 'local',
+            'uploaded_by' => auth()->id(),
+            'client_id' => $this->formClientId ?: null,
+        ]);
+
+        $att = [
+            'id' => $fileModel->id,
+            'name' => $fileModel->name,
+            'url' => $fileModel->getUrl(),
+            'type' => $fileModel->type,
+        ];
+
+        $this->formAttachments[] = $att;
+        $this->formAttachmentsJson = json_encode($this->formAttachments);
+        $this->newFileUpload = null;
+        $this->dispatch('toast', message: 'File uploaded and attached', type: 'success');
     }
 
     public function reorderStages(array $stageIds): void
@@ -746,6 +871,8 @@ new #[Layout('components.layouts.app')] class extends Component
         $this->formAssignee = null;
         $this->formDeadline = null;
         $this->formTags = '';
+        $this->formAttachments = [];
+        $this->formAttachmentsJson = '[]';
         if (!empty($this->stages)) {
             $this->formStage = $this->stages[0]['key'] ?? '';
         } else {
@@ -967,6 +1094,21 @@ new #[Layout('components.layouts.app')] class extends Component
                                 {{ $item->client->name ?? '—' }}
                             </p>
 
+                            {{-- Attachment indicator --}}
+                            @php
+                                $hasAttachments = false;
+                                if ($item->attachments) {
+                                    $atts = is_string($item->attachments) ? json_decode($item->attachments, true) : $item->attachments;
+                                    $hasAttachments = is_array($atts) && count($atts) > 0;
+                                }
+                            @endphp
+                            @if ($hasAttachments)
+                                <div class="text-[11px] text-gray-500 mb-2 flex items-center gap-1">
+                                    <i class="fas fa-paperclip text-gray-400"></i>
+                                    <span>{{ count($atts) }} file{{ count($atts) > 1 ? 's' : '' }}</span>
+                                </div>
+                            @endif
+
                             {{-- Bottom: Assignee + Deadline --}}
                             <div class="flex items-center justify-between mt-2">
                                 @if ($item->assigneeUser)
@@ -1020,19 +1162,20 @@ new #[Layout('components.layouts.app')] class extends Component
         @if ($detail)
             @php
                 $priorityBadge = match($detail->priority) {
-                    'urgent' => 'bg-red-100 text-red-700',
-                    'high'   => 'bg-orange-100 text-orange-700',
-                    'medium' => 'bg-blue-100 text-blue-700',
-                    default  => 'bg-gray-100 text-gray-600',
+                    'urgent' => 'bg-red-100 text-red-700 border-red-200',
+                    'high'   => 'bg-orange-100 text-orange-700 border-orange-200',
+                    'medium' => 'bg-blue-100 text-blue-700 border-blue-200',
+                    default  => 'bg-gray-100 text-gray-600 border-gray-200',
                 };
-                $typeBadge = [
-                    'reel'     => 'bg-pink-100 text-pink-700',
-                    'post'     => 'bg-blue-100 text-blue-700',
-                    'story'    => 'bg-purple-100 text-purple-700',
-                    'video'    => 'bg-red-100 text-red-700',
-                    'carousel' => 'bg-amber-100 text-amber-700',
-                    'blog'     => 'bg-green-100 text-green-700',
-                ][$detail->type] ?? 'bg-gray-100 text-gray-600';
+                $typeBadge = match($detail->type) {
+                    'reel'     => 'bg-pink-50 text-pink-700 border-pink-200',
+                    'post'     => 'bg-blue-50 text-blue-700 border-blue-200',
+                    'story'    => 'bg-purple-50 text-purple-700 border-purple-200',
+                    'video'    => 'bg-red-50 text-red-700 border-red-200',
+                    'carousel' => 'bg-amber-50 text-amber-700 border-amber-200',
+                    'blog'     => 'bg-green-50 text-green-700 border-green-200',
+                    default    => 'bg-gray-50 text-gray-600 border-gray-200',
+                };
                 $isOverdueDetail = $detail->deadline && $detail->deadline->isPast() && !in_array($detail->stage, ['published', 'ready-for-production']);
             @endphp
             <div
@@ -1041,43 +1184,21 @@ new #[Layout('components.layouts.app')] class extends Component
                 x-data
                 x-on:keydown.escape.window="$wire.set('showDetail', false)"
             >
-                <div
-                    class="modal-box max-w-lg"
-                    x-on:click.stop
-                    role="dialog"
-                    aria-modal="true"
-                    aria-labelledby="workflow-detail-title"
-                >
-                    <div class="modal-header">
-                        <h3 id="workflow-detail-title" class="text-base font-bold text-gray-900">
-                            <i class="fas fa-eye text-[var(--brand)] mr-2"></i>
-                            Workflow Item
-                        </h3>
-                        <button
-                            wire:click="$set('showDetail', false)"
-                            aria-label="Close details"
-                            class="flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand)]/40 transition-colors"
-                        >
-                            <i class="fas fa-times text-sm"></i>
-                        </button>
-                    </div>
-
-                    <div class="modal-body space-y-4">
-                        {{-- Title + badges --}}
-                        <div>
-                            <div class="flex flex-wrap items-center gap-1.5 mb-2">
+                <div class="modal-box max-w-2xl" x-on:click.stop>
+                    {{-- Header --}}
+                    <div class="modal-header border-b border-gray-100 pb-3">
+                        <div class="flex-1 min-w-0">
+                            <div class="flex flex-wrap items-center gap-1.5 mb-1.5">
                                 <span
-                                    class="inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-semibold {{ $typeBadge }}"
+                                    class="inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-semibold border {{ $typeBadge }}"
+                                    >{{ ucfirst($detail->type) }}</span
                                 >
-                                    {{ ucfirst($detail->type) }}
-                                </span>
                                 <span
-                                    class="inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-semibold {{ $priorityBadge }}"
+                                    class="inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-semibold border {{ $priorityBadge }}"
+                                    >{{ ucfirst($detail->priority) }}</span
                                 >
-                                    {{ ucfirst($detail->priority) }} priority
-                                </span>
                                 <span
-                                    class="ml-auto inline-flex items-center gap-1.5 rounded-full bg-gray-50 border border-gray-100 px-2.5 py-1 text-[11px] font-semibold text-gray-700"
+                                    class="inline-flex items-center gap-1.5 rounded-full bg-gray-50 border border-gray-100 px-2.5 py-1 text-[11px] font-semibold text-gray-700"
                                 >
                                     <span
                                         class="h-2 w-2 rounded-full"
@@ -1086,25 +1207,41 @@ new #[Layout('components.layouts.app')] class extends Component
                                     {{ $detail->stageInfo->name ?? ucfirst($detail->stage) }}
                                 </span>
                             </div>
-                            <h2 class="text-lg font-bold text-gray-900 leading-snug">{{ $detail->title }}</h2>
+                            <h3 class="text-lg font-bold text-gray-900 leading-snug">{{ $detail->title }}</h3>
                         </div>
+                        <div class="flex items-center gap-2 shrink-0">
+                            @if ($this->canEditWorkflow)
+                                <button type="button" wire:click="editFromDetail" class="btn btn-secondary btn-sm">
+                                    <i class="fas fa-pen text-xs"></i> Edit
+                                </button>
+                            @endif
+                            <button
+                                wire:click="$set('showDetail', false)"
+                                class="btn btn-ghost btn-icon btn-sm"
+                                aria-label="Close"
+                            >
+                                <i class="fas fa-times"></i>
+                            </button>
+                        </div>
+                    </div>
 
+                    <div class="modal-body space-y-4 max-h-[70vh] overflow-y-auto">
                         {{-- Description --}}
                         @if ($detail->notes)
                             <div>
-                                <p class="text-[11px] uppercase tracking-wide font-semibold text-gray-500 mb-1">Description</p>
+                                <p class="text-[11px] uppercase tracking-wide font-semibold text-gray-400 mb-1">Description</p>
                                 <p class="text-sm text-gray-700 whitespace-pre-line leading-relaxed">{{ $detail->notes }}</p>
                             </div>
                         @endif
 
-                        {{-- Metadata grid --}}
-                        <div class="grid grid-cols-2 gap-x-4 gap-y-3 text-sm border-t border-gray-100 pt-3">
+                        {{-- Metadata --}}
+                        <div class="grid grid-cols-2 sm:grid-cols-3 gap-4 text-sm">
                             <div>
-                                <p class="text-[11px] uppercase tracking-wide font-semibold text-gray-500 mb-0.5">Client</p>
-                                <p class="text-gray-800 text-xs"><i class="fas fa-building text-gray-400 mr-1"></i>{{ $detail->client->name ?? '—' }}</p>
+                                <p class="text-[11px] uppercase tracking-wide font-semibold text-gray-400 mb-1">Client</p>
+                                <p class="text-gray-800 text-xs flex items-center gap-1.5"><i class="fas fa-building text-gray-400"></i> {{ $detail->client->name ?? '—' }}</p>
                             </div>
                             <div>
-                                <p class="text-[11px] uppercase tracking-wide font-semibold text-gray-500 mb-0.5">Assignee</p>
+                                <p class="text-[11px] uppercase tracking-wide font-semibold text-gray-400 mb-1">Assignee</p>
                                 @if ($detail->assigneeUser)
                                     <div class="flex items-center gap-1.5">
                                         <div
@@ -1119,18 +1256,18 @@ new #[Layout('components.layouts.app')] class extends Component
                                 @endif
                             </div>
                             <div>
-                                <p class="text-[11px] uppercase tracking-wide font-semibold text-gray-500 mb-0.5">Deadline</p>
+                                <p class="text-[11px] uppercase tracking-wide font-semibold text-gray-400 mb-1">Deadline</p>
                                 @if ($detail->deadline)
                                     <p
-                                        class="{{ $isOverdueDetail ? 'text-red-600 font-semibold' : 'text-gray-800' }} text-xs"
+                                        class="{{ $isOverdueDetail ? 'text-red-600 font-semibold' : 'text-gray-800' }} text-xs flex items-center gap-1.5"
                                     >
                                         <i
-                                            class="fas fa-calendar-alt {{ $isOverdueDetail ? 'text-red-500' : 'text-gray-400' }} mr-1"
+                                            class="fas fa-calendar-alt {{ $isOverdueDetail ? 'text-red-500' : 'text-gray-400' }}"
                                         ></i>
                                         {{ $detail->deadline->format('M d, Y') }}
                                         @if ($isOverdueDetail)
                                             <span
-                                                class="ml-1 inline-flex items-center rounded-md bg-red-100 text-red-700 px-1.5 py-0.5 text-[10px] font-semibold"
+                                                class="inline-flex items-center rounded-md bg-red-100 text-red-700 px-1.5 py-0.5 text-[10px] font-semibold"
                                                 >Overdue</span
                                             >
                                         @endif
@@ -1140,18 +1277,21 @@ new #[Layout('components.layouts.app')] class extends Component
                                 @endif
                             </div>
                             <div>
-                                <p class="text-[11px] uppercase tracking-wide font-semibold text-gray-500 mb-0.5">Created</p>
-                                <p class="text-gray-800 text-xs">
-                                    <i class="fas fa-clock text-gray-400 mr-1"></i>
-                                    {{ $detail->created_at?->format('M d, Y') ?? '—' }}
-                                </p>
+                                <p class="text-[11px] uppercase tracking-wide font-semibold text-gray-400 mb-1">Created</p>
+                                <p class="text-gray-800 text-xs flex items-center gap-1.5"><i class="fas fa-clock text-gray-400"></i> {{ $detail->created_at?->format('M d, Y') ?? '—' }}</p>
                             </div>
+                            @if ($detail->content_id)
+                                <div>
+                                    <p class="text-[11px] uppercase tracking-wide font-semibold text-gray-400 mb-1">Linked Content</p>
+                                    <p class="text-gray-800 text-xs flex items-center gap-1.5"><i class="fas fa-link text-gray-400"></i> Content #{{ $detail->content_id }}</p>
+                                </div>
+                            @endif
                         </div>
 
                         {{-- Tags --}}
-                        @if ($detail->tags)
-                            <div class="border-t border-gray-100 pt-3">
-                                <p class="text-[11px] uppercase tracking-wide font-semibold text-gray-500 mb-1.5">Tags</p>
+                        @if ($detail->tags && trim($detail->tags) !== '')
+                            <div>
+                                <p class="text-[11px] uppercase tracking-wide font-semibold text-gray-400 mb-1.5">Tags</p>
                                 <div class="flex flex-wrap gap-1.5">
                                     @foreach (explode(',', $detail->tags) as $tag)
                                         @php $tag = trim($tag); @endphp
@@ -1167,60 +1307,28 @@ new #[Layout('components.layouts.app')] class extends Component
                             </div>
                         @endif
 
-                        {{-- Approval Attachments --}}
-                        @php $approvalAttachments = $this->getApprovalAttachments(); @endphp
-                        @if (count($approvalAttachments))
-                            <div class="border-t border-gray-100 pt-3">
-                                <p class="text-[11px] uppercase tracking-wide font-semibold text-gray-500 mb-1.5 flex items-center gap-1.5">
-                                    <i class="fas fa-check-double text-gray-400"></i> Approval Attachments
-                                </p>
-                                <div class="space-y-1.5">
-                                    @foreach ($approvalAttachments as $att)
-                                        @if (isset($att['url']))
-                                            <div
-                                                class="flex items-center gap-2 bg-gray-50 rounded-lg px-3 py-2 group hover:bg-gray-100 transition-colors"
-                                            >
-                                                @if (($att['type'] ?? '') === 'image' && str_starts_with($att['url'] ?? '', '/'))
-                                                    <a href="{{ $att['url'] }}" target="_blank" class="block shrink-0"
-                                                        ><img
-                                                            src="{{ $att['url'] }}"
-                                                            class="rounded-lg h-10 w-10 object-cover border border-gray-200"
-                                                    /></a>
-                                                @else
-                                                    <i
-                                                        class="fas {{ (($att['type'] ?? '') === 'drive') ? 'fa-google-drive text-blue-500' : ((($att['type'] ?? '') === 'image') ? 'fa-image text-blue-500' : 'fa-file text-gray-400') }} text-sm"
-                                                    ></i>
-                                                @endif
-                                                <div class="flex-1 min-w-0">
-                                                    <a
-                                                        href="{{ $att['url'] }}"
-                                                        target="_blank"
-                                                        class="text-sm text-gray-700 hover:text-[var(--brand)] hover:underline truncate block"
-                                                        >{{ $att['name'] ?? 'File' }}</a
-                                                    >
-                                                    <p class="text-[10px] text-gray-400">
-                                                        From approval
-                                                        <span
-                                                            class="badge badge-{{ $att['_approval_status'] ?? 'pending' }}"
-                                                            style="font-size: 9px; padding: 1px 5px"
-                                                            >{{ ucfirst($att['_approval_status'] ?? 'pending') }}</span
-                                                        >
-                                                    </p>
-                                                </div>
-                                            </div>
-                                        @endif
-                                    @endforeach
-                                </div>
+                        {{-- Attachments --}}
+                        @php $wfAtts = $this->getDetailAttachments(); @endphp
+                        @if (count($wfAtts) > 0)
+                            <div>
+                                @include ('livewire.partials.attachment-display', ['attachments' => $wfAtts, 'label' => 'Attachments'])
                             </div>
                         @endif
 
-                        {{-- Discussion Section --}}
-                        <div class="border-t border-gray-100 pt-3">
-                            <h4 class="text-sm font-semibold text-gray-900 mb-2 flex items-center gap-2">
+                        {{-- Approval Attachments --}}
+                        @php $approvalAtts = $this->getApprovalAttachments() ?? []; @endphp
+                        @if (!empty($approvalAtts))
+                            <div>
+                                @include ('livewire.partials.attachment-display', ['attachments' => $approvalAtts, 'label' => 'Approval Attachments'])
+                            </div>
+                        @endif
+
+                        {{-- Discussion --}}
+                        <div class="border-t border-gray-100 pt-4">
+                            <h4 class="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
                                 <i class="fas fa-comments text-gray-400"></i> Discussion
                             </h4>
 
-                            {{-- Comment list --}}
                             @php $comments = $this->getComments(); @endphp
                             <div class="space-y-3 max-h-48 overflow-y-auto mb-3">
                                 @forelse ($comments as $comment)
@@ -1280,42 +1388,24 @@ new #[Layout('components.layouts.app')] class extends Component
                                     <x-file-picker
                                         :clientId="$detail->client_id"
                                         wire="commentAttachments"
-                                        wire-json="commentAttachmentsJson"
+                                        :initial="$commentAttachments"
                                     />
-                                    <input type="hidden" wire:model="commentAttachmentsJson" />
                                     <button
-                                        wire:click="addComment"
+                                        @click="$wire.addComment($wire.get('commentAttachments'))"
                                         wire:loading.attr="disabled"
-                                        wire:target="addComment"
                                         class="btn btn-primary btn-sm"
-                                        :disabled="!$wire.commentText"
+                                        x-data
                                     >
                                         <i
                                             class="fas fa-paper-plane text-xs"
                                             wire:loading.remove
                                             wire:target="addComment"
                                         ></i>
-                                        <i
-                                            class="fas fa-spinner fa-spin text-xs"
-                                            wire:loading
-                                            wire:target="addComment"
-                                        ></i>
+                                        <i class="fas fa-spinner fa-spin text-xs" wire:loading></i>
                                         Send
                                     </button>
                                 </div>
                             </div>
-                        </div>
-
-                        {{-- Footer Buttons --}}
-                        <div class="flex items-center justify-end gap-3 border-t border-gray-100 pt-3">
-                            <button type="button" wire:click="$set('showDetail', false)" class="btn btn-secondary">
-                                Close
-                            </button>
-                            @if ($this->canEditWorkflow)
-                                <button type="button" wire:click="editFromDetail" class="btn btn-primary">
-                                    <i class="fas fa-pen text-xs"></i> Edit
-                                </button>
-                            @endif
                         </div>
                     </div>
                 </div>
@@ -1365,6 +1455,25 @@ new #[Layout('components.layouts.app')] class extends Component
                                     rows="3"
                                     placeholder="Brief description or notes..."
                                 ></textarea>
+                            </div>
+
+                            {{-- Attachments — prominent, top of form --}}
+                            <div
+                                class="md:col-span-2 border border-dashed border-gray-200 rounded-xl bg-gray-50/50 p-4"
+                            >
+                                <label class="form-label mb-2"
+                                    ><i class="fas fa-paperclip text-gray-400 mr-1"></i> Attachments</label
+                                >
+                                <x-file-picker
+                                    :clientId="$formClientId"
+                                    wire="formAttachmentsJson"
+                                    :initial="$formAttachments"
+                                />
+                                @if ($formMode === 'edit' && count($formAttachments) > 0)
+                                    <div class="mt-3">
+                                        @include ('livewire.partials.attachment-display', ['attachments' => $formAttachments, 'label' => ''])
+                                    </div>
+                                @endif
                             </div>
 
                             <div>
@@ -1456,7 +1565,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                     type="text"
                                     wire:model="formTags"
                                     class="form-input"
-                                    placeholder="Comma-separated tags (e.g. urgent, design, revision)"
+                                    placeholder="e.g. urgent, design, revision"
                                 />
                                 <p class="text-[11px] text-gray-400 mt-1">Separate multiple tags with commas</p>
                             </div>
@@ -1588,91 +1697,6 @@ new #[Layout('components.layouts.app')] class extends Component
                                                 >
                                             </label>
                                         </div>
-
-                                        {{-- Revision Notes --}}
-                                        @if ($item->stage === 'revision' && $item->revision_notes)
-                                            <div class="mt-2 bg-red-50 border border-red-200 rounded-lg px-2 py-1.5">
-                                                <p class="text-[10px] text-red-700 font-medium"><i class="fas fa-exclamation-circle mr-1"></i>Revision:</p>
-                                                <p class="text-[10px] text-red-600 line-clamp-2">{{ $item->revision_notes }}</p>
-                                            </div>
-                                        @endif
-
-                                        {{-- Approval Status --}}
-                                        @php $appr = $this->getApprovalStatus($item); @endphp
-                                        @if ($item->content_id && in_array($item->stage, ['review', 'revision']))
-                                            <div class="mt-2 bg-blue-50 border border-blue-200 rounded-lg px-2 py-1.5">
-                                                <p class="text-[10px] text-blue-700 font-medium mb-1"><i class="fas fa-clipboard-check mr-1"></i>Approval:</p>
-                                                <div class="flex flex-wrap items-center gap-2">
-                                                    <span
-                                                        class="text-[10px] {{ $appr['admin'] ? 'text-green-600' : 'text-gray-500' }}"
-                                                    >
-                                                        <i
-                                                            class="fas {{ $appr['admin'] ? 'fa-check-circle' : 'fa-clock' }} mr-1"
-                                                        ></i
-                                                        >Admin
-                                                    </span>
-                                                    @if ($appr['is_client'])
-                                                        <span
-                                                            class="text-[10px] {{ $appr['client'] ? 'text-green-600' : 'text-gray-500' }}"
-                                                        >
-                                                            <i
-                                                                class="fas {{ $appr['client'] ? 'fa-check-circle' : 'fa-clock' }} mr-1"
-                                                            ></i
-                                                            >Client
-                                                        </span>
-                                                    @endif
-                                                </div>
-                                            </div>
-                                        @endif
-
-                                        {{-- Action Buttons --}}
-                                        @if (!in_array($item->stage, ['published', 'ready-for-production']))
-                                            <div
-                                                class="flex items-center gap-1 mt-2 pt-2 border-t border-gray-100"
-                                                x-data
-                                            >
-                                                @if ($item->stage === 'review')
-                                                    <button
-                                                        wire:click.stop="openRevisionModal({{ $item->id }})"
-                                                        class="text-[10px] px-2 py-1 rounded bg-red-50 text-red-600 font-medium hover:bg-red-100"
-                                                        title="Send back for revision"
-                                                    >
-                                                        <i class="fas fa-undo mr-1"></i>Revise
-                                                    </button>
-                                                @endif
-                                                @if ($item->stage === 'revision')
-                                                    <button
-                                                        wire:click.stop="openResubmitModal({{ $item->id }})"
-                                                        class="text-[10px] px-2 py-1 rounded bg-[var(--brand)] text-white font-medium hover:opacity-80"
-                                                        title="Resubmit for approval"
-                                                    >
-                                                        <i class="fas fa-paper-plane mr-1"></i>Resubmit
-                                                    </button>
-                                                @endif
-                                            </div>
-                                        @else
-                                            <div class="mt-2 pt-2 border-t border-gray-100">
-                                                @if ($item->stage === 'ready-for-production')
-                                                    <div class="flex items-center gap-1">
-                                                        <span class="text-[10px] text-sky-600 font-medium"
-                                                            ><i class="fas fa-check-double mr-1"></i>Ready for
-                                                            Production</span
-                                                        >
-                                                        <button
-                                                            wire:click.stop="moveItem({{ $item->id }}, 'published')"
-                                                            class="text-[10px] px-2 py-0.5 rounded bg-green-50 text-green-600 font-medium hover:bg-green-100 ml-auto"
-                                                            title="Publish this item"
-                                                        >
-                                                            <i class="fas fa-rocket mr-1"></i>Publish
-                                                        </button>
-                                                    </div>
-                                                @else
-                                                    <span class="text-[10px] text-green-600 font-medium"
-                                                        ><i class="fas fa-lock mr-1"></i>Published</span
-                                                    >
-                                                @endif
-                                            </div>
-                                        @endif
                                     </div>
                                 </div>
 

@@ -1,32 +1,46 @@
 @props ([
     'clientId' => null,
+    'wireClientId' => null,
     'multiple' => true,
     'wire' => 'formAttachments',
-    'wireJson' => null,
+    'initial' => [],
 ])
+
+@php
+    $inputId = 'fp-' . md5($wire . $clientId);
+    $initialAttached = is_string($initial) ? (json_decode($initial, true) ?: []) : ($initial ?: []);
+@endphp
 
 <div
     x-data="{
-        target: @js($wire),
-        jsonTarget: @js($wireJson),
+        inputId: @js($inputId),
+        wireProp: @js($wire),
         open: false,
         search: '',
         files: [],
         selected: [],
-        attached: [],
+        attached: @js($initialAttached),
         driveUrl: '',
         driveName: '',
         loading: false,
+        getJson() {
+            return JSON.stringify(this.attached);
+        },
+        syncInput() {
+            var el = document.getElementById(this.inputId);
+            if (el) el.value = JSON.stringify(this.attached);
+        },
         async loadFiles() {
             this.loading = true;
             try {
-                const res = await $wire.getPickableFiles(this.search, {{ json_encode($clientId) }});
+                var clientId = @js($wireClientId) ? $wire.get(@js($wireClientId)) : {{ json_encode($clientId) }};
+                var res = await $wire.getPickableFiles(this.search, clientId);
                 this.files = res;
             } catch(e) { console.error(e); }
             this.loading = false;
         },
         toggleFile(file) {
-            const idx = this.selected.findIndex(f => f.id === file.id);
+            var idx = this.selected.findIndex(function(f) { return f.id === file.id; });
             if (idx >= 0) {
                 this.selected.splice(idx, 1);
             } else {
@@ -34,7 +48,7 @@
             }
         },
         isSelected(file) {
-            return this.selected.some(f => f.id === file.id);
+            return this.selected.some(function(f) { return f.id === file.id; });
         },
         addDriveLink() {
             if (!this.driveUrl) return;
@@ -50,28 +64,17 @@
         removeSelected(idx) {
             this.selected.splice(idx, 1);
         },
-        syncToJson() {
-            if (!this.jsonTarget) return;
-            const selector = '[wire\\:model=\'' + this.jsonTarget + '\']';
-            const el = document.querySelector(selector);
-            if (el) {
-                el.value = JSON.stringify(this.attached);
-                el.dispatchEvent(new Event('input', { bubbles: true }));
-            }
-        },
         async removeAttached(idx) {
-            const current = [...this.attached];
+            var current = this.attached.slice();
             current.splice(idx, 1);
             this.attached = current;
-            await $wire.set(this.target, current);
-            this.syncToJson();
+            this.syncInput();
+            await $wire.set(this.wireProp, this.getJson());
         },
         async confirm() {
-            const payload = JSON.parse(JSON.stringify(this.selected));
-            this.attached = payload;
-            await $wire.set(this.target, payload);
-            this.syncToJson();
-            $dispatch('files-picked', { files: payload });
+            this.attached = JSON.parse(JSON.stringify(this.selected));
+            this.syncInput();
+            await $wire.set(this.wireProp, this.getJson());
             this.open = false;
         },
         openPicker() {
@@ -83,8 +86,10 @@
             this.loadFiles();
         },
     }"
+    x-init="$nextTick(() => syncInput())"
 >
-    {{-- Trigger + inline preview --}}
+    <input type="hidden" id="{{ $inputId }}" value="[]" />
+
     <div>
         <button type="button" @click="openPicker()" class="btn btn-secondary btn-sm">
             <i class="fas fa-paperclip text-xs"></i>
@@ -97,14 +102,12 @@
             </template>
         </button>
 
-        {{-- Inline preview of attached files --}}
         <template x-if="attached.length > 0">
             <div class="mt-2 flex flex-wrap gap-1.5">
                 <template x-for="(item, idx) in attached" :key="idx">
                     <div
                         class="group inline-flex items-center gap-1.5 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-lg pl-2 pr-1 py-1 transition-colors"
                     >
-                        {{-- Icon / thumbnail --}}
                         <template x-if="item.type === 'image' && item.url && item.url.startsWith('/')">
                             <img :src="item.url" class="w-6 h-6 rounded object-cover border border-gray-200 shrink-0" />
                         </template>
@@ -120,11 +123,7 @@
                                         : 'fa-file text-gray-400'"
                             ></i>
                         </template>
-
-                        {{-- Name --}}
                         <span class="text-xs text-gray-700 max-w-[140px] truncate" x-text="item.name || 'File'"></span>
-
-                        {{-- Remove --}}
                         <button
                             type="button"
                             @click.stop="removeAttached(idx)"
@@ -139,7 +138,6 @@
         </template>
     </div>
 
-    {{-- Modal --}}
     <template x-if="open">
         <div
             class="fixed inset-0 z-[80] flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm p-0 sm:p-4"
@@ -149,7 +147,6 @@
             <div
                 class="bg-white rounded-t-2xl sm:rounded-2xl w-full sm:max-w-lg max-h-[85vh] flex flex-col overflow-hidden"
             >
-                {{-- Header --}}
                 <div class="flex items-center justify-between px-4 py-3 border-b shrink-0">
                     <h3 class="font-bold text-gray-900">Attach Files</h3>
                     <button
@@ -160,7 +157,25 @@
                     </button>
                 </div>
 
-                {{-- Drive Link --}}
+                <div class="px-4 py-3 border-b bg-blue-50/50 shrink-0">
+                    <p class="text-[11px] font-semibold text-blue-600 uppercase mb-2"><i class="fas fa-upload mr-1"></i> Upload from computer</p>
+                    <input
+                        type="file"
+                        wire:model="newFileUpload"
+                        x-ref="fileInput"
+                        class="hidden"
+                        accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv"
+                    />
+                    <button
+                        type="button"
+                        @click="$refs.fileInput.click()"
+                        class="w-full flex items-center justify-center gap-2 px-3 py-2.5 border-2 border-dashed border-blue-300 rounded-xl text-sm text-blue-600 hover:bg-blue-100 hover:border-blue-400 transition-colors"
+                    >
+                        <i class="fas fa-cloud-upload-alt text-base"></i>
+                        <span>Click to upload files</span>
+                    </button>
+                </div>
+
                 <div class="px-4 py-3 border-b bg-gray-50 shrink-0">
                     <p class="text-[11px] font-semibold text-gray-500 uppercase mb-2">Paste a drive link</p>
                     <div class="flex flex-col sm:flex-row gap-2">
@@ -187,7 +202,6 @@
                     </div>
                 </div>
 
-                {{-- Search --}}
                 <div class="px-4 py-2 border-b shrink-0">
                     <div class="relative">
                         <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs"></i>
@@ -201,7 +215,6 @@
                     </div>
                 </div>
 
-                {{-- File List --}}
                 <div class="flex-1 overflow-y-auto p-4 space-y-1 min-h-0">
                     <template x-if="loading">
                         <div class="text-center py-8 text-gray-400 text-sm">
@@ -250,7 +263,6 @@
                     </template>
                 </div>
 
-                {{-- Selected preview inside modal --}}
                 <template x-if="selected.length > 0">
                     <div class="px-4 py-2 border-t bg-blue-50/50 shrink-0">
                         <p class="text-[11px] font-semibold text-blue-600 uppercase mb-1"><span x-text="selected.length"></span> selected</p>
@@ -279,7 +291,6 @@
                     </div>
                 </template>
 
-                {{-- Footer --}}
                 <div class="flex justify-end gap-2 px-4 py-3 border-t shrink-0">
                     <button @click="open = false" class="btn btn-secondary btn-sm">Cancel</button>
                     <button @click="confirm()" class="btn btn-primary btn-sm" :disabled="selected.length === 0">
