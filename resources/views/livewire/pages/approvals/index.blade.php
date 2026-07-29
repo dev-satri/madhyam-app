@@ -373,7 +373,7 @@ new #[Layout('components.layouts.app')] class extends Component
                 }
 
                 if (! $suppressSideEffects) {
-                    app(NotificationService::class)->notifyContentApproved($approval->title);
+                    app(NotificationService::class)->notifyContentApproved($approval->title, $approval->client_id);
                 }
             } elseif ($status === 'rejected') {
                 DB::table('contents')->where('id', $approval->content_id)->update([
@@ -381,7 +381,7 @@ new #[Layout('components.layouts.app')] class extends Component
                     'updated_at' => now(),
                 ]);
                 if (! $suppressSideEffects) {
-                    app(NotificationService::class)->notifyContentRejected($approval->title, $reason);
+                    app(NotificationService::class)->notifyContentRejected($approval->title, $reason, $approval->client_id);
                 }
             } elseif ($status === 'revision') {
                 DB::table('contents')->where('id', $approval->content_id)->update([
@@ -389,7 +389,7 @@ new #[Layout('components.layouts.app')] class extends Component
                     'updated_at' => now(),
                 ]);
                 if (! $suppressSideEffects) {
-                    app(NotificationService::class)->notifyContentRevision($approval->title, $reason);
+                    app(NotificationService::class)->notifyContentRevision($approval->title, $reason, $approval->client_id);
                 }
             }
         } elseif ($approval->approval_stage === 'admin-pending') {
@@ -402,7 +402,7 @@ new #[Layout('components.layouts.app')] class extends Component
                     'updated_at' => now(),
                 ]);
                 if (! $suppressSideEffects) {
-                    app(NotificationService::class)->notifyAdminApprovedFinal($approval->title);
+                    app(NotificationService::class)->notifyAdminApprovedFinal($approval->title, $approval->client_id);
                 }
             } else {
                 // Rejected/revision → workflow = revision
@@ -419,7 +419,7 @@ new #[Layout('components.layouts.app')] class extends Component
                     'updated_at' => now(),
                 ]);
                 if (! $suppressSideEffects) {
-                    app(NotificationService::class)->notifyAdminRejectedFinal($approval->title, $reason);
+                    app(NotificationService::class)->notifyAdminRejectedFinal($approval->title, $reason, $approval->client_id);
                 }
             }
         } elseif ($approval->approval_stage === 'client-pending') {
@@ -468,6 +468,7 @@ new #[Layout('components.layouts.app')] class extends Component
                 type: $status === 'approved' ? 'success' : ($status === 'rejected' ? 'error' : 'info'),
                 link: route('approvals', absolute: false),
                 forRole: $isStaff ? 'client' : 'manager',
+                clientId: $isStaff ? $approval->client_id : null,
             );
         }
 
@@ -504,7 +505,7 @@ new #[Layout('components.layouts.app')] class extends Component
                 text: "{$count} approval(s) {$action} by {$actor?->name}",
                 type: $action === 'approved' ? 'success' : ($action === 'rejected' ? 'error' : 'info'),
                 link: route('approvals', absolute: false),
-                forRole: $isStaff ? 'client' : 'manager',
+                forRole: 'manager',
             );
             $this->dispatch('toast', message: "{$count} approval(s) {$action}", type: 'success');
         }
@@ -696,7 +697,7 @@ new #[Layout('components.layouts.app')] class extends Component
                 text: "{$count} approval(s) {$this->reasonAction} by {$actor?->name}",
                 type: $this->reasonAction === 'approved' ? 'success' : ($this->reasonAction === 'rejected' ? 'error' : 'info'),
                 link: route('approvals', absolute: false),
-                forRole: $isStaff ? 'client' : 'manager',
+                forRole: 'manager',
             );
             $this->dispatch('toast', message: "{$count} approval(s) {$this->reasonAction}", type: 'success');
         }

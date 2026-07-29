@@ -42,6 +42,7 @@ class ShootReminderCommand extends Command
                 type: 'warning',
                 link: route('workflow', absolute: false),
                 forRole: $shoot->assigneeUser ? $shoot->assigneeUser->role : 'all',
+                clientId: $shoot->client_id,
             );
             $count++;
         }

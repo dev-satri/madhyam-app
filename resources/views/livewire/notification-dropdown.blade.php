@@ -29,27 +29,16 @@ new class extends Component
 
         try {
             $query = DB::table('notifications')
-                ->where(function ($q) use ($user, $isClient) {
+                ->where(function ($q) use ($user, $isClient, $clientId) {
                     if ($isClient) {
-                        $q->where('for_role', 'client')
-                          ->orWhere('for_role', 'all');
+                        // Client portal: only show notifications scoped to this client
+                        $q->where('client_id', $clientId);
                     } else {
                         $q->where('for_role', $user->role)
                           ->orWhere('for_role', 'all')
                           ->orWhere('user_id', $user->id);
                     }
                 });
-
-            if ($isClient) {
-                $query->where(function ($q) use ($clientId) {
-                    if ($clientId) {
-                        $q->whereNull('client_id')
-                          ->orWhere('client_id', $clientId);
-                    } else {
-                        $q->whereNull('client_id');
-                    }
-                });
-            }
 
             $all = $query->latest()->limit(20)->get();
 
@@ -74,7 +63,25 @@ new class extends Component
 
     public function markAsRead(string $id): void
     {
-        DB::table('notifications')->where('id', $id)->update(['read' => true]);
+        $user = Auth::user() ?? Auth::guard('client')->user();
+        if (!$user) return;
+
+        $isClient = Auth::guard('client')->check();
+        $clientId = $isClient ? ($user->client_id ?? null) : null;
+
+        $query = DB::table('notifications')->where('id', $id);
+
+        if ($isClient) {
+            $query->where('client_id', $clientId);
+        } else {
+            $query->where(function ($q) use ($user) {
+                $q->where('for_role', $user->role)
+                  ->orWhere('for_role', 'all')
+                  ->orWhere('user_id', $user->id);
+            });
+        }
+
+        $query->update(['read' => true]);
         $this->loadNotifications();
     }
 
@@ -87,29 +94,19 @@ new class extends Component
         $clientId = $isClient ? ($user->client_id ?? null) : null;
 
         $query = DB::table('notifications')
-            ->where(function ($q) use ($user, $isClient) {
-                if ($isClient) {
-                    $q->where('for_role', 'client')
-                      ->orWhere('for_role', 'all');
-                } else {
-                    $q->where('for_role', $user->role)
-                      ->orWhere('for_role', 'all')
-                      ->orWhere('user_id', $user->id);
-                }
-            });
+            ->where('read', false);
 
         if ($isClient) {
-            $query->where(function ($q) use ($clientId) {
-                if ($clientId) {
-                    $q->whereNull('client_id')
-                      ->orWhere('client_id', $clientId);
-                } else {
-                    $q->whereNull('client_id');
-                }
+            $query->where('client_id', $clientId);
+        } else {
+            $query->where(function ($q) use ($user) {
+                $q->where('for_role', $user->role)
+                  ->orWhere('for_role', 'all')
+                  ->orWhere('user_id', $user->id);
             });
         }
 
-        $query->where('read', false)->update(['read' => true]);
+        $query->update(['read' => true]);
 
         $this->loadNotifications();
     }

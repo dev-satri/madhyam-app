@@ -92,6 +92,7 @@ class DeadlineReminderCommand extends Command
                 type: 'warning',
                 link: route('workflow', absolute: false),
                 forRole: $workflow->assigneeUser ? $workflow->assigneeUser->role : 'all',
+                clientId: $workflow->client_id,
             );
             $count++;
         }

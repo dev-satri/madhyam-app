@@ -174,17 +174,18 @@ class NotificationService
         );
     }
 
-    public function notifyContentApproved(string $title): Notification
+    public function notifyContentApproved(string $title, ?int $clientId = null): Notification
     {
         return $this->sendNotification(
             text: "Your content '{$title}' has been approved. Workflow started.",
             type: 'success',
             link: route('workflow', absolute: false),
             forRole: 'all',
+            clientId: $clientId,
         );
     }
 
-    public function notifyContentRevision(string $title, ?string $reason = null): Notification
+    public function notifyContentRevision(string $title, ?string $reason = null, ?int $clientId = null): Notification
     {
         $text = "Content '{$title}' needs revision";
         if ($reason) {
@@ -196,10 +197,11 @@ class NotificationService
             type: 'warning',
             link: route('content-planner', absolute: false),
             forRole: 'all',
+            clientId: $clientId,
         );
     }
 
-    public function notifyContentRejected(string $title, ?string $reason = null): Notification
+    public function notifyContentRejected(string $title, ?string $reason = null, ?int $clientId = null): Notification
     {
         $text = "Content '{$title}' has been rejected";
         if ($reason) {
@@ -211,6 +213,7 @@ class NotificationService
             type: 'error',
             link: route('content-planner', absolute: false),
             forRole: 'all',
+            clientId: $clientId,
         );
     }
 
@@ -224,17 +227,18 @@ class NotificationService
         );
     }
 
-    public function notifyAdminApprovedFinal(string $title): Notification
+    public function notifyAdminApprovedFinal(string $title, ?int $clientId = null): Notification
     {
         return $this->sendNotification(
             text: "Admin approved '{$title}' — now awaiting client approval",
             type: 'success',
             link: route('approvals', absolute: false),
             forRole: 'all',
+            clientId: $clientId,
         );
     }
 
-    public function notifyAdminRejectedFinal(string $title, ?string $reason = null): Notification
+    public function notifyAdminRejectedFinal(string $title, ?string $reason = null, ?int $clientId = null): Notification
     {
         $text = "Admin rejected '{$title}'";
         if ($reason) {
@@ -247,6 +251,7 @@ class NotificationService
             type: 'error',
             link: route('workflow', absolute: false),
             forRole: 'all',
+            clientId: $clientId,
         );
     }
 
@@ -276,13 +281,14 @@ class NotificationService
         );
     }
 
-    public function notifyContentPublished(string $title): Notification
+    public function notifyContentPublished(string $title, ?int $clientId = null): Notification
     {
         return $this->sendNotification(
             text: "'{$title}' has been published!",
             type: 'success',
             link: route('content-planner', absolute: false),
             forRole: 'all',
+            clientId: $clientId,
         );
     }
 

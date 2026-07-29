@@ -304,7 +304,7 @@ new #[Layout('components.layouts.app')] class extends Component
                 'status' => 'published',
                 'updated_at' => now(),
             ]);
-            app(NotificationService::class)->notifyContentPublished($workflow->title);
+            app(NotificationService::class)->notifyContentPublished($workflow->title, $workflow->client_id);
         }
 
         $workflow->update($updateData);
@@ -318,6 +318,7 @@ new #[Layout('components.layouts.app')] class extends Component
             type: 'info',
             link: route('workflow', absolute: false),
             forRole: 'all',
+            clientId: $workflow->client_id,
         );
 
         $this->dispatch('toast', message: $newStage === 'review' ? 'Moved to Review — Approval created in Approvals page' : 'Item moved successfully', type: 'success');
@@ -353,7 +354,7 @@ new #[Layout('components.layouts.app')] class extends Component
             ]);
         }
 
-        app(NotificationService::class)->notifyContentRevision($workflow->title, $this->revisionNotes);
+        app(NotificationService::class)->notifyContentRevision($workflow->title, $this->revisionNotes, $workflow->client_id);
 
         $this->showRevisionModal = false;
         $this->dispatch('toast', message: 'Sent back for revision', type: 'success');
