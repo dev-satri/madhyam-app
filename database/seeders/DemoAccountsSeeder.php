@@ -44,24 +44,6 @@ class DemoAccountsSeeder extends Seeder
                 'phone' => '+977-9800000002',
                 'join_date' => '2026-01-15',
             ],
-            [
-                'name' => 'Staff Editor',
-                'email' => 'staff.editor@madhyam.com',
-                'password' => 'Staff@123',
-                'role' => 'editor',
-                'department' => 'Creative',
-                'phone' => '+977-9800000003',
-                'join_date' => '2026-02-01',
-            ],
-            [
-                'name' => 'Staff Videographer',
-                'email' => 'staff.video@madhyam.com',
-                'password' => 'Staff@123',
-                'role' => 'videographer',
-                'department' => 'Production',
-                'phone' => '+977-9800000004',
-                'join_date' => '2026-02-15',
-            ],
         ];
 
         foreach ($accounts as $a) {
