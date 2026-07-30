@@ -57,7 +57,7 @@
     ], $items));
 @endphp
 
-<div x-data="attachmentPreview()">
+<div x-data="attachmentPreview">
     <p class="text-[11px] uppercase tracking-wide font-semibold text-gray-500 mb-2.5 flex items-center gap-1.5">
         <i class="fas fa-paperclip text-gray-400"></i> {{ $label }}
         <span
@@ -405,8 +405,8 @@
 </div>
 
 <script>
-    function attachmentPreview() {
-        return {
+    document.addEventListener('alpine:init', () => {
+        Alpine.data('attachmentPreview', () => ({
             show: false,
             currentFile: { name: '', url: '', type: 'file', ext: '' },
             currentIndex: 0,
@@ -427,6 +427,6 @@
             closePreview() {
                 this.show = false;
             }
-        };
-    }
+        }));
+    });
 </script>
