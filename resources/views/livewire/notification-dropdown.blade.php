@@ -134,7 +134,7 @@ new class extends Component
 
     @if ($show)
         <div
-            class="absolute right-0 mt-2 w-80 max-w-[calc(100vw-2rem)] rounded-2xl border border-gray-100 bg-white shadow-xl z-50 overflow-hidden"
+            class="fixed top-16 right-4 w-[calc(100vw-2rem)] rounded-2xl border border-gray-100 bg-white shadow-xl z-50 overflow-hidden max-h-[70vh] sm:max-h-80 lg:absolute lg:right-0 lg:top-auto lg:mt-2 lg:w-80 lg:max-w-none lg:max-h-80"
             x-transition:enter="transition ease-out duration-200"
             x-transition:enter-start="opacity-0 scale-95"
             x-transition:enter-end="opacity-100 scale-100"
