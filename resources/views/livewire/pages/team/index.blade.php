@@ -190,6 +190,10 @@ new #[Layout('components.layouts.app')] class extends Component
             }
 
             // Super-admin protection
+            if ($this->formRole === 'super-admin' && !$this->isSuperAdmin()) {
+                $this->dispatch('toast', message: 'Only super-admin can assign super-admin role', type: 'error');
+                return;
+            }
             if ($this->editingMemberId) {
                 $existing = DB::table('users')->where('id', $this->editingMemberId)->first();
                 if ($existing && $existing->role === 'super-admin' && !$this->isSuperAdmin()) {
@@ -474,6 +478,9 @@ new #[Layout('components.layouts.app')] class extends Component
     {
         $builtins = [];
         foreach (RbacService::BUILT_IN_ROLES as $key) {
+            if ($key === 'super-admin' && ! $this->isSuperAdmin()) {
+                continue;
+            }
             $builtins[$key] = roleName($key);
         }
         $custom = DB::table('custom_roles')->pluck('name', 'role_key')->toArray();
@@ -784,7 +791,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                     <label class="form-label">Role</label>
                                     <select wire:model="formRole" class="form-select">
                                         @foreach($this->allRoles as $key => $label)
-                                            <option value="{{ $key }}" {{ ($editingMemberId && $key === 'super-admin' && !$this->isSuperAdminUser()) ? 'disabled' : '' }}>{{ $label }}</option>
+                                            <option value="{{ $key }}">{{ $label }}</option>
                                         @endforeach
                                     </select>
                                 </div>
