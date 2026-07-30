@@ -192,15 +192,7 @@ new class extends Component
 
     {{-- ========== SEARCH ========== --}}
     <div class="mb-4">
-        <div class="relative max-w-sm">
-            <input
-                type="text"
-                wire:model.live.debounce.250ms="search"
-                placeholder="Search trash..."
-                class="form-input pl-10 focus:ring-0"
-            />
-            <i class="fas fa-search absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
-        </div>
+        <x-search-input wire="search" placeholder="Search trash..." class="max-w-sm" />
     </div>
 
     {{-- ========== TRASH TABLE ========== --}}

@@ -960,10 +960,7 @@ new #[Layout('components.layouts.app')] class extends Component
             <div class="flex flex-wrap gap-3 items-end">
                 <div>
                     <label class="form-label">Search</label>
-                    <div class="relative">
-                        <input type="text" wire:model.live.debounce.250ms="search" placeholder="Search approvals..." class="form-input pl-10 w-full sm:w-56 focus:ring-0" />
-                        <i class="fas fa-search absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
-                    </div>
+                    <x-search-input wire="search" placeholder="Search approvals..." class="w-full sm:w-56" />
                 </div>
                 <div><label class="form-label">Type</label><select wire:model.live="typeFilter" class="form-select w-auto"><option value="">All Types</option><option value="post">Post</option><option value="reel">Reel</option><option value="story">Story</option><option value="video">Video</option><option value="carousel">Carousel</option><option value="blog">Blog</option></select></div>
                 <div><label class="form-label">Status</label><select wire:model.live="statusFilter" class="form-select w-auto"><option value="">All Status</option><option value="pending">Pending</option><option value="approved">Approved</option><option value="revision">Revision</option><option value="rejected">Rejected</option></select></div>

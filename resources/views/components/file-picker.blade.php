@@ -203,16 +203,12 @@
                 </div>
 
                 <div class="px-4 py-2 border-b shrink-0">
-                    <div class="relative">
-                        <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs"></i>
-                        <input
-                            type="search"
-                            x-model.debounce.300ms="search"
-                            @input.debounce.300ms="loadFiles()"
-                            placeholder="Search files from Media library..."
-                            class="form-input pl-9 py-2 text-sm"
-                        />
-                    </div>
+                    <x-search-input
+                        x-model.debounce.300ms="search"
+                        @input.debounce.300ms="loadFiles()"
+                        placeholder="Search files from Media library..."
+                        class="px-4 py-2"
+                    />
                 </div>
 
                 <div class="flex-1 overflow-y-auto p-4 space-y-1 min-h-0">

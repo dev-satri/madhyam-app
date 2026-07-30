@@ -117,7 +117,6 @@ body {
 }
 
 @keyframes pulse {
-
     0%,
     100% {
         opacity: 1;
@@ -129,7 +128,6 @@ body {
 }
 
 @keyframes float {
-
     0%,
     100% {
         transform: translateY(0);
@@ -237,7 +235,6 @@ body {
    Print Styles
    ============================================================ */
 @media print {
-
     .no-print,
     aside.sidebar,
     header.topbar {
@@ -373,7 +370,7 @@ body {
     transition: color 0.2s;
 }
 
-.input-group input:focus~i {
+.input-group input:focus ~ i {
     color: var(--brand);
 }
 
@@ -1033,7 +1030,26 @@ body {
 .form-textarea:focus {
     background: #fff;
     border-color: var(--brand);
-    box-shadow: 0 0 0 3px rgba(var(--brand-rgb), 0.15);
+    box-shadow: 0 0 0 3px rgba(var(--brand-rgb), 0.12);
+}
+
+.form-input-sm {
+    width: 100%;
+    padding: 6px 12px;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    font-size: 12px;
+    font-family: inherit;
+    background: #f8fafc;
+    color: #0f172a;
+    transition: all 0.15s;
+    outline: none;
+}
+
+.form-input-sm:focus {
+    background: #fff;
+    border-color: var(--brand);
+    box-shadow: 0 0 0 3px rgba(var(--brand-rgb), 0.12);
 }
 
 .form-textarea {

@@ -120,7 +120,7 @@ new class extends Component
 <div class="relative">
     <button
         wire:click="toggle"
-        @class([
+        @class ([
             'relative flex h-10 w-10 items-center justify-center rounded-xl transition-all duration-200',
             'text-gray-500 hover:bg-gray-100 hover:text-gray-700' => !$show,
             'bg-gray-100 text-gray-700' => $show,
@@ -155,8 +155,8 @@ new class extends Component
             <div class="flex items-center justify-between border-b border-gray-200 bg-gray-50/50 px-4 py-3.5">
                 <h4 class="text-base font-bold text-gray-900">Notifications</h4>
                 @if ($unreadCount > 0)
-                    <button 
-                        wire:click="markAllRead" 
+                    <button
+                        wire:click="markAllRead"
                         class="text-xs font-semibold text-[var(--brand)] hover:text-[var(--brand-dark)] hover:underline transition-colors"
                         title="Mark all as read"
                     >
@@ -179,9 +179,13 @@ new class extends Component
                         <!-- Unread indicator -->
                         <div class="flex items-center justify-center shrink-0 w-5 h-5 mt-0.5">
                             @if (! ($notification->read ?? true))
-                                <span class="h-2.5 w-2.5 rounded-full bg-[var(--brand)] ring-2 ring-blue-100 animate-pulse"></span>
+                                <span
+                                    class="h-2.5 w-2.5 rounded-full bg-[var(--brand)] ring-2 ring-blue-100 animate-pulse"
+                                ></span>
                             @else
-                                <span class="h-2 w-2 rounded-full bg-gray-200 opacity-0 group-hover:opacity-100 transition-opacity"></span>
+                                <span
+                                    class="h-2 w-2 rounded-full bg-gray-200 opacity-0 group-hover:opacity-100 transition-opacity"
+                                ></span>
                             @endif
                         </div>
 

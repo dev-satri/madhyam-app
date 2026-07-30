@@ -918,15 +918,7 @@ new #[Layout('components.layouts.app')] class extends Component
     <div class="mb-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 items-end">
         <div>
             <label class="form-label">Search</label>
-            <div class="relative">
-                <input
-                    type="text"
-                    wire:model.live.debounce.250ms="search"
-                    placeholder="Search workflows..."
-                    class="form-input pl-10 focus:ring-0"
-                />
-                <i class="fas fa-search absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
-            </div>
+            <x-search-input wire="search" placeholder="Search workflows..." />
         </div>
         <div>
             <label class="form-label">Client</label

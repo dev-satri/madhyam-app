@@ -348,10 +348,7 @@ new #[Layout('components.layouts.app')] class extends Component
             {{-- Search + Filter chip drawer --}}
             <div x-data="{ open: {{ $this->hasActiveFilters ? 'true' : 'false' }} }" class="space-y-3">
                 <div class="flex flex-col sm:flex-row gap-3 sm:items-center">
-                    <div class="relative flex-1">
-                        <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs"></i>
-                        <input type="search" wire:model.live.debounce.250ms="search" placeholder="Search description, vendor, item..." class="form-input pl-10 focus:ring-0 w-full">
-                    </div>
+                    <x-search-input wire="search" placeholder="Search description, vendor, item..." class="flex-1" />
                     <button type="button" @click="open = !open" class="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:border-gray-300 hover:bg-gray-50">
                         <i class="fas fa-sliders-h text-xs text-gray-400"></i>
                         Filters

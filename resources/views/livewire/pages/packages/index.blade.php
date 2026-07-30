@@ -690,15 +690,7 @@ new #[Layout('components.layouts.app')] class extends Component
                     </div>
 
                     {{-- Search --}}
-                    <div class="relative">
-                        <input
-                            type="text"
-                            wire:model.live.debounce.300ms="clientSearch"
-                            placeholder="Search clients..."
-                            class="form-input text-xs py-1.5 pl-9 pr-3 w-48"
-                        />
-                        <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-[10px]"></i>
-                    </div>
+                    <x-search-input wire="clientSearch" placeholder="Search clients..." compact class="w-48" />
 
                     {{-- Reset Filters --}}
                     @if ($clientFilter !== 'all' || $packageFilter !== 'all' || $clientSearch)
@@ -1508,15 +1500,7 @@ new #[Layout('components.layouts.app')] class extends Component
                     </div>
 
                     <div>
-                        <div class="relative">
-                            <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs"></i
-                            ><input
-                                type="text"
-                                wire:model.live.debounce.300ms="detailSearch"
-                                placeholder="Search clients..."
-                                class="form-input pl-10 w-full text-sm focus:ring-0"
-                            />
-                        </div>
+                        <x-search-input wire="detailSearch" placeholder="Search clients..." />
                     </div>
 
                     <div class="overflow-x-auto">

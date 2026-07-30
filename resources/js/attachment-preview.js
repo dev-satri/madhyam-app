@@ -8,7 +8,11 @@ document.addEventListener('alpine:init', () => {
         init() {
             const el = this.$el.querySelector('[data-attachment-files]');
             if (el) {
-                try { this.allFiles = JSON.parse(el.textContent); } catch (e) { /* ignore */ }
+                try {
+                    this.allFiles = JSON.parse(el.textContent);
+                } catch {
+                    /* ignore */
+                }
             }
         },
 
@@ -20,7 +24,7 @@ document.addEventListener('alpine:init', () => {
         },
 
         openPreview(file) {
-            this.currentIndex = this.allFiles.findIndex(f => f.url === file.url);
+            this.currentIndex = this.allFiles.findIndex((f) => f.url === file.url);
             if (this.currentIndex < 0) this.currentIndex = 0;
             this.currentFile = file;
             this.show = true;

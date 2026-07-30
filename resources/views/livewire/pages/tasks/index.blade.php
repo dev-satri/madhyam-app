@@ -612,7 +612,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
             {{-- Filters --}}
             <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 items-end">
-                <div><label class="form-label">Search</label><div class="relative"><i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs"></i><input type="text" wire:model.live.debounce.250ms="search" class="form-input pl-10 focus:ring-0" placeholder="Search tasks..."></div></div>
+                <div><label class="form-label">Search</label><x-search-input wire="search" placeholder="Search tasks..." /></div>
                 <div><label class="form-label">Status</label><select wire:model.live="statusFilter" class="form-select"><option value="">All Status</option><option value="todo">To Do</option><option value="in-progress">In Progress</option><option value="completed">Completed</option></select></div>
                 <div><label class="form-label">Priority</label><select wire:model.live="priorityFilter" class="form-select"><option value="">All Priority</option><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="urgent">Urgent</option></select></div>
                 <div><label class="form-label">Client</label><select wire:model.live="clientFilter" class="form-select"><option value="">All Clients</option>@foreach($this->clients as $c)<option value="{{ $c->id }}">{{ $c->name }}</option>@endforeach</select></div>

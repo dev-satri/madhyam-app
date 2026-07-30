@@ -58,7 +58,9 @@
 @endphp
 
 <div x-data="attachmentPreview">
-    <script type="application/json" data-attachment-files>{!! $allItemsJson !!}</script>
+    <script type="application/json" data-attachment-files>
+        {!! $allItemsJson !!}
+    </script>
     <p class="text-[11px] uppercase tracking-wide font-semibold text-gray-500 mb-2.5 flex items-center gap-1.5">
         <i class="fas fa-paperclip text-gray-400"></i> {{ $label }}
         <span

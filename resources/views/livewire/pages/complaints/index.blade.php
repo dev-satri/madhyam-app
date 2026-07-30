@@ -436,10 +436,7 @@ new #[Layout('components.layouts.app')] class extends Component
                     <button wire:click="$set('tabFilter', 'resolved')" class="tab-btn {{ $tabFilter === 'resolved' ? 'active' : '' }}">Resolved</button>
                 </div>
                 <div class="w-full sm:w-72">
-                    <div class="relative">
-                        <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs"></i>
-                        <input type="search" wire:model.live.debounce.250ms="search" placeholder="Search complaints..." class="form-input pl-10 focus:ring-0">
-                    </div>
+                    <x-search-input wire="search" placeholder="Search complaints..." />
                 </div>
             </div>
 
