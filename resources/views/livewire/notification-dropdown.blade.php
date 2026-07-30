@@ -18,9 +18,10 @@ new class extends Component
     public function loadNotifications(): void
     {
         $user = Auth::user() ?? Auth::guard('client')->user();
-        if (!$user) {
+        if (! $user) {
             $this->notifications = [];
             $this->unreadCount = 0;
+
             return;
         }
 
@@ -64,7 +65,9 @@ new class extends Component
     public function markAsRead(string $id): void
     {
         $user = Auth::user() ?? Auth::guard('client')->user();
-        if (!$user) return;
+        if (! $user) {
+            return;
+        }
 
         $isClient = Auth::guard('client')->check();
         $clientId = $isClient ? ($user->client_id ?? null) : null;
@@ -88,7 +91,9 @@ new class extends Component
     public function markAllRead(): void
     {
         $user = Auth::user() ?? Auth::guard('client')->user();
-        if (!$user) return;
+        if (! $user) {
+            return;
+        }
 
         $isClient = Auth::guard('client')->check();
         $clientId = $isClient ? ($user->client_id ?? null) : null;
@@ -129,7 +134,7 @@ new class extends Component
 
     @if ($show)
         <div
-            class="absolute right-0 mt-2 w-80 rounded-2xl border border-gray-100 bg-white shadow-xl z-50 overflow-hidden"
+            class="absolute right-0 mt-2 w-80 max-w-[calc(100vw-2rem)] rounded-2xl border border-gray-100 bg-white shadow-xl z-50 overflow-hidden"
             x-transition:enter="transition ease-out duration-200"
             x-transition:enter-start="opacity-0 scale-95"
             x-transition:enter-end="opacity-100 scale-100"
@@ -152,10 +157,10 @@ new class extends Component
                         wire:click="markAsRead('{{ $notification->id ?? '' }}')"
                         @class ([
                             'flex items-start gap-3 px-4 py-3 cursor-pointer hover:bg-gray-50 transition-colors border-b border-gray-50 last:border-b-0',
-                            'bg-blue-50/50' => !($notification->read ?? true),
+                            'bg-blue-50/50' => ! ($notification->read ?? true),
                         ])
                     >
-                        @if (!($notification->read ?? true))
+                        @if (! ($notification->read ?? true))
                             <span class="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-[var(--brand)]"></span>
                         @else
                             <span class="mt-1.5 h-2 w-2 shrink-0"></span>
@@ -163,8 +168,8 @@ new class extends Component
                         <div class="flex-1 min-w-0">
                             <p
                                 @class ([
-                                'text-sm text-gray-800',
-                                'font-semibold' => !($notification->read ?? true),
+                                'text-sm text-gray-800 break-words',
+                                'font-semibold' => ! ($notification->read ?? true),
                             ])
                             >{{ $notification->text ?? $notification->message ?? '' }}</p>
                             <p class="mt-0.5 text-[11px] text-gray-400">{{ $notification->created_at ?? '' }}</p>
