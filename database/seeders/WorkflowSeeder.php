@@ -25,17 +25,15 @@ class WorkflowSeeder extends Seeder
         $c2 = DB::table('clients')->where('name', 'Trek Nepal Adventures')->value('id');
 
         $admin = DB::table('users')->where('email', 'admin@madhyam.com')->value('id');
-        $editor = DB::table('users')->where('email', 'staff.editor@madhyam.com')->value('id');
-        $videographer = DB::table('users')->where('email', 'staff.video@madhyam.com')->value('id');
 
         // ── Content-linked workflows (contents past Approval #1) ─────────
         $contentTitles = [
-            'Himalayan Coffee — Farm Visit Video' => ['stage' => 'scripting',            'assignee' => $editor,       'priority' => 'high'],
-            'Himalayan Coffee — Barista Series Reel' => ['stage' => 'revision',             'assignee' => $editor,       'priority' => 'urgent', 'revision_notes' => 'Please strengthen the hook in the first 3 seconds and update color grade to match brand guidelines.'],
-            'Himalayan Coffee — Origin Story' => ['stage' => 'published',            'assignee' => $videographer, 'priority' => 'medium'],
-            'Trek Nepal — Everest BC Trip Video' => ['stage' => 'scripting',            'assignee' => $editor,       'priority' => 'medium'],
-            'Trek Nepal — Guide Testimonial' => ['stage' => 'published',            'assignee' => $editor,       'priority' => 'medium'],
-            'Trek Nepal — Autumn Season Carousel' => ['stage' => 'revision',             'assignee' => $videographer, 'priority' => 'high',   'revision_notes' => 'Audio levels are inconsistent — please re-edit the middle segment.'],
+            'Himalayan Coffee — Farm Visit Video' => ['stage' => 'scripting',            'assignee' => $admin, 'priority' => 'high'],
+            'Himalayan Coffee — Barista Series Reel' => ['stage' => 'revision',             'assignee' => $admin, 'priority' => 'urgent', 'revision_notes' => 'Please strengthen the hook in the first 3 seconds and update color grade to match brand guidelines.'],
+            'Himalayan Coffee — Origin Story' => ['stage' => 'published',            'assignee' => $admin, 'priority' => 'medium'],
+            'Trek Nepal — Everest BC Trip Video' => ['stage' => 'scripting',            'assignee' => $admin, 'priority' => 'medium'],
+            'Trek Nepal — Guide Testimonial' => ['stage' => 'published',            'assignee' => $admin, 'priority' => 'medium'],
+            'Trek Nepal — Autumn Season Carousel' => ['stage' => 'revision',             'assignee' => $admin, 'priority' => 'high',   'revision_notes' => 'Audio levels are inconsistent — please re-edit the middle segment.'],
         ];
 
         $count = 0;
@@ -71,12 +69,12 @@ class WorkflowSeeder extends Seeder
 
         // ── Standalone workflows: fill remaining stages ──────────────────
         $standalone = [
-            ['title' => 'Website Banner Refresh',       'client_id' => $c1, 'type' => 'post',     'stage' => 'todo',                 'assignee' => $editor,       'priority' => 'medium', 'deadline_days' => 10],
-            ['title' => 'Product Photography Batch',    'client_id' => $c1, 'type' => 'post',     'stage' => 'in-progress',          'assignee' => $videographer, 'priority' => 'high',   'deadline_days' => 5],
+            ['title' => 'Website Banner Refresh',       'client_id' => $c1, 'type' => 'post',     'stage' => 'todo',                 'assignee' => $admin, 'priority' => 'medium', 'deadline_days' => 10],
+            ['title' => 'Product Photography Batch',    'client_id' => $c1, 'type' => 'post',     'stage' => 'in-progress',          'assignee' => $admin, 'priority' => 'high',   'deadline_days' => 5],
             // Overdue item — deadline in the past, still not completed
-            ['title' => 'Trek Nepal — Ads Cutdown',     'client_id' => $c2, 'type' => 'video',    'stage' => 'in-progress',          'assignee' => $editor,       'priority' => 'urgent', 'deadline_days' => -2],
+            ['title' => 'Trek Nepal — Ads Cutdown',     'client_id' => $c2, 'type' => 'video',    'stage' => 'in-progress',          'assignee' => $admin, 'priority' => 'urgent', 'deadline_days' => -2],
             // Workflow at "review" — waiting for Approval #2 (admin-pending)
-            ['title' => 'Himalayan Coffee — Winter Campaign', 'client_id' => $c1, 'type' => 'carousel', 'stage' => 'review',        'assignee' => $editor,       'priority' => 'medium', 'deadline_days' => 3],
+            ['title' => 'Himalayan Coffee — Winter Campaign', 'client_id' => $c1, 'type' => 'carousel', 'stage' => 'review',        'assignee' => $admin, 'priority' => 'medium', 'deadline_days' => 3],
         ];
 
         foreach ($standalone as $wf) {
