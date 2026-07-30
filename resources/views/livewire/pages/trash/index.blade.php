@@ -3,6 +3,7 @@
 use App\Models\Trash;
 use App\Services\TrashService;
 use Illuminate\Support\Facades\Auth;
+use Livewire\Attributes\On;
 use Livewire\Volt\Component;
 use Livewire\WithPagination;
 
@@ -12,19 +13,10 @@ new class extends Component
 
     public string $typeFilter = '';
     public string $search = '';
-    public int $deleteId = 0;
-    public int $restoreId = 0;
-    public bool $showDeleteConfirm = false;
-    public bool $showRestoreConfirm = false;
-    public bool $showRestoreAllConfirm = false;
-    public bool $showDeleteAllConfirm = false;
-
-    protected TrashService $trashService;
 
     public function mount(): void
     {
         abort_unless(in_array(Auth::user()->role, ['super-admin', 'admin']), 403);
-        $this->trashService = app(TrashService::class);
     }
 
     public function updatedTypeFilter(): void
@@ -58,7 +50,7 @@ new class extends Component
 
     public function getTypeCountsProperty(): array
     {
-        return $this->trashService->getTrashCounts();
+        return app(TrashService::class)->getTrashCounts();
     }
 
     public function getTrashModelTypes(): array
@@ -86,44 +78,24 @@ new class extends Component
         ];
     }
 
-    public function confirmRestore(int $id): void
+    public function performRestore(int $id): void
     {
-        $this->restoreId = $id;
-        $this->showRestoreConfirm = true;
-    }
-
-    public function performRestore(): void
-    {
-        $this->trashService->restore($this->restoreId);
-        $this->restoreId = 0;
-        $this->showRestoreConfirm = false;
+        app(TrashService::class)->restore($id);
         $this->dispatch('toast', message: 'Item restored successfully', type: 'success');
     }
 
-    public function cancelRestore(): void
+    public function performDelete(int $id): void
     {
-        $this->restoreId = 0;
-        $this->showRestoreConfirm = false;
-    }
-
-    public function confirmDelete(int $id): void
-    {
-        $this->deleteId = $id;
-        $this->showDeleteConfirm = true;
-    }
-
-    public function performDelete(): void
-    {
-        $this->trashService->forceDelete($this->deleteId);
-        $this->deleteId = 0;
-        $this->showDeleteConfirm = false;
+        app(TrashService::class)->forceDelete($id);
         $this->dispatch('toast', message: 'Item permanently deleted', type: 'success');
     }
 
-    public function cancelDelete(): void
+    #[On('confirm-resolved')]
+    public function onConfirmResolved(string $action, array $params = []): void
     {
-        $this->deleteId = 0;
-        $this->showDeleteConfirm = false;
+        if ($action !== '' && method_exists($this, $action)) {
+            $this->{$action}(...$params);
+        }
     }
 
     public function getModelLabel(Trash $item): string
@@ -298,14 +270,16 @@ new class extends Component
                             <td>
                                 <div class="flex items-center justify-end gap-1">
                                     <button
-                                        wire:click="confirmRestore({{ $item->id }})"
+                                        type="button"
+                                        wire:click="$dispatch('open-confirm', { title: 'Restore Item?', message: 'Are you sure you want to restore this item? It will be returned to its original location.', type: 'info', action: 'performRestore', params: [{{ $item->id }}], confirmLabel: 'Restore' })"
                                         class="btn btn-icon btn-ghost"
                                         title="Restore"
                                     >
                                         <i class="fas fa-undo text-gray-400 hover:text-green-500"></i>
                                     </button>
                                     <button
-                                        wire:click="confirmDelete({{ $item->id }})"
+                                        type="button"
+                                        wire:click="$dispatch('open-confirm', { title: 'Delete Permanently?', message: 'This action cannot be undone. The item will be permanently removed from the database.', type: 'danger', action: 'performDelete', params: [{{ $item->id }}], confirmLabel: 'Delete Forever' })"
                                         class="btn btn-icon btn-ghost"
                                         title="Delete Permanently"
                                     >
@@ -337,62 +311,4 @@ new class extends Component
             <div class="border-t border-gray-100 px-4 py-3">{{ $this->items->links() }}</div>
         @endif
     </div>
-
-    {{-- ========== RESTORE CONFIRMATION ========== --}}
-    @if ($showRestoreConfirm)
-        <div class="confirm-overlay" x-data x-on:keydown.escape.window="$wire.cancelRestore()">
-            <div class="confirm-box">
-                <div class="confirm-icon info">
-                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
-                    </svg>
-                </div>
-                <h3 class="mb-2 text-lg font-bold text-gray-900">Restore Item</h3>
-                <p class="mb-6 text-sm text-gray-500">Are you sure you want to restore this item? It will be returned to its original location.</p>
-                <div class="flex gap-3">
-                    <button
-                        wire:click="cancelRestore"
-                        class="flex-1 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors"
-                    >
-                        Cancel
-                    </button>
-                    <button
-                        wire:click="performRestore"
-                        class="flex-1 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 transition-colors"
-                    >
-                        <i class="fas fa-undo text-xs mr-1"></i> Restore
-                    </button>
-                </div>
-            </div>
-        </div>
-    @endif
-
-    {{-- ========== DELETE CONFIRMATION ========== --}}
-    @if ($showDeleteConfirm)
-        <div class="confirm-overlay" x-data x-on:keydown.escape.window="$wire.cancelDelete()">
-            <div class="confirm-box">
-                <div class="confirm-icon danger">
-                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                    </svg>
-                </div>
-                <h3 class="mb-2 text-lg font-bold text-gray-900">Delete Permanently</h3>
-                <p class="mb-6 text-sm text-gray-500">This action cannot be undone. The item will be permanently removed from the database.</p>
-                <div class="flex gap-3">
-                    <button
-                        wire:click="cancelDelete"
-                        class="flex-1 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors"
-                    >
-                        Cancel
-                    </button>
-                    <button
-                        wire:click="performDelete"
-                        class="flex-1 rounded-xl bg-red-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-red-700 transition-colors"
-                    >
-                        <i class="fas fa-trash text-xs mr-1"></i> Delete Forever
-                    </button>
-                </div>
-            </div>
-        </div>
-    @endif
 </div>
