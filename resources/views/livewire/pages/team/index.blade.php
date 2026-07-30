@@ -494,7 +494,14 @@ new #[Layout('components.layouts.app')] class extends Component
     public function canEditMember(): bool { return $this->canEdit(); }
 
     #[Computed]
-    public function builtInRoles(): array { return RbacService::BUILT_IN_ROLES; }
+    public function builtInRoles(): array
+    {
+        $roles = RbacService::BUILT_IN_ROLES;
+        if (! $this->isSuperAdmin()) {
+            $roles = array_values(array_filter($roles, fn ($r) => $r !== 'super-admin'));
+        }
+        return $roles;
+    }
 
     public function render(): mixed
     {
