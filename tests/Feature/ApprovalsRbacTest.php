@@ -10,9 +10,6 @@ use Illuminate\Support\Facades\DB;
 use Livewire\Livewire;
 use Tests\TestCase;
 
-/**
- * Covers todo.md §5.2: Approvals — client cannot reject, staff can.
- */
 class ApprovalsRbacTest extends TestCase
 {
     use RefreshDatabase;
@@ -31,10 +28,22 @@ class ApprovalsRbacTest extends TestCase
         $this->seed([DatabaseSeeder::class]);
 
         $this->admin = User::where('role', 'super-admin')->first();
-        $this->staff = User::where('role', 'editor')->first();
-        $this->client = ClientAccount::first();
+        $this->staff = User::where('role', 'admin')->first();
+
+        $clientId = DB::table('clients')->insertGetId([
+            'name' => 'Test Client', 'status' => 'active',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $this->client = ClientAccount::create([
+            'client_id' => $clientId,
+            'email' => 'testclient@example.com',
+            'password' => bcrypt('password'),
+            'name' => 'Test Client User',
+            'status' => 'active',
+        ]);
+
         $this->approvalId = DB::table('approvals')->insertGetId([
-            'title' => 'Test Approval', 'client_id' => 1, 'type' => 'post',
+            'title' => 'Test Approval', 'client_id' => $clientId, 'type' => 'post',
             'approval_stage' => 'client-pending', 'status' => 'pending',
             'submitted_by' => $this->staff->id,
             'created_at' => now(), 'updated_at' => now(),
@@ -78,7 +87,6 @@ class ApprovalsRbacTest extends TestCase
         Livewire::test('pages.approvals.index')
             ->call('updateStatus', $this->approvalId, 'rejected');
 
-        // Status should remain unchanged
         $this->assertNotEquals('rejected', DB::table('approvals')->where('id', $this->approvalId)->value('status'));
     }
 
@@ -119,7 +127,6 @@ class ApprovalsRbacTest extends TestCase
     {
         $this->actingAs($this->admin);
 
-        // Create additional pending approvals
         $ids = [];
         for ($i = 0; $i < 3; $i++) {
             $ids[] = DB::table('approvals')->insertGetId([

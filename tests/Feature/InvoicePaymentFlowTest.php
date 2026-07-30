@@ -11,14 +11,13 @@ use Illuminate\Support\Facades\DB;
 use Livewire\Livewire;
 use Tests\TestCase;
 
-/**
- * Covers todo.md §5.2: Invoice + payment flow — full recalc chain.
- */
 class InvoicePaymentFlowTest extends TestCase
 {
     use RefreshDatabase;
 
     protected User $admin;
+
+    protected int $clientId;
 
     protected function setUp(): void
     {
@@ -27,15 +26,19 @@ class InvoicePaymentFlowTest extends TestCase
 
         $this->admin = User::where('role', 'super-admin')->first();
         $this->actingAs($this->admin);
+
+        $this->clientId = DB::table('clients')->insertGetId([
+            'name' => 'Test Client', 'email' => 'test@client.com',
+            'status' => 'active',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
     }
 
     public function test_create_invoice(): void
     {
-        $clientId = DB::table('clients')->first()->id;
-
         Livewire::test('pages.reports.index')
             ->call('openInvoiceForm')
-            ->set('formClientId', $clientId)
+            ->set('formClientId', $this->clientId)
             ->set('formAmount', '10000')
             ->set('formStatus', 'pending')
             ->set('formDueDate', now()->addDays(30)->format('Y-m-d'))
@@ -43,7 +46,7 @@ class InvoicePaymentFlowTest extends TestCase
             ->call('saveInvoice');
 
         $this->assertDatabaseHas('invoices', [
-            'client_id' => $clientId,
+            'client_id' => $this->clientId,
             'amount' => 10000,
             'status' => 'pending',
         ]);
@@ -51,9 +54,8 @@ class InvoicePaymentFlowTest extends TestCase
 
     public function test_full_payment_marks_paid(): void
     {
-        $clientId = DB::table('clients')->first()->id;
         $invoiceId = DB::table('invoices')->insertGetId([
-            'client_id' => $clientId, 'amount' => 5000, 'status' => 'pending',
+            'client_id' => $this->clientId, 'amount' => 5000, 'status' => 'pending',
             'payment_status' => 'pending', 'due_date' => now()->addDays(30)->format('Y-m-d'),
             'discount_amount' => 0, 'created_at' => now(), 'updated_at' => now(),
         ]);
@@ -72,9 +74,8 @@ class InvoicePaymentFlowTest extends TestCase
 
     public function test_half_payment_marks_half(): void
     {
-        $clientId = DB::table('clients')->first()->id;
         $invoiceId = DB::table('invoices')->insertGetId([
-            'client_id' => $clientId, 'amount' => 10000, 'status' => 'pending',
+            'client_id' => $this->clientId, 'amount' => 10000, 'status' => 'pending',
             'payment_status' => 'pending', 'due_date' => now()->addDays(30)->format('Y-m-d'),
             'discount_amount' => 0, 'created_at' => now(), 'updated_at' => now(),
         ]);
@@ -93,9 +94,8 @@ class InvoicePaymentFlowTest extends TestCase
 
     public function test_overdue_detection(): void
     {
-        $clientId = DB::table('clients')->first()->id;
         $invoiceId = DB::table('invoices')->insertGetId([
-            'client_id' => $clientId, 'amount' => 5000, 'status' => 'pending',
+            'client_id' => $this->clientId, 'amount' => 5000, 'status' => 'pending',
             'payment_status' => 'pending', 'due_date' => now()->subDays(5)->format('Y-m-d'),
             'discount_amount' => 0, 'created_at' => now(), 'updated_at' => now(),
         ]);
@@ -109,9 +109,8 @@ class InvoicePaymentFlowTest extends TestCase
 
     public function test_discount_reduces_net(): void
     {
-        $clientId = DB::table('clients')->first()->id;
         $invoiceId = DB::table('invoices')->insertGetId([
-            'client_id' => $clientId, 'amount' => 10000, 'status' => 'pending',
+            'client_id' => $this->clientId, 'amount' => 10000, 'status' => 'pending',
             'payment_status' => 'pending', 'due_date' => now()->addDays(30)->format('Y-m-d'),
             'discount_amount' => 2000, 'created_at' => now(), 'updated_at' => now(),
         ]);
@@ -130,9 +129,8 @@ class InvoicePaymentFlowTest extends TestCase
 
     public function test_installment_payment(): void
     {
-        $clientId = DB::table('clients')->first()->id;
         $invoiceId = DB::table('invoices')->insertGetId([
-            'client_id' => $clientId, 'amount' => 30000, 'status' => 'pending',
+            'client_id' => $this->clientId, 'amount' => 30000, 'status' => 'pending',
             'payment_status' => 'installment', 'due_date' => now()->addDays(60)->format('Y-m-d'),
             'discount_amount' => 0,
             'installment_plan' => json_encode(['totalInstallments' => 3, 'paidInstallments' => 0, 'amountPerInstallment' => 10000]),
@@ -153,9 +151,8 @@ class InvoicePaymentFlowTest extends TestCase
 
     public function test_payment_creates_activity_log(): void
     {
-        $clientId = DB::table('clients')->first()->id;
         $invoiceId = DB::table('invoices')->insertGetId([
-            'client_id' => $clientId, 'amount' => 1000, 'status' => 'pending',
+            'client_id' => $this->clientId, 'amount' => 1000, 'status' => 'pending',
             'payment_status' => 'pending', 'due_date' => now()->addDays(30)->format('Y-m-d'),
             'discount_amount' => 0, 'created_at' => now(), 'updated_at' => now(),
         ]);

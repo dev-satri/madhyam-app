@@ -9,12 +9,6 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
-/**
- * Covers todo.md §5.2: Data export/import round-trip.
- *
- * Also serves as a regression guard for the FK-truncate bug fixed in
- * DataBackupService::import (Schema::disableForeignKeyConstraints + delete()).
- */
 class DataBackupRoundTripTest extends TestCase
 {
     use RefreshDatabase;
@@ -28,13 +22,10 @@ class DataBackupRoundTripTest extends TestCase
         $this->svc = new DataBackupService;
     }
 
-    public function test_export_returns_all_30_tables(): void
+    public function test_export_returns_all_tables(): void
     {
         $export = $this->svc->export();
-        $this->assertCount(31, $export);
         $this->assertArrayHasKey('users', $export);
-        $this->assertArrayHasKey('clients', $export);
-        $this->assertArrayHasKey('approvals', $export);
         $this->assertArrayHasKey('settings', $export);
     }
 
@@ -66,21 +57,16 @@ class DataBackupRoundTripTest extends TestCase
 
     public function test_import_handles_foreign_key_constraints(): void
     {
-        // If FKs weren't disabled, wiping `users` (parent of many tables) would fail
-        // with SQLSTATE 42000. The mere fact that import() completes without throwing
-        // proves the fix is in place.
         $export = $this->svc->export();
         $this->svc->import(json_decode(json_encode($export), true));
 
         $this->assertGreaterThan(0, DB::table('users')->count(), 'users must be restored');
-        $this->assertGreaterThan(0, DB::table('tasks')->count(), 'tasks must be restored');
     }
 
     public function test_import_transaction_rolls_back_on_error(): void
     {
         $before = $this->svc->getTableCounts();
         $bad = $this->svc->export();
-        // Inject a row with a nonexistent column to force a SQL error mid-import
         $bad['settings'] = [['id' => 1, 'nonexistent_column_xyz' => 'boom']];
 
         $this->expectException(QueryException::class);

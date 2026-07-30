@@ -10,9 +10,6 @@ use Illuminate\Support\Facades\DB;
 use Livewire\Livewire;
 use Tests\TestCase;
 
-/**
- * Covers todo.md §5.2: Salary auto-generation on first admin interaction.
- */
 class SalaryAutoGenerationTest extends TestCase
 {
     use RefreshDatabase;
@@ -27,7 +24,7 @@ class SalaryAutoGenerationTest extends TestCase
         $this->seed([DatabaseSeeder::class]);
 
         $this->admin = User::where('role', 'super-admin')->first();
-        $this->staff = User::where('role', 'editor')->first();
+        $this->staff = User::where('role', 'admin')->first();
         $this->actingAs($this->admin);
     }
 
@@ -38,7 +35,6 @@ class SalaryAutoGenerationTest extends TestCase
 
     public function test_salary_auto_created_on_first_view(): void
     {
-        // Ensure no salary record exists for this staff member this month
         DB::table('salaries')->where('member_id', $this->staff->id)
             ->where('month', now()->month)
             ->where('year', now()->year)
@@ -46,8 +42,6 @@ class SalaryAutoGenerationTest extends TestCase
 
         Livewire::test('pages.salary.index');
 
-        // After accessing the page, the seeder should have created salary records
-        // for all staff. Check that at least the admin's record exists.
         $this->assertDatabaseHas('salaries', [
             'member_id' => $this->admin->id,
             'month' => now()->month,
@@ -106,22 +100,18 @@ class SalaryAutoGenerationTest extends TestCase
             $this->markTestSkipped('No salary record found for admin');
         }
 
-        // Set to known state first
         DB::table('salaries')->where('id', $salary->id)->update(['status' => 'pending']);
 
-        // Cycle: pending -> paid
         Livewire::test('pages.salary.index')
             ->call('cycleStatus', $salary->id);
 
         $this->assertEquals('paid', DB::table('salaries')->where('id', $salary->id)->value('status'));
 
-        // Cycle: paid -> approved
         Livewire::test('pages.salary.index')
             ->call('cycleStatus', $salary->id);
 
         $this->assertEquals('approved', DB::table('salaries')->where('id', $salary->id)->value('status'));
 
-        // Cycle: approved -> pending
         Livewire::test('pages.salary.index')
             ->call('cycleStatus', $salary->id);
 

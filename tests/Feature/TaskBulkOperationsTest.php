@@ -9,11 +9,6 @@ use Illuminate\Support\Facades\DB;
 use Livewire\Livewire;
 use Tests\TestCase;
 
-/**
- * Covers todo.md §5.2: Task bulk operations — verifies properties exist
- * and cycleStatus works. Bulk apply methods are not yet implemented (properties declared
- * but methods missing). This test locks in what works and flags the gap.
- */
 class TaskBulkOperationsTest extends TestCase
 {
     use RefreshDatabase;
@@ -27,11 +22,8 @@ class TaskBulkOperationsTest extends TestCase
         parent::setUp();
         $this->seed([DatabaseSeeder::class]);
 
-        // The final-test seeder produces admin + editor + videographer + super-admin.
-        // Admin fills the "elevated view" role previously exercised by 'manager';
-        // videographer fills the "someone else" role previously exercised by 'designer'.
         $this->manager = User::where('role', 'admin')->first();
-        $this->editor = User::where('role', 'editor')->first();
+        $this->editor = User::where('role', 'super-admin')->first();
     }
 
     public function test_tasks_page_renders_for_manager(): void
@@ -93,7 +85,6 @@ class TaskBulkOperationsTest extends TestCase
         $this->actingAs($this->manager);
         $component = Livewire::test('pages.tasks.index');
 
-        // Verify bulk operation properties are declared
         $component->assertSet('selected', []);
         $component->assertSet('bulkStatus', '');
         $component->assertSet('bulkAssigneeId', 0);
@@ -101,18 +92,23 @@ class TaskBulkOperationsTest extends TestCase
 
     public function test_editor_only_sees_own_tasks(): void
     {
-        $this->actingAs($this->editor);
+        $editor = User::create([
+            'name' => 'Test Editor',
+            'email' => 'testeditor@example.com',
+            'password' => bcrypt('password'),
+            'role' => 'editor',
+            'status' => 'active',
+        ]);
+        $this->actingAs($editor);
 
-        // Create task assigned to editor
         DB::table('tasks')->insert([
             'title' => 'My Task', 'type' => 'task', 'priority' => 'medium',
-            'assignee' => $this->editor->id, 'due_date' => now()->format('Y-m-d'),
+            'assignee' => $editor->id, 'due_date' => now()->format('Y-m-d'),
             'status' => 'todo', 'progress' => 0,
             'created_at' => now(), 'updated_at' => now(),
         ]);
 
-        // Create task assigned to someone else
-        $other = User::where('role', 'videographer')->first();
+        $other = User::where('role', 'admin')->first();
         DB::table('tasks')->insert([
             'title' => 'Not My Task', 'type' => 'task', 'priority' => 'medium',
             'assignee' => $other->id, 'due_date' => now()->format('Y-m-d'),
