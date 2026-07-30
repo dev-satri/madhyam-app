@@ -1,5 +1,6 @@
 import './bootstrap';
 import './tiptap-editor';
+import './attachment-preview';
 
 import Chart from 'chart.js/auto';
 import ChartDataLabels from 'chartjs-plugin-datalabels';

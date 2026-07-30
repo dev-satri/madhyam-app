@@ -396,11 +396,35 @@ new #[Layout('components.layouts.app')] class extends Component
             </div>
 
             {{-- Stats --}}
-            <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-                <div class="stat-card"><div class="stat-icon bg-blue-100 text-blue-600"><i class="fas fa-layer-group"></i></div><div class="stat-value">{{ $this->stats['total'] }}</div><div class="stat-label">Total</div></div>
-                <div class="stat-card"><div class="stat-icon bg-red-100 text-red-600"><i class="fas fa-exclamation-circle"></i></div><div class="stat-value">{{ $this->stats['open'] }}</div><div class="stat-label">Open</div></div>
-                <div class="stat-card"><div class="stat-icon bg-amber-100 text-amber-600"><i class="fas fa-spinner"></i></div><div class="stat-value">{{ $this->stats['in_progress'] }}</div><div class="stat-label">In Progress</div></div>
-                <div class="stat-card"><div class="stat-icon bg-green-100 text-green-600"><i class="fas fa-check-circle"></i></div><div class="stat-value">{{ $this->stats['resolved'] }}</div><div class="stat-label">Resolved</div></div>
+            <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+                <div class="stat-card">
+                    <div class="stat-icon bg-blue-100 text-blue-600">
+                        <i class="fas fa-layer-group"></i>
+                    </div>
+                    <div class="stat-value">{{ $this->stats['total'] }}</div>
+                    <div class="stat-label">Total</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon bg-red-100 text-red-600">
+                        <i class="fas fa-exclamation-circle"></i>
+                    </div>
+                    <div class="stat-value">{{ $this->stats['open'] }}</div>
+                    <div class="stat-label">Open</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon bg-amber-100 text-amber-600">
+                        <i class="fas fa-spinner"></i>
+                    </div>
+                    <div class="stat-value">{{ $this->stats['in_progress'] }}</div>
+                    <div class="stat-label">In Progress</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon bg-green-100 text-green-600">
+                        <i class="fas fa-check-circle"></i>
+                    </div>
+                    <div class="stat-value">{{ $this->stats['resolved'] }}</div>
+                    <div class="stat-label">Resolved</div>
+                </div>
             </div>
 
             {{-- Tabs + Search --}}

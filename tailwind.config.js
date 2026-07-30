@@ -1,5 +1,5 @@
-import defaultTheme from 'tailwindcss/defaultTheme';
 import forms from '@tailwindcss/forms';
+import defaultTheme from 'tailwindcss/defaultTheme';
 
 /** @type {import('tailwindcss').Config} */
 export default {
@@ -28,6 +28,15 @@ export default {
                     800: '#3730a3',
                     900: '#312e81'
                 }
+            },
+            keyframes: {
+                wiggle: {
+                    '0%, 100%': { transform: 'rotate(-3deg)' },
+                    '50%': { transform: 'rotate(3deg)' }
+                }
+            },
+            animation: {
+                wiggle: 'wiggle 0.5s ease-in-out infinite'
             }
         }
     },

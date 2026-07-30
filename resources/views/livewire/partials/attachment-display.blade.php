@@ -57,34 +57,8 @@
     ], $items));
 @endphp
 
-<script>
-    function attachmentPreview() {
-        return {
-            show: false,
-            currentFile: { name: '', url: '', type: 'file', ext: '' },
-            currentIndex: 0,
-            allFiles: [],
-            get isPdf() {
-                return (
-                    this.currentFile.ext === 'pdf' ||
-                    (this.currentFile.url && this.currentFile.url.toLowerCase().endsWith('.pdf'))
-                );
-            },
-            openPreview(file) {
-                this.allFiles = {!! $allItemsJson !!};
-                this.currentIndex = this.allFiles.findIndex((f) => f.url === file.url);
-                if (this.currentIndex < 0) this.currentIndex = 0;
-                this.currentFile = file;
-                this.show = true;
-            },
-            closePreview() {
-                this.show = false;
-            }
-        };
-    }
-</script>
-
-<div x-data="attachmentPreview()">
+<div x-data="attachmentPreview">
+    <script type="application/json" data-attachment-files>{!! $allItemsJson !!}</script>
     <p class="text-[11px] uppercase tracking-wide font-semibold text-gray-500 mb-2.5 flex items-center gap-1.5">
         <i class="fas fa-paperclip text-gray-400"></i> {{ $label }}
         <span
