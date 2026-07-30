@@ -10,7 +10,7 @@ return new class extends Migration
         $tables = ['workflows', 'tasks', 'contents', 'approvals', 'comments'];
 
         foreach ($tables as $table) {
-            if (!DB::getSchemaBuilder()->hasTable($table) || !DB::getSchemaBuilder()->hasColumn($table, 'attachments')) {
+            if (! DB::getSchemaBuilder()->hasTable($table) || ! DB::getSchemaBuilder()->hasColumn($table, 'attachments')) {
                 continue;
             }
 
@@ -18,7 +18,9 @@ return new class extends Migration
 
             foreach ($rows as $row) {
                 $raw = $row->attachments;
-                if (!is_string($raw)) continue;
+                if (! is_string($raw)) {
+                    continue;
+                }
 
                 $decoded = json_decode($raw, true);
 
@@ -27,7 +29,7 @@ return new class extends Migration
                 }
 
                 if (is_array($decoded)) {
-                    $clean = array_values(array_filter($decoded, fn($a) => is_array($a) && !empty($a['url'])));
+                    $clean = array_values(array_filter($decoded, fn ($a) => is_array($a) && ! empty($a['url'])));
                     DB::table($table)->where('id', $row->id)->update([
                         'attachments' => json_encode($clean),
                     ]);
@@ -40,5 +42,8 @@ return new class extends Migration
         }
     }
 
-    public function down(): void {}
+    public function down(): void
+    {
+        //
+    }
 };
