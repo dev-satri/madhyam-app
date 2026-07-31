@@ -1137,7 +1137,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                         </span>
                                     @endif
                                     <button
-                                        x-on:click.stop="$dispatch('create-task-from-workflow', { workflowId: {{ $item->id }}, title: '{{ addslashes($item->title) }}', clientId: {{ $item->client_id ?? 'null' }} })"
+                                        x-on:click.stop="$dispatch('create-task-from-workflow', { workflowId: {{ $item->id }}, title: {{ \Illuminate\Support\Js::from($item->title) }}, clientId: {{ $item->client_id ?? 'null' }} })"
                                         class="w-6 h-6 flex items-center justify-center rounded-md text-gray-400 hover:bg-amber-50 hover:text-amber-600 transition"
                                         title="Create task for this item"
                                     >
