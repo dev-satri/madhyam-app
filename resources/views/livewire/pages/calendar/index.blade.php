@@ -152,13 +152,12 @@ new #[Layout('components.layouts.app')] class extends Component
         $start = Carbon::createFromDate($this->currentYear, $this->currentMonth, 1)->startOfWeek(Carbon::SUNDAY);
         $end = Carbon::createFromDate($this->currentYear, $this->currentMonth, 1)->endOfMonth()->endOfWeek(Carbon::SATURDAY);
 
+        // ── Content items ──
         $query = DB::table('contents')
             ->leftJoin('clients', 'contents.client_id', '=', 'clients.id')
             ->whereBetween('contents.date', [$start->format('Y-m-d'), $end->format('Y-m-d')])
             ->select('contents.*', 'clients.name as client_name');
 
-        // Tenant isolation for client portal — same view serves /client/content-planner.
-        // Raw DB::table bypasses Content::ScopesToClientAccount, so scope manually.
         if ($account = Auth::guard('client')->user()) {
             $query->where('contents.client_id', $account->client_id);
         }
@@ -183,7 +182,35 @@ new #[Layout('components.layouts.app')] class extends Component
 
         $this->contentByDate = [];
         foreach ($allContent as $item) {
+            $item->_type = 'content';
             $this->contentByDate[$item->date][] = $item;
+        }
+
+        // ── Tasks / Shoots / Editing with due_date ──
+        $taskQ = DB::table('tasks')
+            ->leftJoin('clients', 'tasks.client_id', '=', 'clients.id')
+            ->whereBetween('tasks.due_date', [$start->format('Y-m-d'), $end->format('Y-m-d')])
+            ->whereNotNull('tasks.due_date')
+            ->select('tasks.*', 'clients.name as client_name');
+
+        if ($account = Auth::guard('client')->user()) {
+            $taskQ->where('tasks.client_id', $account->client_id);
+        }
+        if ($this->search) {
+            $taskQ->where(function ($q) {
+                $q->where('tasks.title', 'like', "%{$this->search}%")
+                    ->orWhere('clients.name', 'like', "%{$this->search}%");
+            });
+        }
+        if ($this->clientFilter) {
+            $taskQ->where('tasks.client_id', $this->clientFilter);
+        }
+
+        $allTasks = $taskQ->orderBy('tasks.due_date')->get();
+
+        foreach ($allTasks as $task) {
+            $task->_type = 'task';
+            $this->contentByDate[$task->due_date][] = $task;
         }
     }
 
@@ -902,18 +929,27 @@ new #[Layout('components.layouts.app')] class extends Component
                             @endif
                         </div>
                         <div class="space-y-0.5" @click.stop>
-                            @foreach (array_slice($dayContent, 0, 2) as $item)
-                                <div
-                                    class="cal-event {{ $item->platform }}"
-                                    wire:click.stop="editContent({{ $item->id }})"
-                                    title="{{ $item->title }} ({{ ucfirst($item->platform) }})"
-                                >
-                                    {{ Str::limit($item->title, 14) }}
-                                </div>
+                            @foreach (array_slice($dayContent, 0, 3) as $item)
+                                @if(($item->_type ?? 'content') === 'task')
+                                    <div
+                                        class="cal-event task-event"
+                                        title="{{ $item->title }} ({{ ucfirst($item->type ?? 'task') }})"
+                                    >
+                                        <i class="fas fa-{{ ($item->type ?? '') === 'shoot' ? 'camera' : (($item->type ?? '') === 'editing' ? 'film' : 'check-square') }} text-[8px] mr-0.5 opacity-70"></i>{{ Str::limit($item->title, 12) }}
+                                    </div>
+                                @else
+                                    <div
+                                        class="cal-event {{ $item->platform }}"
+                                        wire:click.stop="editContent({{ $item->id }})"
+                                        title="{{ $item->title }} ({{ ucfirst($item->platform) }})"
+                                    >
+                                        {{ Str::limit($item->title, 14) }}
+                                    </div>
+                                @endif
                             @endforeach
-                            @if (count($dayContent) > 2)
+                            @if (count($dayContent) > 3)
                                 <div class="text-[9px] font-medium text-gray-400 pl-1">
-                                    +{{ count($dayContent) - 2 }} more
+                                    +{{ count($dayContent) - 3 }} more
                                 </div>
                             @endif
                         </div>
@@ -1324,6 +1360,8 @@ new #[Layout('components.layouts.app')] class extends Component
         @php
         $detailDate = $selectedDate ? \Carbon\Carbon::parse($selectedDate) : null;
         $detailItems = $this->getDayContent();
+        $detailContentCount = count(array_filter($detailItems, fn($i) => ($i->_type ?? 'content') === 'content'));
+        $detailTaskCount = count(array_filter($detailItems, fn($i) => ($i->_type ?? 'content') === 'task'));
         $platformSummary = $this->getDayPlatformSummary();
         $contentLinks = $this->getContentLinks();
 
@@ -1364,7 +1402,12 @@ new #[Layout('components.layouts.app')] class extends Component
                             <h3 class="text-base font-bold text-gray-900">
                                 {{ $detailDate ? $detailDate->format('l, F j, Y') : '' }}
                             </h3>
-                            <p class="text-xs text-gray-400 mt-0.5">{{ count($detailItems) }} {{ Str::plural('item', count($detailItems)) }}</p>
+                            <p class="text-xs text-gray-400 mt-0.5">
+                                @if($detailContentCount > 0){{ $detailContentCount }} {{ Str::plural('content', $detailContentCount) }}@endif
+                                @if($detailContentCount > 0 && $detailTaskCount > 0) · @endif
+                                @if($detailTaskCount > 0){{ $detailTaskCount }} {{ Str::plural('task', $detailTaskCount) }}@endif
+                                @if($detailContentCount === 0 && $detailTaskCount === 0)No items scheduled@endif
+                            </p>
                         </div>
                         <button
                             wire:click="$set('showDayDetail', false)"
@@ -1398,109 +1441,125 @@ new #[Layout('components.layouts.app')] class extends Component
                             <div class="w-14 h-14 rounded-full bg-gray-50 flex items-center justify-center mb-3">
                                 <i class="fas fa-calendar-plus text-xl text-gray-300"></i>
                             </div>
-                            <p class="text-sm font-medium text-gray-400">No content scheduled</p>
-                            <p class="text-xs text-gray-300 mt-1">Create content for this day</p>
+                            <p class="text-sm font-medium text-gray-400">Nothing scheduled</p>
+                            <p class="text-xs text-gray-300 mt-1">Add content or a task for this day</p>
                         </div>
                     @else
                         <div class="divide-y divide-gray-50">
                             @foreach ($detailItems as $item)
-                                @php
-                                $links = $contentLinks[$item->id] ?? null;
-                                $workflow = $links['workflow'] ?? null;
-                                $approval = $links['approval'] ?? null;
-                                $clientName = null;
-                                if ($item->client_id) {
-                                    $c = \App\Models\Client::find($item->client_id);
-                                    $clientName = $c?->name;
-                                }
-                            @endphp
-                                <div
-                                    class="flex items-start gap-3 px-6 py-3.5 {{ $item->status !== 'published' ? 'hover:bg-gray-50/50 cursor-pointer' : '' }} transition-colors"
-                                    @if ($item->status !== 'published') wire:click="editContent({{ $item->id }})" @endif
-                                >
-                                    {{-- Platform icon --}}
+                                @if(($item->_type ?? 'content') === 'task')
+                                    {{-- Task / Shoot item --}}
+                                    @php
+                                        $taskStatusColors = [
+                                            'todo' => 'bg-gray-100 text-gray-600',
+                                            'in-progress' => 'bg-blue-50 text-blue-700',
+                                            'completed' => 'bg-emerald-50 text-emerald-700',
+                                        ];
+                                        $taskIcons = ['task' => 'check-square', 'shoot' => 'camera', 'editing' => 'film'];
+                                    @endphp
+                                    <div class="flex items-start gap-3 px-6 py-3.5 hover:bg-amber-50/30 cursor-pointer transition-colors">
+                                        <div class="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+                                            <i class="fas fa-{{ $taskIcons[$item->type ?? 'task'] ?? 'check-square' }} text-amber-600 text-xs"></i>
+                                        </div>
+                                        <div class="flex-1 min-w-0">
+                                            <div class="flex items-center gap-2">
+                                                <h4 class="text-sm font-semibold text-gray-800 truncate">{{ $item->title }}</h4>
+                                                <span class="flex-shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded-md {{ $taskStatusColors[$item->status ?? 'todo'] ?? 'bg-gray-100 text-gray-600' }}">
+                                                    {{ ucwords(str_replace('-', ' ', $item->status ?? 'todo')) }}
+                                                </span>
+                                            </div>
+                                            <div class="flex items-center gap-1.5 mt-1 text-xs text-gray-400">
+                                                @if($item->client_name ?? null)
+                                                    <span class="text-gray-500">{{ $item->client_name }}</span>
+                                                    <span>·</span>
+                                                @endif
+                                                <span class="capitalize">{{ ucfirst($item->type ?? 'task') }}</span>
+                                                @if($item->assignee ?? null)
+                                                    <span>·</span>
+                                                    <span>Assigned</span>
+                                                @endif
+                                            </div>
+                                        </div>
+                                        <div class="flex-shrink-0 ml-2">
+                                            <span class="text-[11px] px-2 py-1 rounded-lg bg-amber-50 text-amber-600 font-medium inline-flex items-center gap-1">
+                                                <i class="fas fa-video text-[9px]"></i>Shoot
+                                            </span>
+                                        </div>
+                                    </div>
+                                @else
+                                    {{-- Content item --}}
+                                    @php
+                                    $links = $contentLinks[$item->id] ?? null;
+                                    $workflow = $links['workflow'] ?? null;
+                                    $approval = $links['approval'] ?? null;
+                                    $clientName = null;
+                                    if ($item->client_id) {
+                                        $c = \App\Models\Client::find($item->client_id);
+                                        $clientName = $c?->name;
+                                    }
+                                @endphp
                                     <div
-                                        class="w-8 h-8 rounded-lg bg-{{ $item->platform }}-500/10 flex items-center justify-center flex-shrink-0 mt-0.5"
+                                        class="flex items-start gap-3 px-6 py-3.5 {{ $item->status !== 'published' ? 'hover:bg-gray-50/50 cursor-pointer' : '' }} transition-colors"
+                                        @if ($item->status !== 'published') wire:click="editContent({{ $item->id }})" @endif
                                     >
-                                        <i
-                                            class="fas fa-{{ $platformIcons[$item->platform] ?? 'globe' }} text-{{ $item->platform }}-500 text-xs"
-                                        ></i>
-                                    </div>
-
-                                    {{-- Content info --}}
-                                    <div class="flex-1 min-w-0">
-                                        <div class="flex items-center gap-2">
-                                            <h4 class="text-sm font-semibold text-gray-800 truncate">
-                                                {{ $item->title }}
-                                            </h4>
-                                            <span
-                                                class="flex-shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded-md {{ $statusColors[$item->status] ?? 'bg-gray-100 text-gray-600' }}"
-                                            >
-                                                {{ str_replace('-', ' ', ucfirst($item->status)) }}
-                                            </span>
+                                        <div
+                                            class="w-8 h-8 rounded-lg bg-{{ $item->platform }}-500/10 flex items-center justify-center flex-shrink-0 mt-0.5"
+                                        >
+                                            <i
+                                                class="fas fa-{{ $platformIcons[$item->platform] ?? 'globe' }} text-{{ $item->platform }}-500 text-xs"
+                                            ></i>
                                         </div>
-                                        <div class="flex items-center gap-1.5 mt-1 text-xs text-gray-400">
-                                            @if ($clientName)
-                                                <span class="text-gray-500">{{ $clientName }}</span>
-                                                <span>·</span>
-                                            @endif
-                                            <span class="capitalize">{{ $item->type }}</span>
-                                            @if ($workflow)
-                                                <span>·</span>
-                                                <span
-                                                    class="text-indigo-500 font-medium capitalize"
-                                                    >{{ str_replace('-', ' ', $workflow->stage) }}</span
-                                                >
-                                            @endif
-                                        </div>
-                                    </div>
-
-                                    {{-- Right side: action or status indicator --}}
-                                    <div class="flex-shrink-0 ml-2 flex items-center gap-1.5">
-                                        @if ($item->status !== 'published')
-                                            <button
-                                                wire:click.stop="openDiscussion({{ $item->id }})"
-                                                class="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition"
-                                                title="Discussion"
-                                            >
-                                                <i class="fas fa-comments text-[11px]"></i>
-                                            </button>
-                                        @endif
-                                        @if (in_array($item->status, ['draft', 'scripting', 'revision']))
-                                            @php
-                                            $ddBtnIcon = match($item->status) { 'draft' => 'fa-arrow-right', 'scripting' => 'fa-paper-plane', 'revision' => 'fa-redo', default => 'fa-arrow-right' };
-                                            $ddBtnLabel = match($item->status) { 'draft' => 'Script', 'scripting' => 'Submit', 'revision' => 'Resubmit', default => '' };
-                                        @endphp
-                                            <button
-                                                wire:click.stop="submitForApproval({{ $item->id }})"
-                                                class="text-[11px] px-2.5 py-1 rounded-lg {{ $item->status === 'draft' ? 'bg-gray-100 text-gray-600 hover:bg-gray-200' : 'bg-[var(--brand)] text-white hover:opacity-90' }} font-medium transition"
-                                            >
-                                                <i class="fas {{ $ddBtnIcon }} mr-1 text-[9px]"></i>{{ $ddBtnLabel }}
-                                            </button>
-                                        @elseif ($item->status === 'in-review')
-                                            @if ($approval)
-                                                <span
-                                                    class="text-[11px] px-2 py-1 rounded-lg bg-amber-50 text-amber-600 font-medium inline-flex items-center gap-1"
-                                                >
-                                                    <i class="fas fa-clock text-[9px]"></i
-                                                    >{{ ucfirst($approval->status) }}
+                                        <div class="flex-1 min-w-0">
+                                            <div class="flex items-center gap-2">
+                                                <h4 class="text-sm font-semibold text-gray-800 truncate">{{ $item->title }}</h4>
+                                                <span class="flex-shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded-md {{ $statusColors[$item->status] ?? 'bg-gray-100 text-gray-600' }}">
+                                                    {{ str_replace('-', ' ', ucfirst($item->status)) }}
                                                 </span>
-                                            @else
-                                                <span
-                                                    class="text-[11px] px-2 py-1 rounded-lg bg-amber-50 text-amber-600 font-medium inline-flex items-center gap-1"
-                                                >
-                                                    <i class="fas fa-clock text-[9px]"></i>In Review
+                                            </div>
+                                            <div class="flex items-center gap-1.5 mt-1 text-xs text-gray-400">
+                                                @if ($clientName)
+                                                    <span class="text-gray-500">{{ $clientName }}</span>
+                                                    <span>·</span>
+                                                @endif
+                                                <span class="capitalize">{{ $item->type }}</span>
+                                                @if ($workflow)
+                                                    <span>·</span>
+                                                    <span class="text-indigo-500 font-medium capitalize">{{ str_replace('-', ' ', $workflow->stage) }}</span>
+                                                @endif
+                                            </div>
+                                        </div>
+                                        <div class="flex-shrink-0 ml-2 flex items-center gap-1.5">
+                                            @if ($item->status !== 'published')
+                                                <button wire:click.stop="openDiscussion({{ $item->id }})" class="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition" title="Discussion">
+                                                    <i class="fas fa-comments text-[11px]"></i>
+                                                </button>
+                                            @endif
+                                            @if (in_array($item->status, ['draft', 'scripting', 'revision']))
+                                                @php
+                                                $ddBtnIcon = match($item->status) { 'draft' => 'fa-arrow-right', 'scripting' => 'fa-paper-plane', 'revision' => 'fa-redo', default => 'fa-arrow-right' };
+                                                $ddBtnLabel = match($item->status) { 'draft' => 'Script', 'scripting' => 'Submit', 'revision' => 'Resubmit', default => '' };
+                                            @endphp
+                                                <button wire:click.stop="submitForApproval({{ $item->id }})" class="text-[11px] px-2.5 py-1 rounded-lg {{ $item->status === 'draft' ? 'bg-gray-100 text-gray-600 hover:bg-gray-200' : 'bg-[var(--brand)] text-white hover:opacity-90' }} font-medium transition">
+                                                    <i class="fas {{ $ddBtnIcon }} mr-1 text-[9px]"></i>{{ $ddBtnLabel }}
+                                                </button>
+                                            @elseif ($item->status === 'in-review')
+                                                @if ($approval)
+                                                    <span class="text-[11px] px-2 py-1 rounded-lg bg-amber-50 text-amber-600 font-medium inline-flex items-center gap-1">
+                                                        <i class="fas fa-clock text-[9px]"></i>{{ ucfirst($approval->status) }}
+                                                    </span>
+                                                @else
+                                                    <span class="text-[11px] px-2 py-1 rounded-lg bg-amber-50 text-amber-600 font-medium inline-flex items-center gap-1">
+                                                        <i class="fas fa-clock text-[9px]"></i>In Review
+                                                    </span>
+                                                @endif
+                                            @elseif ($item->status === 'published')
+                                                <span class="text-[11px] px-2 py-1 rounded-lg bg-emerald-50 text-emerald-600 font-medium inline-flex items-center gap-1">
+                                                    <i class="fas fa-check text-[9px]"></i>Published
                                                 </span>
                                             @endif
-                                        @elseif ($item->status === 'published')
-                                            <span
-                                                class="text-[11px] px-2 py-1 rounded-lg bg-emerald-50 text-emerald-600 font-medium inline-flex items-center gap-1"
-                                            >
-                                                <i class="fas fa-check text-[9px]"></i>Published
-                                            </span>
-                                        @endif
+                                        </div>
                                     </div>
-                                </div>
+                                @endif
                             @endforeach
                         </div>
                     @endif

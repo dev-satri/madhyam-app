@@ -106,7 +106,7 @@ new #[Layout('components.layouts.app')] class extends Component
              ],
              'tip' => 'Provide specific revision notes when rejecting. Vague feedback causes unnecessary back-and-forth. The notes appear directly on the workflow card.',
             ],
-            ['id' => 'tasks', 'icon' => 'fa-tasks', 'title' => 'Tasks & Shoots', 'feature' => 'tasks', 'access' => 'All staff',
+            ['id' => 'tasks', 'icon' => 'fa-video', 'title' => 'Videos & Shoots', 'feature' => 'tasks', 'access' => 'All staff',
              'steps' => [
                  'View all tasks assigned to you or your team.',
                  'Click "Add Task" to create a new task or shoot.',

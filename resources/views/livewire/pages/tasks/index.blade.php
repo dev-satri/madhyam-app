@@ -89,6 +89,19 @@ new #[Layout('components.layouts.app')] class extends Component
     public function mount(): void
     {
         $this->formDueDate = now()->format('Y-m-d');
+
+        // Pre-fill from workflow redirect (query params)
+        if (request()->has('workflow_id')) {
+            $wfId = (int) request()->query('workflow_id');
+            $wf = DB::table('workflows')->where('id', $wfId)->first();
+            if ($wf) {
+                $this->formWorkflowId = $wfId;
+                $this->formTitle = request()->query('workflow_title', $wf->title);
+                $this->formClientId = (int) ($wf->client_id ?? 0);
+                $this->formType = $wf->type ?? 'task';
+                $this->showForm = true;
+            }
+        }
     }
 
     public function updatedFormAttachmentsJson(string $value): void
@@ -587,7 +600,7 @@ new #[Layout('components.layouts.app')] class extends Component
         return <<<'blade'
         <div class="space-y-6" x-data>
             <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                <div><h1 class="text-2xl font-extrabold text-gray-900">Tasks & Shoots</h1><p class="text-sm text-gray-500">Manage tasks, shoots, and editing work</p></div>
+                <div><h1 class="text-2xl font-extrabold text-gray-900">Videos & Shoots</h1><p class="text-sm text-gray-500">Manage videos, shoots, and editing work</p></div>
                 @if($this->canAddTasks)
                     <button wire:click="openForm" class="btn btn-primary"><i class="fas fa-plus text-sm"></i> Add Task</button>
                 @endif
@@ -664,7 +677,13 @@ new #[Layout('components.layouts.app')] class extends Component
                                 <td><span class="badge badge-{{ $t->priority }}">{{ ucfirst($t->priority) }}</span></td>
                                 <td class="text-gray-500">{{ $t->assignee_name ?? '—' }}</td>
                                 <td class="{{ $t->due_date && \Carbon\Carbon::parse($t->due_date)->isPast() && $t->status!=='completed' ? 'text-red-600 font-semibold' : '' }}">{{ $t->due_date ? \Carbon\Carbon::parse($t->due_date)->format('M d, Y') : '—' }}</td>
-                                <td><button wire:click="cycleStatus({{ $t->id }})" class="badge badge-{{ str_replace('-','-',$t->status) }} cursor-pointer hover:shadow-sm">{{ ucwords(str_replace('-',' ',$t->status)) }}</button></td>
+                                <td>
+                                    @php
+                                        $nextStatus = match($t->status) { 'todo' => 'In Progress', 'in-progress' => 'Completed', default => 'To Do' };
+                                        $nextStatusKey = match($t->status) { 'todo' => 'in-progress', 'in-progress' => 'completed', default => 'todo' };
+                                    @endphp
+                                    <button wire:click="$dispatch('open-confirm', { title: 'Change Status?', message: 'Move \"{{ addslashes($t->title) }}\" to {{ $nextStatus }}?', type: 'info', action: 'cycleStatus', params: [{{ $t->id }}] })" class="badge badge-{{ str_replace('-','-',$t->status) }} cursor-pointer hover:shadow-sm">{{ ucwords(str_replace('-',' ',$t->status)) }}</button>
+                                </td>
                                 <td class="flex gap-1"><button wire:click="openDetail({{ $t->id }})" wire:loading.attr="disabled" wire:target="openDetail({{ $t->id }})" class="btn btn-ghost btn-sm btn-icon"><i class="fas fa-eye text-xs" wire:loading.remove wire:target="openDetail({{ $t->id }})"></i><i class="fas fa-spinner fa-spin text-xs" wire:loading wire:target="openDetail({{ $t->id }})"></i></button><button wire:click="openForm({{ $t->id }})" class="btn btn-ghost btn-sm btn-icon"><i class="fas fa-pen text-xs"></i></button>@if($t->status !== 'in-progress')<button type="button" wire:click="$dispatch('open-confirm', { title: 'Delete Task?', message: 'This task and its checklist will be permanently removed.', type: 'danger', action: 'deleteTask', params: [{{ $t->id }}] })" class="btn btn-ghost btn-sm btn-icon text-red-500" aria-label="Delete task"><i class="fas fa-trash text-xs"></i></button>@endif</td>
                             </tr>
                             @empty

@@ -98,7 +98,7 @@
                         ]],
                         ['section' => 'Production', 'items' => [
                             ['feature' => 'workflow', 'route' => 'workflow', 'label' => 'Workflow', 'icon' => 'fa-columns'],
-                            ['feature' => 'tasks', 'route' => 'tasks', 'label' => 'Tasks & Shoots', 'icon' => 'fa-tasks'],
+                            ['feature' => 'tasks', 'route' => 'tasks', 'label' => 'Videos & Shoots', 'icon' => 'fa-video'],
                             ['feature' => 'approvals', 'route' => 'approvals', 'label' => 'Approvals', 'icon' => 'fa-check-double', 'badge' => $pendingApprovals > 0 ? $pendingApprovals : null],
                         ]],
                         ['section' => 'Management', 'items' => [

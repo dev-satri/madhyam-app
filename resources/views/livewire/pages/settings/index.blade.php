@@ -565,7 +565,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                     'clients' => ['label' => 'Clients', 'icon' => 'fa-users', 'desc' => 'Manage client profiles and data'],
                                     'contentPlanner' => ['label' => 'Content Planner', 'icon' => 'fa-calendar-alt', 'desc' => 'Plan and schedule content'],
                                     'workflow' => ['label' => 'Workflow', 'icon' => 'fa-columns', 'desc' => 'Kanban-style workflow boards'],
-                                    'tasks' => ['label' => 'Tasks & Shoots', 'icon' => 'fa-tasks', 'desc' => 'Task management and shoot scheduling'],
+                                    'tasks' => ['label' => 'Videos & Shoots', 'icon' => 'fa-video', 'desc' => 'Video production and shoot scheduling'],
                                     'approvals' => ['label' => 'Approvals', 'icon' => 'fa-check-double', 'desc' => 'Content approval workflows'],
                                     'files' => ['label' => 'Files & Media', 'icon' => 'fa-folder-open', 'desc' => 'File storage and media management'],
                                     'reports' => ['label' => 'Reports & Finance', 'icon' => 'fa-chart-bar', 'desc' => 'Financial reports and invoices'],
@@ -1039,7 +1039,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                             @php
                                                 $featureLabels = [
                                                     'dashboard' => 'Dashboard', 'clients' => 'Clients', 'packages' => 'Packages',
-                                                    'contentPlanner' => 'Content Planner', 'workflow' => 'Workflow', 'tasks' => 'Tasks & Shoots',
+                                                    'contentPlanner' => 'Content Planner', 'workflow' => 'Workflow', 'tasks' => 'Videos & Shoots',
                                                     'approvals' => 'Approvals', 'files' => 'Files & Media', 'reports' => 'Reports & Finance',
                                                     'leaves' => 'Leaves', 'expenses' => 'Expenses', 'salary' => 'Salary',
                                                     'overtime' => 'Overtime', 'team' => 'Team', 'settings' => 'Settings',

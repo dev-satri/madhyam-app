@@ -890,6 +890,12 @@ new #[Layout('components.layouts.app')] class extends Component
         return UserVisibility::apply(User::query())->orderBy('name')->get();
     }
 
+    #[On('create-task-from-workflow')]
+    public function createTaskFromWorkflow(int $workflowId, string $title = '', ?int $clientId = null): void
+    {
+        $this->dispatch('navigate', url: route('tasks') . '?workflow_id=' . $workflowId . '&workflow_title=' . urlencode($title) . ($clientId ? '&client_id=' . $clientId : ''));
+    }
+
     #[On('confirm-resolved')]
     public function onConfirmResolved(string $action, array $params = []): void
     {
@@ -1119,16 +1125,25 @@ new #[Layout('components.layouts.app')] class extends Component
                                     <span class="text-[11px] text-gray-400">Unassigned</span>
                                 @endif
 
-                                @if ($item->deadline)
-                                    <span
-                                        class="inline-flex items-center gap-1 text-[11px] {{ $isOverdue ? 'text-red-600 font-semibold' : 'text-gray-500' }}"
+                                <div class="flex items-center gap-1.5">
+                                    @if ($item->deadline)
+                                        <span
+                                            class="inline-flex items-center gap-1 text-[11px] {{ $isOverdue ? 'text-red-600 font-semibold' : 'text-gray-500' }}"
+                                        >
+                                            <i
+                                                class="fas fa-calendar-alt text-[10px] {{ $isOverdue ? 'text-red-500' : 'text-gray-400' }}"
+                                            ></i>
+                                            {{ $item->deadline->format('M d') }}
+                                        </span>
+                                    @endif
+                                    <button
+                                        x-on:click.stop="$dispatch('create-task-from-workflow', { workflowId: {{ $item->id }}, title: '{{ addslashes($item->title) }}', clientId: {{ $item->client_id ?? 'null' }} })"
+                                        class="w-6 h-6 flex items-center justify-center rounded-md text-gray-400 hover:bg-amber-50 hover:text-amber-600 transition"
+                                        title="Create task for this item"
                                     >
-                                        <i
-                                            class="fas fa-calendar-alt text-[10px] {{ $isOverdue ? 'text-red-500' : 'text-gray-400' }}"
-                                        ></i>
-                                        {{ $item->deadline->format('M d') }}
-                                    </span>
-                                @endif
+                                        <i class="fas fa-plus text-[10px]"></i>
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     @empty

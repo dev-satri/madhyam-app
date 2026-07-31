@@ -887,7 +887,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                     @php
                                         $featureLabels = [
                                             'dashboard' => 'Dashboard', 'clients' => 'Clients', 'packages' => 'Packages',
-                                            'contentPlanner' => 'Content Planner', 'workflow' => 'Workflow', 'tasks' => 'Tasks & Shoots',
+                                            'contentPlanner' => 'Content Planner', 'workflow' => 'Workflow', 'tasks' => 'Videos & Shoots',
                                             'approvals' => 'Approvals', 'files' => 'Files & Media', 'reports' => 'Reports & Finance',
                                             'leaves' => 'Leaves', 'expenses' => 'Expenses', 'salary' => 'Salary',
                                             'overtime' => 'Overtime', 'team' => 'Team', 'settings' => 'Settings',
