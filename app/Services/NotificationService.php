@@ -229,8 +229,12 @@ class NotificationService
 
     public function notifyAdminApprovedFinal(string $title, ?int $clientId = null): Notification
     {
+        $text = $clientId
+            ? "Admin approved '{$title}' — now awaiting client approval"
+            : "Admin approved '{$title}' — completed (internal)";
+
         return $this->sendNotification(
-            text: "Admin approved '{$title}' — now awaiting client approval",
+            text: $text,
             type: 'success',
             link: route('approvals', absolute: false),
             forRole: 'all',
