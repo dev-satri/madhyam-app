@@ -124,13 +124,22 @@ new #[Layout('components.layouts.app')] class extends Component
                 ->pluck('count', 'status')
                 ->toArray();
 
-            $this->platformData = DB::table('contents')
+            // Flat-count JSON-array platform column, expanding "all" sentinel to every canonical platform
+            $platformRows = DB::table('contents')
                 ->where('created_at', '>=', $dateFilter)
-                ->select('platform', DB::raw('COUNT(*) as count'))
-                ->groupBy('platform')
-                ->get()
-                ->pluck('count', 'platform')
-                ->toArray();
+                ->pluck('platform');
+            $platformCounts = [];
+            foreach ($platformRows as $raw) {
+                $expanded = \App\Support\ContentTags::expand(
+                    \App\Support\ContentTags::normalize($raw, 'platform'),
+                    'platform'
+                );
+                foreach ($expanded as $v) {
+                    $platformCounts[$v] = ($platformCounts[$v] ?? 0) + 1;
+                }
+            }
+            arsort($platformCounts);
+            $this->platformData = $platformCounts;
 
             $this->stageData = DB::table('workflows')
                 ->select('stage', DB::raw('COUNT(*) as count'))

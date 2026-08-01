@@ -2,6 +2,7 @@
 
 namespace Database\Seeders;
 
+use App\Support\ContentTags;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 
@@ -47,7 +48,7 @@ class WorkflowSeeder extends Seeder
                 'title' => $content->title,
                 'client_id' => $content->client_id,
                 'content_id' => $content->id,
-                'type' => $content->type,
+                'type' => ContentTags::primary(ContentTags::normalize($content->type, 'type'), 'type'),
                 'stage' => $wf['stage'],
                 'deadline' => now()->addDays(match ($wf['stage']) {
                     'published' => -3,

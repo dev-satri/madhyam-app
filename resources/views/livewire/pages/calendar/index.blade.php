@@ -169,7 +169,11 @@ new #[Layout('components.layouts.app')] class extends Component
             });
         }
         if ($this->platformFilter) {
-            $query->where('contents.platform', $this->platformFilter);
+            $filter = $this->platformFilter;
+            $query->where(function ($q) use ($filter) {
+                $q->whereJsonContains('contents.platform', $filter)
+                    ->orWhereJsonContains('contents.platform', \App\Support\ContentTags::ALL);
+            });
         }
         if ($this->statusFilter) {
             $query->where('contents.status', $this->statusFilter);
@@ -279,8 +283,17 @@ new #[Layout('components.layouts.app')] class extends Component
         $items = $this->getDayContent();
         $summary = [];
         foreach ($items as $item) {
-            $platform = $item->platform ?? 'unknown';
-            $summary[$platform] = ($summary[$platform] ?? 0) + 1;
+            $platforms = \App\Support\ContentTags::expand(
+                \App\Support\ContentTags::normalize($item->platform ?? null, 'platform'),
+                'platform'
+            );
+            if (empty($platforms)) {
+                $summary['unknown'] = ($summary['unknown'] ?? 0) + 1;
+                continue;
+            }
+            foreach ($platforms as $p) {
+                $summary[$p] = ($summary[$p] ?? 0) + 1;
+            }
         }
 
         return $summary;
@@ -347,8 +360,8 @@ new #[Layout('components.layouts.app')] class extends Component
         $this->formClientId = $content->client_id ? (int) $content->client_id : null;
         $this->formDate = $content->date instanceof Carbon ? $content->date->format('Y-m-d') : $content->date;
         $this->formDueDate = $content->due_date instanceof Carbon ? $content->due_date->format('Y-m-d') : ($content->due_date ?? '');
-        $this->formPlatforms = $content->platform ? [$content->platform] : [];
-        $this->formTypes = $content->type ? [$content->type] : [];
+        $this->formPlatforms = \App\Support\ContentTags::normalize($content->platform, 'platform');
+        $this->formTypes = \App\Support\ContentTags::normalize($content->type, 'type');
         $this->formStatus = $content->status;
         $this->caption = $content->caption ?? '';
         $this->hashtags = $content->hashtags ?? '';
@@ -378,14 +391,24 @@ new #[Layout('components.layouts.app')] class extends Component
         ]);
 
         try {
+            // Normalize + de-dupe (e.g. someone ticks Instagram AND "All" — collapse to ["all"])
+            $platforms = \App\Support\ContentTags::normalize($this->formPlatforms, 'platform');
+            $types = \App\Support\ContentTags::normalize($this->formTypes, 'type');
+            if (in_array(\App\Support\ContentTags::ALL, $platforms, true)) {
+                $platforms = [\App\Support\ContentTags::ALL];
+            }
+            if (in_array(\App\Support\ContentTags::ALL, $types, true)) {
+                $types = [\App\Support\ContentTags::ALL];
+            }
+
             if ($this->editingId) {
                 DB::table('contents')->where('id', $this->editingId)->update([
                     'title' => $this->title,
                     'client_id' => $this->formClientId,
                     'date' => $this->formDate,
                     'due_date' => $this->formDueDate ?: null,
-                    'platform' => $this->formPlatforms[0] ?? 'instagram',
-                    'type' => $this->formTypes[0] ?? 'post',
+                    'platform' => json_encode($platforms),
+                    'type' => json_encode($types),
                     'status' => $this->formStatus,
                     'caption' => $this->caption,
                     'hashtags' => $this->hashtags,
@@ -395,37 +418,35 @@ new #[Layout('components.layouts.app')] class extends Component
                 ]);
                 $this->dispatch('toast', message: 'Content updated successfully', type: 'success');
             } else {
-                $count = 0;
-                foreach ($this->formPlatforms as $platform) {
-                    foreach ($this->formTypes as $type) {
-                        DB::table('contents')->insert([
-                            'title' => $this->title,
-                            'client_id' => $this->formClientId ?: null,
-                            'date' => $this->formDate,
-                            'due_date' => $this->formDueDate ?: null,
-                            'platform' => $platform,
-                            'type' => $type,
-                            'status' => $this->formStatus,
-                            'caption' => $this->caption,
-                            'hashtags' => $this->hashtags,
-                            'reference_file' => $this->referenceFile,
-                            'attachments' => $this->formAttachments ? array_values($this->formAttachments) : null,
-                            'created_by' => auth()->id(),
-                            'created_at' => now(),
-                            'updated_at' => now(),
-                        ]);
+                DB::table('contents')->insert([
+                    'title' => $this->title,
+                    'client_id' => $this->formClientId ?: null,
+                    'date' => $this->formDate,
+                    'due_date' => $this->formDueDate ?: null,
+                    'platform' => json_encode($platforms),
+                    'type' => json_encode($types),
+                    'status' => $this->formStatus,
+                    'caption' => $this->caption,
+                    'hashtags' => $this->hashtags,
+                    'reference_file' => $this->referenceFile,
+                    'attachments' => $this->formAttachments ? array_values($this->formAttachments) : null,
+                    'created_by' => auth()->id(),
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
 
-                        $count++;
-                        if ($this->formClientId) {
-                            PackageService::recordContent(
-                                $this->formClientId,
-                                $this->formStatus === 'published' ? 'published' : 'created',
-                                $type,
-                            );
-                        }
+                // Package usage counter still bumps per selected type (expand "all" sentinel)
+                if ($this->formClientId) {
+                    foreach (\App\Support\ContentTags::expand($types, 'type') as $type) {
+                        PackageService::recordContent(
+                            $this->formClientId,
+                            $this->formStatus === 'published' ? 'published' : 'created',
+                            $type,
+                        );
                     }
                 }
-                $this->dispatch('toast', message: "Created {$count} content item(s)", type: 'success');
+
+                $this->dispatch('toast', message: 'Content created successfully', type: 'success');
             }
 
             $this->showForm = false;
@@ -465,7 +486,11 @@ new #[Layout('components.layouts.app')] class extends Component
             });
         }
         if ($this->platformFilter) {
-            $query->where('platform', $this->platformFilter);
+            $filter = $this->platformFilter;
+            $query->where(function ($q) use ($filter) {
+                $q->whereJsonContains('platform', $filter)
+                    ->orWhereJsonContains('platform', \App\Support\ContentTags::ALL);
+            });
         }
         if ($this->clientFilter) {
             $query->where('client_id', $this->clientFilter);
@@ -491,7 +516,11 @@ new #[Layout('components.layouts.app')] class extends Component
             });
         }
         if ($this->platformFilter) {
-            $query->where('contents.platform', $this->platformFilter);
+            $filter = $this->platformFilter;
+            $query->where(function ($q) use ($filter) {
+                $q->whereJsonContains('contents.platform', $filter)
+                    ->orWhereJsonContains('contents.platform', \App\Support\ContentTags::ALL);
+            });
         }
         if ($this->statusFilter) {
             $query->where('contents.status', $this->statusFilter);
@@ -505,20 +534,34 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function getPlatformData(): array
     {
-        return DB::table('contents')
-            ->select('platform', DB::raw('COUNT(*) as count'))
-            ->groupBy('platform')
-            ->pluck('count', 'platform')
-            ->toArray();
+        return $this->tallyContentColumn('platform');
     }
 
     public function getTypeData(): array
     {
-        return DB::table('contents')
-            ->select('type', DB::raw('COUNT(*) as count'))
-            ->groupBy('type')
-            ->pluck('count', 'type')
-            ->toArray();
+        return $this->tallyContentColumn('type');
+    }
+
+    /**
+     * Flat-count a JSON-array content column, expanding the "all" sentinel to every
+     * canonical value so a single ["all"] row contributes 1 to each platform/type.
+     */
+    private function tallyContentColumn(string $kind): array
+    {
+        $rows = DB::table('contents')->pluck($kind);
+        $counts = [];
+        foreach ($rows as $raw) {
+            $expanded = \App\Support\ContentTags::expand(
+                \App\Support\ContentTags::normalize($raw, $kind),
+                $kind
+            );
+            foreach ($expanded as $v) {
+                $counts[$v] = ($counts[$v] ?? 0) + 1;
+            }
+        }
+        arsort($counts);
+
+        return $counts;
     }
 
     public function submitForApproval(int $contentId): void
@@ -565,14 +608,16 @@ new #[Layout('components.layouts.app')] class extends Component
                 'submitted_for_approval_at' => now(),
             ]);
 
-            $platform = ucfirst($content->platform ?? 'general');
-            $type = ucfirst($content->type ?? 'post');
+            $_platformArr = \App\Support\ContentTags::normalize($content->platform, 'platform');
+            $_typeArr = \App\Support\ContentTags::normalize($content->type, 'type');
+            $platform = \App\Support\ContentTags::label($_platformArr, 'platform');
+            $type = \App\Support\ContentTags::label($_typeArr, 'type');
             $contentAttachments = $content->attachments ? (is_string($content->attachments) ? $content->attachments : json_encode($content->attachments)) : null;
             DB::table('approvals')->insert([
                 'title' => $content->title . " ({$platform} / {$type})",
                 'client_id' => $content->client_id,
                 'content_id' => $contentId,
-                'type' => $content->type ?? 'post',
+                'type' => \App\Support\ContentTags::primary($_typeArr, 'type'),
                 'status' => 'pending',
                 'approval_stage' => 'first',
                 'submitted_by' => auth()->id(),
@@ -748,6 +793,31 @@ new #[Layout('components.layouts.app')] class extends Component
         $this->formAttachmentsJson = json_encode($this->formAttachments);
         $this->newFileUpload = null;
         $this->dispatch('toast', message: 'File uploaded and attached', type: 'success');
+    }
+
+    public function toggleAllPlatforms(): void
+    {
+        $this->formPlatforms = in_array(\App\Support\ContentTags::ALL, $this->formPlatforms, true) ? [] : [\App\Support\ContentTags::ALL];
+    }
+
+    public function toggleAllTypes(): void
+    {
+        $this->formTypes = in_array(\App\Support\ContentTags::ALL, $this->formTypes, true) ? [] : [\App\Support\ContentTags::ALL];
+    }
+
+    public function updatedFormPlatforms(): void
+    {
+        // If "All" and individual values coexist, "All" takes precedence — collapse to sentinel.
+        if (in_array(\App\Support\ContentTags::ALL, $this->formPlatforms, true) && count($this->formPlatforms) > 1) {
+            $this->formPlatforms = [\App\Support\ContentTags::ALL];
+        }
+    }
+
+    public function updatedFormTypes(): void
+    {
+        if (in_array(\App\Support\ContentTags::ALL, $this->formTypes, true) && count($this->formTypes) > 1) {
+            $this->formTypes = [\App\Support\ContentTags::ALL];
+        }
     }
 
     private function resetForm(): void
@@ -938,10 +1008,14 @@ new #[Layout('components.layouts.app')] class extends Component
                                         <i class="fas fa-{{ ($item->type ?? '') === 'shoot' ? 'camera' : (($item->type ?? '') === 'editing' ? 'film' : 'check-square') }} text-[8px] mr-0.5 opacity-70"></i>{{ Str::limit($item->title, 12) }}
                                     </div>
                                 @else
+                                    @php
+                                        $_platforms = \App\Support\ContentTags::normalize($item->platform, 'platform');
+                                        $_primary = \App\Support\ContentTags::primary($_platforms, 'platform');
+                                    @endphp
                                     <div
-                                        class="cal-event {{ $item->platform }}"
+                                        class="cal-event {{ $_primary }}"
                                         wire:click.stop="editContent({{ $item->id }})"
-                                        title="{{ $item->title }} ({{ ucfirst($item->platform) }})"
+                                        title="{{ $item->title }} ({{ \App\Support\ContentTags::label($_platforms, 'platform') }})"
                                     >
                                         {{ Str::limit($item->title, 14) }}
                                     </div>
@@ -1005,13 +1079,36 @@ new #[Layout('components.layouts.app')] class extends Component
                                     <span class="text-gray-600">{{ $item->client_name ?? '-' }}</span>
                                 </td>
                                 <td>
-                                    <span
-                                        class="badge badge-{{ $item->platform }}"
-                                        >{{ ucfirst($item->platform) }}</span
-                                    >
+                                    @php
+                                        $_listPlatforms = \App\Support\ContentTags::normalize($item->platform, 'platform');
+                                        $_listTypes = \App\Support\ContentTags::normalize($item->type, 'type');
+                                    @endphp
+                                    @if (in_array(\App\Support\ContentTags::ALL, $_listPlatforms, true))
+                                        <span class="badge bg-[var(--brand)] text-white">All</span>
+                                    @else
+                                        <div class="flex flex-wrap gap-1">
+                                            @foreach (array_slice($_listPlatforms, 0, 2) as $_p)
+                                                <span class="badge badge-{{ $_p }}">{{ ucfirst($_p) }}</span>
+                                            @endforeach
+                                            @if (count($_listPlatforms) > 2)
+                                                <span class="badge bg-gray-100 text-gray-600">+{{ count($_listPlatforms) - 2 }}</span>
+                                            @endif
+                                        </div>
+                                    @endif
                                 </td>
                                 <td>
-                                    <span class="badge badge-{{ $item->type }}">{{ ucfirst($item->type) }}</span>
+                                    @if (in_array(\App\Support\ContentTags::ALL, $_listTypes, true))
+                                        <span class="badge bg-[var(--brand)] text-white">All</span>
+                                    @else
+                                        <div class="flex flex-wrap gap-1">
+                                            @foreach (array_slice($_listTypes, 0, 2) as $_t)
+                                                <span class="badge badge-{{ $_t }}">{{ ucfirst($_t) }}</span>
+                                            @endforeach
+                                            @if (count($_listTypes) > 2)
+                                                <span class="badge bg-gray-100 text-gray-600">+{{ count($_listTypes) - 2 }}</span>
+                                            @endif
+                                        </div>
+                                    @endif
                                 </td>
                                 <td>
                                     <span
@@ -1259,46 +1356,72 @@ new #[Layout('components.layouts.app')] class extends Component
                             </div>
 
                             {{-- Platforms Multi-Select --}}
+                            @php $isAllPlatforms = in_array(\App\Support\ContentTags::ALL, $formPlatforms, true); @endphp
                             <div class="md:col-span-2">
                                 <label class="form-label">Platforms <span class="text-red-500">*</span></label>
                                 <div class="flex flex-wrap gap-2">
+                                    <button
+                                        type="button"
+                                        wire:click="toggleAllPlatforms"
+                                        class="inline-flex items-center gap-2 rounded-lg border {{ $isAllPlatforms ? 'border-[var(--brand)] bg-[var(--brand)] text-white' : 'border-gray-200 bg-white text-gray-700' }} px-3 py-2 cursor-pointer transition-colors hover:border-gray-300"
+                                    >
+                                        <i class="fas {{ $isAllPlatforms ? 'fa-check-square' : 'fa-square' }} text-[11px]"></i>
+                                        <span class="text-[11px] font-semibold uppercase tracking-wide">All</span>
+                                    </button>
                                     @foreach (self::PLATFORMS as $p)
                                         <label
-                                            class="inline-flex items-center gap-2 rounded-lg border {{ in_array($p, $formPlatforms) ? 'border-[var(--brand)] bg-[rgba(var(--brand-rgb),0.05)]' : 'border-gray-200 bg-white' }} px-3 py-2 cursor-pointer transition-colors hover:border-gray-300"
+                                            class="inline-flex items-center gap-2 rounded-lg border {{ $isAllPlatforms || in_array($p, $formPlatforms) ? 'border-[var(--brand)] bg-[rgba(var(--brand-rgb),0.05)]' : 'border-gray-200 bg-white' }} px-3 py-2 cursor-pointer transition-colors hover:border-gray-300 {{ $isAllPlatforms ? 'opacity-70' : '' }}"
                                         >
                                             <input
                                                 type="checkbox"
                                                 wire:model="formPlatforms"
                                                 value="{{ $p }}"
+                                                @checked($isAllPlatforms)
                                                 class="rounded border-gray-300 text-[var(--brand)] focus:ring-[var(--brand)]"
                                             />
                                             <span class="badge badge-{{ $p }} text-[10px]">{{ ucfirst($p) }}</span>
                                         </label>
                                     @endforeach
                                 </div>
+                                @if ($isAllPlatforms)
+                                    <p class="text-[11px] text-gray-500 mt-1">"All" is selected — includes any future platforms too. Click a chip to switch to individual selection.</p>
+                                @endif
                                 @error ('formPlatforms')
                                     <span class="text-xs text-red-500 mt-1 block">{{ $message }}</span>
                                 @enderror
                             </div>
 
                             {{-- Types Multi-Select --}}
+                            @php $isAllTypes = in_array(\App\Support\ContentTags::ALL, $formTypes, true); @endphp
                             <div class="md:col-span-2">
                                 <label class="form-label">Content Types <span class="text-red-500">*</span></label>
                                 <div class="flex flex-wrap gap-2">
+                                    <button
+                                        type="button"
+                                        wire:click="toggleAllTypes"
+                                        class="inline-flex items-center gap-2 rounded-lg border {{ $isAllTypes ? 'border-[var(--brand)] bg-[var(--brand)] text-white' : 'border-gray-200 bg-white text-gray-700' }} px-3 py-2 cursor-pointer transition-colors hover:border-gray-300"
+                                    >
+                                        <i class="fas {{ $isAllTypes ? 'fa-check-square' : 'fa-square' }} text-[11px]"></i>
+                                        <span class="text-[11px] font-semibold uppercase tracking-wide">All</span>
+                                    </button>
                                     @foreach (self::TYPES as $t)
                                         <label
-                                            class="inline-flex items-center gap-2 rounded-lg border {{ in_array($t, $formTypes) ? 'border-[var(--brand)] bg-[rgba(var(--brand-rgb),0.05)]' : 'border-gray-200 bg-white' }} px-3 py-2 cursor-pointer transition-colors hover:border-gray-300"
+                                            class="inline-flex items-center gap-2 rounded-lg border {{ $isAllTypes || in_array($t, $formTypes) ? 'border-[var(--brand)] bg-[rgba(var(--brand-rgb),0.05)]' : 'border-gray-200 bg-white' }} px-3 py-2 cursor-pointer transition-colors hover:border-gray-300 {{ $isAllTypes ? 'opacity-70' : '' }}"
                                         >
                                             <input
                                                 type="checkbox"
                                                 wire:model="formTypes"
                                                 value="{{ $t }}"
+                                                @checked($isAllTypes)
                                                 class="rounded border-gray-300 text-[var(--brand)] focus:ring-[var(--brand)]"
                                             />
                                             <span class="badge badge-{{ $t }} text-[10px]">{{ ucfirst($t) }}</span>
                                         </label>
                                     @endforeach
                                 </div>
+                                @if ($isAllTypes)
+                                    <p class="text-[11px] text-gray-500 mt-1">"All" is selected — includes any future types too. Click a chip to switch to individual selection.</p>
+                                @endif
                                 @error ('formTypes')
                                     <span class="text-xs text-red-500 mt-1 block">{{ $message }}</span>
                                 @enderror
@@ -1330,9 +1453,10 @@ new #[Layout('components.layouts.app')] class extends Component
                                 class="mt-3 rounded-lg bg-blue-50 border border-blue-100 px-4 py-2.5 text-xs text-blue-700"
                             >
                                 <i class="fas fa-info-circle mr-1"></i>
-                                This will create
-                                <strong>{{ count($formPlatforms) * count($formTypes) }}</strong> content item(s) ({{ count($formPlatforms) }} platform(s)
-                                × {{ count($formTypes) }} type(s))
+                                This will create <strong>1</strong> content item covering
+                                <strong>{{ \App\Support\ContentTags::label($formPlatforms, 'platform') }}</strong>
+                                ×
+                                <strong>{{ \App\Support\ContentTags::label($formTypes, 'type') }}</strong>.
                             </div>
                         @endif
 
@@ -1385,7 +1509,7 @@ new #[Layout('components.layouts.app')] class extends Component
             'tiktok' => 'bg-gray-100 text-gray-800',
             'youtube' => 'bg-red-50 text-red-600',
         ];
-    @endphp
+        @endphp
         <div
             class="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm"
             wire:click.self="$set('showDayDetail', false)"
@@ -1403,10 +1527,16 @@ new #[Layout('components.layouts.app')] class extends Component
                                 {{ $detailDate ? $detailDate->format('l, F j, Y') : '' }}
                             </h3>
                             <p class="text-xs text-gray-400 mt-0.5">
-                                @if($detailContentCount > 0){{ $detailContentCount }} {{ Str::plural('content', $detailContentCount) }}@endif
+                                @if($detailContentCount > 0)
+                                    {{ $detailContentCount }} {{ Str::plural('content', $detailContentCount) }}
+                                @endif
                                 @if($detailContentCount > 0 && $detailTaskCount > 0) · @endif
-                                @if($detailTaskCount > 0){{ $detailTaskCount }} {{ Str::plural('task', $detailTaskCount) }}@endif
-                                @if($detailContentCount === 0 && $detailTaskCount === 0)No items scheduled@endif
+                                @if($detailTaskCount > 0)
+                                    {{ $detailTaskCount }} {{ Str::plural('task', $detailTaskCount) }}
+                                @endif
+                                @if($detailContentCount === 0 && $detailTaskCount === 0)
+                                    No items scheduled
+                                @endif
                             </p>
                         </div>
                         <button
@@ -1497,16 +1627,19 @@ new #[Layout('components.layouts.app')] class extends Component
                                         $c = \App\Models\Client::find($item->client_id);
                                         $clientName = $c?->name;
                                     }
+                                    $_ddPlatforms = \App\Support\ContentTags::normalize($item->platform, 'platform');
+                                    $_ddPrimary = \App\Support\ContentTags::primary($_ddPlatforms, 'platform');
+                                    $_ddTypeLabel = \App\Support\ContentTags::label(\App\Support\ContentTags::normalize($item->type, 'type'), 'type');
                                 @endphp
                                     <div
                                         class="flex items-start gap-3 px-6 py-3.5 {{ $item->status !== 'published' ? 'hover:bg-gray-50/50 cursor-pointer' : '' }} transition-colors"
                                         @if ($item->status !== 'published') wire:click="editContent({{ $item->id }})" @endif
                                     >
                                         <div
-                                            class="w-8 h-8 rounded-lg bg-{{ $item->platform }}-500/10 flex items-center justify-center flex-shrink-0 mt-0.5"
+                                            class="w-8 h-8 rounded-lg bg-{{ $_ddPrimary }}-500/10 flex items-center justify-center flex-shrink-0 mt-0.5"
                                         >
                                             <i
-                                                class="fas fa-{{ $platformIcons[$item->platform] ?? 'globe' }} text-{{ $item->platform }}-500 text-xs"
+                                                class="fas fa-{{ $platformIcons[$_ddPrimary] ?? 'globe' }} text-{{ $_ddPrimary }}-500 text-xs"
                                             ></i>
                                         </div>
                                         <div class="flex-1 min-w-0">
@@ -1521,7 +1654,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                                     <span class="text-gray-500">{{ $clientName }}</span>
                                                     <span>·</span>
                                                 @endif
-                                                <span class="capitalize">{{ $item->type }}</span>
+                                                <span>{{ $_ddTypeLabel }}</span>
                                                 @if ($workflow)
                                                     <span>·</span>
                                                     <span class="text-indigo-500 font-medium capitalize">{{ str_replace('-', ' ', $workflow->stage) }}</span>
@@ -1586,7 +1719,10 @@ new #[Layout('components.layouts.app')] class extends Component
         @endphp
         @if ($discContent)
             @php
-            $calTypeBadge = match($discContent->type) {
+            $_discTypes = \App\Support\ContentTags::normalize($discContent->type, 'type');
+            $_discPlatforms = \App\Support\ContentTags::normalize($discContent->platform, 'platform');
+            $_discPrimaryType = \App\Support\ContentTags::primary($_discTypes, 'type');
+            $calTypeBadge = match($_discPrimaryType) {
                 'reel'     => 'bg-pink-50 text-pink-700 border-pink-200',
                 'post'     => 'bg-blue-50 text-blue-700 border-blue-200',
                 'story'    => 'bg-purple-50 text-purple-700 border-purple-200',
@@ -1615,7 +1751,7 @@ new #[Layout('components.layouts.app')] class extends Component
                             <div class="flex flex-wrap items-center gap-1.5 mb-1.5">
                                 <span
                                     class="inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-semibold border {{ $calTypeBadge }}"
-                                    >{{ ucfirst($discContent->type) }}</span
+                                    >{{ \App\Support\ContentTags::label($_discTypes, 'type') }}</span
                                 >
                                 <span
                                     class="inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-semibold border {{ $calStatusBadge }}"
@@ -1650,7 +1786,7 @@ new #[Layout('components.layouts.app')] class extends Component
                             </div>
                             <div>
                                 <p class="text-[11px] uppercase tracking-wide font-semibold text-gray-400 mb-1">Platform</p>
-                                <p class="text-gray-800 text-xs flex items-center gap-1.5"><i class="fas fa-share-nodes text-gray-400"></i> {{ ucfirst($discContent->platform ?? '—') }}</p>
+                                <p class="text-gray-800 text-xs flex items-center gap-1.5"><i class="fas fa-share-nodes text-gray-400"></i> {{ \App\Support\ContentTags::label($_discPlatforms, 'platform') }}</p>
                             </div>
                             <div>
                                 <p class="text-[11px] uppercase tracking-wide font-semibold text-gray-400 mb-1">Date</p>

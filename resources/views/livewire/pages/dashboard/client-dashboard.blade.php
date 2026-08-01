@@ -202,17 +202,20 @@ new #[Layout('components.layouts.app')] class extends Component {
                             'published' => 'bg-green-100 text-green-700',
                             default => 'bg-gray-100 text-gray-700',
                         };
-                        $platformIcon = match($c->platform) { 'instagram' => 'camera', 'facebook' => 'globe', 'tiktok' => 'music', 'youtube' => 'play', default => 'file' };
+                        $cPlatforms = \App\Support\ContentTags::normalize($c->platform, 'platform');
+                        $cTypes = \App\Support\ContentTags::normalize($c->type, 'type');
+                        $cPrimary = \App\Support\ContentTags::primary($cPlatforms, 'platform');
+                        $platformIcon = match($cPrimary) { 'instagram' => 'camera', 'facebook' => 'globe', 'tiktok' => 'music', 'youtube' => 'play', default => 'file' };
                     @endphp
                     <div class="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50">
                         <div
-                            class="w-8 h-8 rounded-lg bg-{{ $c->platform }}-500/10 flex items-center justify-center flex-shrink-0"
+                            class="w-8 h-8 rounded-lg bg-{{ $cPrimary }}-500/10 flex items-center justify-center flex-shrink-0"
                         >
-                            <i class="fas fa-{{ $platformIcon }} text-{{ $c->platform }}-500 text-xs"></i>
+                            <i class="fas fa-{{ $platformIcon }} text-{{ $cPrimary }}-500 text-xs"></i>
                         </div>
                         <div class="flex-1 min-w-0">
                             <p class="text-sm font-medium text-gray-900 truncate">{{ $c->title }}</p>
-                            <p class="text-xs text-gray-500">{{ ucfirst($c->platform) }} · {{ ucfirst($c->type) }} · {{ $c->date?->format('M d') }}</p>
+                            <p class="text-xs text-gray-500">{{ \App\Support\ContentTags::label($cPlatforms, 'platform') }} · {{ \App\Support\ContentTags::label($cTypes, 'type') }} · {{ $c->date?->format('M d') }}</p>
                         </div>
                         <span
                             class="text-[10px] font-semibold px-2 py-0.5 rounded {{ $statusBadge }}"

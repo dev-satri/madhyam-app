@@ -2,6 +2,7 @@
 
 namespace Database\Seeders;
 
+use App\Support\ContentTags;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 
@@ -32,7 +33,7 @@ class ApprovalSeeder extends Seeder
                 'title' => $content->title,
                 'client_id' => $content->client_id,
                 'content_id' => $content->id,
-                'type' => $content->type,
+                'type' => ContentTags::primary(ContentTags::normalize($content->type, 'type'), 'type'),
                 'approval_stage' => 'first',
                 'status' => 'pending',
                 'submitted_by' => $editor,
@@ -81,7 +82,7 @@ class ApprovalSeeder extends Seeder
                 'title' => $published->title . ' — Admin Review',
                 'client_id' => $published->client_id,
                 'content_id' => $published->id,
-                'type' => $published->type,
+                'type' => ContentTags::primary(ContentTags::normalize($published->type, 'type'), 'type'),
                 'approval_stage' => 'first',
                 'status' => 'approved',
                 'submitted_by' => $editor,

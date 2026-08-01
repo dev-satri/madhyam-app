@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\User;
+use App\Support\ContentTags;
 use Database\Seeders\ClientSeeder;
 use Database\Seeders\DepartmentSeeder;
 use Database\Seeders\PackageSeeder;
@@ -13,7 +14,7 @@ use Livewire\Livewire;
 use Tests\TestCase;
 
 /**
- * Covers todo.md §5.2: Content planner cartesian-product save creates N rows.
+ * Covers content planner save/edit with JSON array platform + type columns.
  */
 class ContentPlannerTest extends TestCase
 {
@@ -36,7 +37,7 @@ class ContentPlannerTest extends TestCase
         $this->actingAs($this->admin);
     }
 
-    public function test_cartesian_product_creates_multiple_rows(): void
+    public function test_multiple_platforms_and_types_creates_single_row(): void
     {
         Livewire::test('pages.calendar.index')
             ->call('openForm', now()->format('Y-m-d'))
@@ -48,9 +49,31 @@ class ContentPlannerTest extends TestCase
             ->set('formStatus', 'draft')
             ->call('save');
 
-        // 2 platforms × 2 types = 4 rows
-        $this->assertDatabaseCount('contents', 4);
-        $this->assertEquals(4, DB::table('contents')->where('title', 'Multi-Platform Post')->count());
+        // New behaviour: one row with JSON arrays, not a cartesian product
+        $this->assertDatabaseCount('contents', 1);
+
+        $row = DB::table('contents')->where('title', 'Multi-Platform Post')->first();
+        $this->assertEqualsCanonicalizing(['instagram', 'facebook'], json_decode($row->platform, true));
+        $this->assertEqualsCanonicalizing(['post', 'reel'], json_decode($row->type, true));
+    }
+
+    public function test_all_platform_sentinel_creates_single_row(): void
+    {
+        Livewire::test('pages.calendar.index')
+            ->call('openForm', now()->format('Y-m-d'))
+            ->set('title', 'All Platforms Post')
+            ->set('formClientId', $this->clientId)
+            ->set('formDate', now()->format('Y-m-d'))
+            ->set('formPlatforms', [ContentTags::ALL])
+            ->set('formTypes', ['post'])
+            ->set('formStatus', 'draft')
+            ->call('save');
+
+        $this->assertDatabaseCount('contents', 1);
+
+        $row = DB::table('contents')->where('title', 'All Platforms Post')->first();
+        $this->assertEquals([ContentTags::ALL], json_decode($row->platform, true));
+        $this->assertEquals(['post'], json_decode($row->type, true));
     }
 
     public function test_single_platform_single_type_creates_one_row(): void
@@ -66,14 +89,19 @@ class ContentPlannerTest extends TestCase
             ->call('save');
 
         $this->assertDatabaseCount('contents', 1);
+
+        $row = DB::table('contents')->where('title', 'Single Post')->first();
+        $this->assertEquals(['instagram'], json_decode($row->platform, true));
+        $this->assertEquals(['post'], json_decode($row->type, true));
     }
 
-    public function test_edit_does_not_create_new_row(): void
+    public function test_edit_updates_existing_row(): void
     {
-        // Seed one content item
         DB::table('contents')->insert([
             'title' => 'Original', 'client_id' => $this->clientId,
-            'platform' => 'instagram', 'type' => 'post', 'date' => now()->format('Y-m-d'),
+            'platform' => json_encode(['instagram']),
+            'type' => json_encode(['post']),
+            'date' => now()->format('Y-m-d'),
             'status' => 'draft', 'created_by' => $this->admin->id,
             'created_at' => now(), 'updated_at' => now(),
         ]);
@@ -83,10 +111,15 @@ class ContentPlannerTest extends TestCase
         Livewire::test('pages.calendar.index')
             ->call('editContent', $id)
             ->set('title', 'Updated Title')
+            ->set('formPlatforms', ['facebook', 'tiktok'])
+            ->set('formTypes', ['reel'])
             ->call('save');
 
         $this->assertDatabaseCount('contents', 1);
-        $this->assertEquals('Updated Title', DB::table('contents')->where('id', $id)->value('title'));
+        $row = DB::table('contents')->where('id', $id)->first();
+        $this->assertEquals('Updated Title', $row->title);
+        $this->assertEqualsCanonicalizing(['facebook', 'tiktok'], json_decode($row->platform, true));
+        $this->assertEquals(['reel'], json_decode($row->type, true));
     }
 
     public function test_validation_requires_platforms_and_types(): void
@@ -116,5 +149,44 @@ class ContentPlannerTest extends TestCase
             ->call('save');
 
         $this->assertEquals($this->admin->id, DB::table('contents')->where('title', 'My Content')->value('created_by'));
+    }
+
+    public function test_normalize_collapses_all_with_individual(): void
+    {
+        Livewire::test('pages.calendar.index')
+            ->call('openForm', now()->format('Y-m-d'))
+            ->set('title', 'All Override')
+            ->set('formClientId', $this->clientId)
+            ->set('formDate', now()->format('Y-m-d'))
+            ->set('formPlatforms', ['instagram', ContentTags::ALL])
+            ->set('formTypes', ['post'])
+            ->set('formStatus', 'draft')
+            ->call('save');
+
+        $row = DB::table('contents')->where('title', 'All Override')->first();
+        // "All" + individual should collapse to just ["all"]
+        $this->assertEquals([ContentTags::ALL], json_decode($row->platform, true));
+    }
+
+    public function test_edit_normalizes_json_from_database(): void
+    {
+        // Insert a row with a JSON array platform directly
+        DB::table('contents')->insert([
+            'title' => 'Pre-existing', 'client_id' => $this->clientId,
+            'platform' => json_encode(['youtube', 'linkedin']),
+            'type' => json_encode(['video']),
+            'date' => now()->format('Y-m-d'),
+            'status' => 'draft', 'created_by' => $this->admin->id,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $id = DB::table('contents')->first()->id;
+
+        $component = Livewire::test('pages.calendar.index')
+            ->call('editContent', $id);
+
+        // The form should load the normalized arrays
+        $component->assertSet('formPlatforms', ['youtube', 'linkedin']);
+        $component->assertSet('formTypes', ['video']);
     }
 }

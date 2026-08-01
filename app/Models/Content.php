@@ -25,6 +25,8 @@ class Content extends Model
     protected $casts = [
         'date' => 'date',
         'due_date' => 'date',
+        'platform' => 'array',
+        'type' => 'array',
         'attachments' => 'array',
         'needs_approval' => 'boolean',
         'submitted_for_approval_at' => 'datetime',

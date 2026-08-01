@@ -47,8 +47,8 @@ class ContentSeeder extends Seeder
             DB::table('contents')->insert([
                 'title' => $item['title'],
                 'client_id' => $item['client_id'],
-                'platform' => $item['platform'],
-                'type' => $item['type'],
+                'platform' => json_encode([$item['platform']]),
+                'type' => json_encode([$item['type']]),
                 'date' => now()->addDays($i - 3)->toDateString(),
                 'due_date' => now()->addDays($i + 4)->toDateString(),
                 'status' => $item['status'],
