@@ -58,7 +58,10 @@ new #[Layout('components.layouts.app')] class extends Component {
     {
         $client = $this->getClient();
         if (! $client) return 0;
-        return Approval::where('client_id', $client->id)->where('status', 'pending')->count();
+        return Approval::where('client_id', $client->id)
+            ->where('status', 'pending')
+            ->where('approval_stage', 'client-pending')
+            ->count();
     }
 
     public function getPublishedContentProperty(): int

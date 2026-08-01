@@ -381,6 +381,11 @@ new #[Layout('components.layouts.app')] class extends Component
                         'created_at' => now(),
                         'updated_at' => now(),
                     ]);
+
+                    // Track package usage (only for client content, not internal)
+                    if ($approval->client_id) {
+                        \App\Services\PackageService::recordWorkflow($approval->client_id);
+                    }
                 }
 
                 if (! $suppressSideEffects) {
@@ -407,9 +412,28 @@ new #[Layout('components.layouts.app')] class extends Component
             // ADMIN PENDING: Workflow review — admin approves first
             if ($status === 'approved') {
                 $hasClient = !empty($approval->client_id);
+                $isAdminOrSuperAdmin = $actor && in_array($actor->role ?? '', ['super-admin', 'admin']);
 
-                if ($hasClient) {
-                    // Has client → move to client-pending for client review
+                // If admin/super-admin approves, they can bypass client review and go directly to production
+                if ($isAdminOrSuperAdmin) {
+                    // Admin/Super-admin approval → skip client review, go straight to ready-for-production
+                    DB::table('approvals')->where('id', $id)->update([
+                        'approval_stage' => 'completed',
+                        'status' => 'approved',
+                        'updated_at' => now(),
+                    ]);
+                    $workflow = $this->findLinkedWorkflow($approval);
+                    if ($workflow) {
+                        DB::table('workflows')->where('id', $workflow->id)->update([
+                            'stage' => 'ready-for-production',
+                            'updated_at' => now(),
+                        ]);
+                    }
+                    if (! $suppressSideEffects) {
+                        app(NotificationService::class)->notifyAdminApprovedFinal($approval->title, $approval->client_id);
+                    }
+                } elseif ($hasClient) {
+                    // Non-admin with client → move to client-pending for client review
                     DB::table('approvals')->where('id', $id)->update([
                         'approval_stage' => 'client-pending',
                         'status' => 'pending',
@@ -457,7 +481,11 @@ new #[Layout('components.layouts.app')] class extends Component
         } elseif ($approval->approval_stage === 'client-pending') {
             // CLIENT PENDING: Client approves — moves to ready-for-production
             if ($status === 'approved') {
-                // Workflow → ready-for-production (not published yet — admin moves to published)
+                DB::table('approvals')->where('id', $id)->update([
+                    'approval_stage' => 'completed',
+                    'status' => 'approved',
+                    'updated_at' => now(),
+                ]);
                 $workflow = $this->findLinkedWorkflow($approval);
                 if ($workflow) {
                     DB::table('workflows')->where('id', $workflow->id)->update([
@@ -1065,6 +1093,7 @@ new #[Layout('components.layouts.app')] class extends Component
                         $approveMsg = match(true) {
                             $a->approval_stage === 'first' => 'Content will be approved and workflow started.',
                             $a->approval_stage === 'admin-pending' && $isInternal => 'This is internal — approval will complete directly.',
+                            $a->approval_stage === 'admin-pending' && $this->isManager => 'As admin/super-admin, this will move directly to Ready for Production.',
                             $a->approval_stage === 'admin-pending' => 'This will send it to client for final approval.',
                             $a->approval_stage === 'client-pending' => 'This will move the content to Ready for Production for final publishing.',
                             default => 'This will mark the item as approved.',
@@ -1268,7 +1297,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                 $isInternalDetail = empty($appr->client_id);
                                 $detailApproveMsg = match($appr->approval_stage) {
                                     'first' => 'Content will be approved and workflow started.',
-                                    'admin-pending' => $isInternalDetail ? 'This is internal — approval will complete directly.' : 'This will send it to client for final approval.',
+                                    'admin-pending' => $isInternalDetail ? 'This is internal — approval will complete directly.' : ($this->isManager ? 'As admin/super-admin, this will move directly to Ready for Production.' : 'This will send it to client for final approval.'),
                                     'client-pending' => 'This will move the content to Ready for Production.',
                                     default => 'This will mark the item as approved.',
                                 };

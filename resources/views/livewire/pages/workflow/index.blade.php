@@ -233,42 +233,41 @@ new #[Layout('components.layouts.app')] class extends Component
 
         // Validate approvals required before moving to ready-for-production or published
         if (in_array($newStage, ['ready-for-production', 'published'])) {
-            // Items without content_id cannot be moved to production stages
-            if (!$workflow->content_id) {
-                $this->dispatch('toast', message: 'Content must be approved before publishing', type: 'error');
-                return;
-            }
+            // Only validate approvals if this workflow came from content planner (has content_id)
+            // Standalone workflow items (created directly) don't need approval validation
+            if ($workflow->content_id) {
+                $approval = DB::table('approvals')
+                    ->where('content_id', $workflow->content_id)
+                    ->where(function ($q) {
+                        $q->where('approval_stage', 'completed')
+                          ->orWhere('approval_stage', 'client-pending')
+                          ->orWhere('approval_stage', 'admin-pending');
+                    })
+                    ->first();
 
-            $hasClientApproval = DB::table('approvals')
-                ->where('content_id', $workflow->content_id)
-                ->where('approval_stage', 'client-pending')
-                ->where('status', 'approved')
-                ->exists();
+                $isClientContent = !empty($workflow->client_id);
 
-            $hasAdminApproval = DB::table('approvals')
-                ->where('content_id', $workflow->content_id)
-                ->where('approval_stage', 'admin-pending')
-                ->where('status', 'approved')
-                ->exists();
-
-            $isClientContent = !empty($workflow->client_id);
-
-            if ($isClientContent) {
-                // Client content requires BOTH admin + client approval
-                if (!$hasAdminApproval || !$hasClientApproval) {
-                    $missing = [];
-                    if (!$hasAdminApproval) $missing[] = 'Admin';
-                    if (!$hasClientApproval) $missing[] = 'Client';
-                    $this->dispatch('toast', message: 'Missing approval from: ' . implode(', ', $missing) . '. Both required for client content.', type: 'error');
-                    return;
-                }
-            } else {
-                // Internal content only requires admin approval
-                if (!$hasAdminApproval) {
-                    $this->dispatch('toast', message: 'Internal content requires Admin approval before publishing', type: 'error');
-                    return;
+                if ($isClientContent) {
+                    // Client content: approval must have reached client-pending stage and been approved/completed
+                    $isApproved = $approval
+                        && in_array($approval->approval_stage, ['completed', 'client-pending'])
+                        && in_array($approval->status, ['approved', 'completed']);
+                    if (!$isApproved) {
+                        $this->dispatch('toast', message: 'Client content requires Admin + Client approval before publishing.', type: 'error');
+                        return;
+                    }
+                } else {
+                    // Internal content: approval must be completed (admin approved, no client stage)
+                    $isApproved = $approval
+                        && $approval->approval_stage === 'completed'
+                        && $approval->status === 'approved';
+                    if (!$isApproved) {
+                        $this->dispatch('toast', message: 'Internal content requires Admin approval before publishing.', type: 'error');
+                        return;
+                    }
                 }
             }
+            // If no content_id, it's a standalone workflow item — no approval validation needed
         }
 
         $updateData = ['stage' => $newStage];
@@ -509,8 +508,10 @@ new #[Layout('components.layouts.app')] class extends Component
             $priorAssignee = null;
             $workflowId = Workflow::create($data)->id;
             $verb = 'created';
-            // Track package usage
-            PackageService::recordWorkflow($this->formClientId);
+            // Track package usage (only for client content, not internal)
+            if ($this->formClientId) {
+                PackageService::recordWorkflow($this->formClientId);
+            }
         }
 
         app(ActivityLogger::class)->record(Auth::user(), "Workflow '{$this->formTitle}' {$verb}");
