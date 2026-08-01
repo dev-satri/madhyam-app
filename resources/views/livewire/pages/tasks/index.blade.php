@@ -161,7 +161,9 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function getFilteredTasks()
     {
-        $q = DB::table('tasks')->leftJoin('clients', 'tasks.client_id', '=', 'clients.id')->leftJoin('users', 'tasks.assignee', '=', 'users.id');
+        $q = Task::query()
+            ->leftJoin('clients', 'tasks.client_id', '=', 'clients.id')
+            ->leftJoin('users', 'tasks.assignee', '=', 'users.id');
 
         $user = Auth::user();
         $rbac = app(RbacService::class);
@@ -197,7 +199,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function getStats(): array
     {
-        $all = DB::table('tasks');
+        $all = Task::query();
 
         return [
             'total' => $all->count(),
@@ -210,7 +212,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function cycleStatus(int $id): void
     {
-        $task = DB::table('tasks')->where('id', $id)->first();
+        $task = Task::find($id);
         if (! $task) {
             return;
         }
@@ -230,14 +232,15 @@ new #[Layout('components.layouts.app')] class extends Component
             'in-progress' => 'completed',
             default => 'todo',
         };
-        DB::table('tasks')->where('id', $id)->update(['status' => $next]);
+        $task->status = $next;
+        $task->save();
 
         // Notify managers when a task transitions to completed. Uses SkipsSelfActor
         // so a manager who completed their own task isn't notified back.
-        if ($next === 'completed' && $model = Task::find($id)) {
+        if ($next === 'completed') {
             $managers = User::where('role', 'manager')->where('status', 'active')->get();
             if ($managers->isNotEmpty()) {
-                Notification::send($managers, new TaskCompletedNotification($model, Auth::user()));
+                Notification::send($managers, new TaskCompletedNotification($task, Auth::user()));
             }
         }
 
@@ -247,7 +250,7 @@ new #[Layout('components.layouts.app')] class extends Component
     public function openForm(?int $id = null): void
     {
         if ($id) {
-            $t = DB::table('tasks')->where('id', $id)->first();
+            $t = Task::find($id);
             if ($t) {
                 $this->editingId = $t->id;
                 $this->formTitle = $t->title;
@@ -286,7 +289,7 @@ new #[Layout('components.layouts.app')] class extends Component
     {
         // Lock if linked workflow is published or ready-for-production
         if ($this->editingId) {
-            $existingTask = DB::table('tasks')->where('id', $this->editingId)->first();
+            $existingTask = Task::find($this->editingId);
             if ($existingTask && $existingTask->workflow_id) {
                 $workflow = DB::table('workflows')->where('id', $existingTask->workflow_id)->first();
                 if ($workflow && in_array($workflow->stage, ['published', 'ready-for-production'])) {
@@ -321,18 +324,18 @@ new #[Layout('components.layouts.app')] class extends Component
             'attachments' => $this->formAttachments ? array_values($this->formAttachments) : null,
         ];
 
-        $data['updated_at'] = now();
         $priorAssignee = null;
         if ($this->editingId) {
-            $priorAssignee = DB::table('tasks')->where('id', $this->editingId)->value('assignee');
-            DB::table('tasks')->where('id', $this->editingId)->update($data);
+            $task = Task::findOrFail($this->editingId);
+            $priorAssignee = $task->assignee;
+            $task->update($data);
             $taskId = $this->editingId;
             $verb = 'updated';
         } else {
             $data['status'] = 'todo';
             $data['progress'] = 0;
-            $data['created_at'] = now();
-            $taskId = DB::table('tasks')->insertGetId($data);
+            $task = Task::create($data);
+            $taskId = $task->id;
             $verb = 'created';
         }
 
@@ -364,9 +367,12 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function getDetailTask()
     {
-        return DB::table('tasks')->leftJoin('clients', 'tasks.client_id', '=', 'clients.id')->leftJoin('users', 'tasks.assignee', '=', 'users.id')
+        return Task::query()
+            ->leftJoin('clients', 'tasks.client_id', '=', 'clients.id')
+            ->leftJoin('users', 'tasks.assignee', '=', 'users.id')
             ->select('tasks.*', 'clients.name as client_name', 'users.name as assignee_name')
-            ->where('tasks.id', $this->detailId)->first();
+            ->where('tasks.id', $this->detailId)
+            ->first();
     }
 
     public function getDetailAttachments(): array
@@ -374,22 +380,22 @@ new #[Layout('components.layouts.app')] class extends Component
         if (!$this->detailId) return [];
         $atts = [];
 
-        $raw = DB::table('tasks')->where('id', $this->detailId)->value('attachments');
-        if (!is_null($raw)) {
+        $task = Task::find($this->detailId);
+        if ($task && !is_null($task->attachments)) {
+            $raw = $task->attachments;
             if (is_string($raw)) $raw = json_decode($raw, true);
             if (is_array($raw)) $atts = array_values(array_filter($raw, fn($a) => is_array($a)));
         }
 
-        $workflowId = DB::table('tasks')->where('id', $this->detailId)->value('workflow_id');
-        if ($workflowId) {
-            $wfAtts = DB::table('workflows')->where('id', $workflowId)->value('attachments');
+        if ($task && $task->workflow_id) {
+            $wfAtts = DB::table('workflows')->where('id', $task->workflow_id)->value('attachments');
             if (!empty($wfAtts)) {
                 if (is_string($wfAtts)) $wfAtts = json_decode($wfAtts, true);
                 if (is_array($wfAtts)) {
                     $atts = array_merge($atts, array_values(array_filter($wfAtts, fn($a) => is_array($a))));
                 }
             }
-            $contentId = DB::table('workflows')->where('id', $workflowId)->value('content_id');
+            $contentId = DB::table('workflows')->where('id', $task->workflow_id)->value('content_id');
             if ($contentId) {
                 $contentAtts = DB::table('contents')->where('id', $contentId)->value('attachments');
                 if (!empty($contentAtts)) {
@@ -493,13 +499,15 @@ new #[Layout('components.layouts.app')] class extends Component
         }
 
         if ($hasFiles && !$hasText) {
-            $existingRaw = DB::table('tasks')->where('id', $this->detailId)->value('attachments');
-            $existing = $existingRaw ? (json_decode($existingRaw, true) ?: []) : [];
+            $task = Task::findOrFail($this->detailId);
+            $existing = $task->attachments ?: [];
+            if (is_string($existing)) {
+                $existing = json_decode($existing, true) ?: [];
+            }
             $merged = array_values(array_merge($existing, $attachments));
 
-            DB::table('tasks')->where('id', $this->detailId)->update([
-                'attachments' => json_encode($merged),
-                'updated_at' => now(),
+            $task->update([
+                'attachments' => $merged,
             ]);
 
             $this->commentAttachments = '[]';
