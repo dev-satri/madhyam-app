@@ -157,7 +157,7 @@ new #[Layout('components.layouts.app')] class extends Component
             $query->where('priority', $this->priorityFilter);
         }
 
-        return $query->orderBy('deadline', 'asc')->get();
+        return $query->orderBy('created_at', 'desc')->get();
     }
 
     public function getItemsForStage(string $stageKey)
@@ -439,6 +439,12 @@ new #[Layout('components.layouts.app')] class extends Component
         $workflow = Workflow::find($id);
         if (!$workflow) return;
 
+        // Prevent editing of published/ready-for-production items
+        if (in_array($workflow->stage, ['published', 'ready-for-production'])) {
+            $this->dispatch('toast', message: 'Cannot edit ' . str_replace('-', ' ', $workflow->stage) . ' items. They are locked.', type: 'error');
+            return;
+        }
+
         $this->formMode = 'edit';
         $this->editingId = $id;
         $this->formTitle = $workflow->title;
@@ -541,14 +547,11 @@ new #[Layout('components.layouts.app')] class extends Component
         if (!$workflow) {
             return;
         }
-        if (in_array($workflow->stage, ['published', 'ready-for-production'])) {
-            $this->dispatch('toast', message: 'Cannot delete a workflow in ' . str_replace('-', ' ', $workflow->stage) . ' stage', type: 'error');
-            return;
-        }
+        // Allow deletion of published/ready-for-production items (they go to trash for recovery)
         $workflow->delete();
         app(ActivityLogger::class)->record(Auth::user(), "Deleted workflow #{$id}");
         $this->dispatch('workflowUpdated');
-        $this->dispatch('toast', message: 'Workflow item deleted', type: 'success');
+        $this->dispatch('toast', message: 'Workflow item moved to trash', type: 'success');
     }
 
     public function openStageManager(): void
@@ -1069,6 +1072,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                         'high'   => 'bg-orange-100 text-orange-600',
                                         'urgent' => 'bg-red-100 text-red-600',
                                     ];
+                                    $isLocked = in_array($item->stage, ['published', 'ready-for-production']);
                                 @endphp
                                 <span
                                     class="inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-semibold {{ $typeColors[$item->type] ?? 'bg-gray-100 text-gray-600' }}"
@@ -1080,6 +1084,11 @@ new #[Layout('components.layouts.app')] class extends Component
                                 >
                                     {{ ucfirst($item->priority) }}
                                 </span>
+                                @if ($isLocked)
+                                    <span class="inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-semibold bg-gray-100 text-gray-600" title="Locked - Cannot edit">
+                                        <i class="fas fa-lock text-[9px]"></i>
+                                    </span>
+                                @endif
                             </div>
 
                             {{-- Title --}}
@@ -1214,11 +1223,17 @@ new #[Layout('components.layouts.app')] class extends Component
                                     ></span>
                                     {{ $detail->stageInfo->name ?? ucfirst($detail->stage) }}
                                 </span>
+                                @if (in_array($detail->stage, ['published', 'ready-for-production']))
+                                    <span class="inline-flex items-center gap-1 rounded-full bg-gray-100 border border-gray-200 px-2.5 py-1 text-[11px] font-semibold text-gray-600" title="Locked - Cannot edit">
+                                        <i class="fas fa-lock text-[10px]"></i>
+                                        Locked
+                                    </span>
+                                @endif
                             </div>
                             <h3 class="text-lg font-bold text-gray-900 leading-snug">{{ $detail->title }}</h3>
                         </div>
                         <div class="flex items-center gap-2 shrink-0">
-                            @if ($this->canEditWorkflow)
+                            @if ($this->canEditWorkflow && !in_array($detail->stage, ['published', 'ready-for-production']))
                                 <button type="button" wire:click="editFromDetail" class="btn btn-secondary btn-sm">
                                     <i class="fas fa-pen text-xs"></i> Edit
                                 </button>
