@@ -1,100 +1,100 @@
 name: CI
 
 on:
-  push:
-    branches: [main, master]
-  pull_request:
-    branches: [main, master]
+    push:
+        branches: [main, master]
+    pull_request:
+        branches: [main, master]
 
 jobs:
-  tests:
-    runs-on: ubuntu-latest
+    tests:
+        runs-on: ubuntu-latest
 
-    steps:
-      - uses: actions/checkout@v4
+        steps:
+            - uses: actions/checkout@v4
 
-      - name: Setup PHP
-        uses: shivammathur/setup-php@v2
-        with:
-          php-version: '8.2'
-          extensions: mbstring, xml, ctype, json, bcmath, pdo, sqlite3
-          coverage: none
+            - name: Setup PHP
+              uses: shivammathur/setup-php@v2
+              with:
+                  php-version: '8.2'
+                  extensions: mbstring, xml, ctype, json, bcmath, pdo, sqlite3
+                  coverage: none
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
+            - name: Setup Node
+              uses: actions/setup-node@v4
+              with:
+                  node-version: '20'
+                  cache: 'npm'
 
-      - name: Get Composer Cache Directory
-        id: composer-cache
-        run: echo "dir=$(composer config cache-files-dir)" >> $GITHUB_OUTPUT
+            - name: Get Composer Cache Directory
+              id: composer-cache
+              run: echo "dir=$(composer config cache-files-dir)" >> $GITHUB_OUTPUT
 
-      - name: Cache Composer Dependencies
-        uses: actions/cache@v4
-        with:
-          path: ${{ steps.composer-cache.outputs.dir }}
-          key: ${{ runner.os }}-composer-${{ hashFiles('**/composer.lock') }}
-          restore-keys: ${{ runner.os }}-composer-
+            - name: Cache Composer Dependencies
+              uses: actions/cache@v4
+              with:
+                  path: ${{ steps.composer-cache.outputs.dir }}
+                  key: ${{ runner.os }}-composer-${{ hashFiles('**/composer.lock') }}
+                  restore-keys: ${{ runner.os }}-composer-
 
-      - name: Install Dependencies
-        run: composer install --no-progress --prefer-dist
+            - name: Install Dependencies
+              run: composer install --no-progress --prefer-dist
 
-      - name: Install NPM Dependencies
-        run: npm ci
+            - name: Install NPM Dependencies
+              run: npm ci
 
-      - name: Build Frontend
-        run: npm run build
+            - name: Build Frontend
+              run: npm run build
 
-      - name: Prepare Environment
-        run: |
-          cp .env.example .env
-          php artisan key:generate
+            - name: Prepare Environment
+              run: |
+                  cp .env.example .env
+                  php artisan key:generate
 
-      - name: Run Tests
-        run: php artisan test
+            - name: Run Tests
+              run: php artisan test
 
-      - name: Laravel Pint (code style)
-        run: composer exec pint -- --test
+            - name: Laravel Pint (code style)
+              run: composer exec pint -- --test
 
-      - name: npm install (for lint)
-        run: npm ci
+            - name: npm install (for lint)
+              run: npm ci
 
-      - name: ESLint
-        run: npm run lint
+            - name: ESLint
+              run: npm run lint
 
-      - name: Prettier check
-        run: npm run format:check
+            - name: Prettier check
+              run: npm run format:check
 
-  build:
-    runs-on: ubuntu-latest
-    needs: tests
+    build:
+        runs-on: ubuntu-latest
+        needs: tests
 
-    steps:
-      - uses: actions/checkout@v4
+        steps:
+            - uses: actions/checkout@v4
 
-      - name: Setup PHP
-        uses: shivammathur/setup-php@v2
-        with:
-          php-version: '8.2'
-          extensions: mbstring, xml, ctype, json, bcmath, pdo, sqlite3
-          coverage: none
+            - name: Setup PHP
+              uses: shivammathur/setup-php@v2
+              with:
+                  php-version: '8.2'
+                  extensions: mbstring, xml, ctype, json, bcmath, pdo, sqlite3
+                  coverage: none
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
+            - name: Setup Node
+              uses: actions/setup-node@v4
+              with:
+                  node-version: '20'
+                  cache: 'npm'
 
-      - name: Install Dependencies
-        run: |
-          composer install --no-progress --prefer-dist --no-dev
-          npm ci
+            - name: Install Dependencies
+              run: |
+                  composer install --no-progress --prefer-dist --no-dev
+                  npm ci
 
-      - name: Build Assets
-        run: npm run build
+            - name: Build Assets
+              run: npm run build
 
-      - name: Verify Build Output
-        run: |
-          ls -la public/build/
-          echo "Build artifacts verified."
+            - name: Verify Build Output
+              run: |
+                  ls -la public/build/
+                  echo "Build artifacts verified."

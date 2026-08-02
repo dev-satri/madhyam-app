@@ -16,8 +16,10 @@ namespace App\Support;
 final class ContentTags
 {
     public const PLATFORMS = ['instagram', 'facebook', 'tiktok', 'youtube', 'twitter', 'linkedin'];
-    public const TYPES     = ['reel', 'post', 'story', 'video', 'carousel', 'blog'];
-    public const ALL       = 'all';
+
+    public const TYPES = ['reel', 'post', 'story', 'video', 'carousel', 'blog'];
+
+    public const ALL = 'all';
 
     /**
      * Coerce any legacy scalar, null, JSON-encoded string, or array into a clean array of known values.

@@ -14,7 +14,7 @@ return new class extends Migration
             $table->json('type_new')->nullable()->after('type');
         });
 
-        DB::statement("UPDATE contents SET platform_new = JSON_ARRAY(platform), type_new = JSON_ARRAY(type)");
+        DB::statement('UPDATE contents SET platform_new = JSON_ARRAY(platform), type_new = JSON_ARRAY(type)');
 
         Schema::table('contents', function (Blueprint $table) {
             $table->dropColumn(['platform', 'type']);

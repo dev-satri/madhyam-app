@@ -1085,7 +1085,10 @@ new #[Layout('components.layouts.app')] class extends Component
                                     {{ ucfirst($item->priority) }}
                                 </span>
                                 @if ($isLocked)
-                                    <span class="inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-semibold bg-gray-100 text-gray-600" title="Locked - Cannot edit">
+                                    <span
+                                        class="inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-semibold bg-gray-100 text-gray-600"
+                                        title="Locked - Cannot edit"
+                                    >
                                         <i class="fas fa-lock text-[9px]"></i>
                                     </span>
                                 @endif
@@ -1224,7 +1227,10 @@ new #[Layout('components.layouts.app')] class extends Component
                                     {{ $detail->stageInfo->name ?? ucfirst($detail->stage) }}
                                 </span>
                                 @if (in_array($detail->stage, ['published', 'ready-for-production']))
-                                    <span class="inline-flex items-center gap-1 rounded-full bg-gray-100 border border-gray-200 px-2.5 py-1 text-[11px] font-semibold text-gray-600" title="Locked - Cannot edit">
+                                    <span
+                                        class="inline-flex items-center gap-1 rounded-full bg-gray-100 border border-gray-200 px-2.5 py-1 text-[11px] font-semibold text-gray-600"
+                                        title="Locked - Cannot edit"
+                                    >
                                         <i class="fas fa-lock text-[10px]"></i>
                                         Locked
                                     </span>

@@ -1000,12 +1000,15 @@ new #[Layout('components.layouts.app')] class extends Component
                         </div>
                         <div class="space-y-0.5" @click.stop>
                             @foreach (array_slice($dayContent, 0, 3) as $item)
-                                @if(($item->_type ?? 'content') === 'task')
+                                @if (($item->_type ?? 'content') === 'task')
                                     <div
                                         class="cal-event task-event"
                                         title="{{ $item->title }} ({{ ucfirst($item->type ?? 'task') }})"
                                     >
-                                        <i class="fas fa-{{ ($item->type ?? '') === 'shoot' ? 'camera' : (($item->type ?? '') === 'editing' ? 'film' : 'check-square') }} text-[8px] mr-0.5 opacity-70"></i>{{ Str::limit($item->title, 12) }}
+                                        <i
+                                            class="fas fa-{{ ($item->type ?? '') === 'shoot' ? 'camera' : (($item->type ?? '') === 'editing' ? 'film' : 'check-square') }} text-[8px] mr-0.5 opacity-70"
+                                        ></i
+                                        >{{ Str::limit($item->title, 12) }}
                                     </div>
                                 @else
                                     @php
@@ -1091,7 +1094,9 @@ new #[Layout('components.layouts.app')] class extends Component
                                                 <span class="badge badge-{{ $_p }}">{{ ucfirst($_p) }}</span>
                                             @endforeach
                                             @if (count($_listPlatforms) > 2)
-                                                <span class="badge bg-gray-100 text-gray-600">+{{ count($_listPlatforms) - 2 }}</span>
+                                                <span class="badge bg-gray-100 text-gray-600"
+                                                    >+{{ count($_listPlatforms) - 2 }}</span
+                                                >
                                             @endif
                                         </div>
                                     @endif
@@ -1105,7 +1110,9 @@ new #[Layout('components.layouts.app')] class extends Component
                                                 <span class="badge badge-{{ $_t }}">{{ ucfirst($_t) }}</span>
                                             @endforeach
                                             @if (count($_listTypes) > 2)
-                                                <span class="badge bg-gray-100 text-gray-600">+{{ count($_listTypes) - 2 }}</span>
+                                                <span class="badge bg-gray-100 text-gray-600"
+                                                    >+{{ count($_listTypes) - 2 }}</span
+                                                >
                                             @endif
                                         </div>
                                     @endif
@@ -1365,7 +1372,9 @@ new #[Layout('components.layouts.app')] class extends Component
                                         wire:click="toggleAllPlatforms"
                                         class="inline-flex items-center gap-2 rounded-lg border {{ $isAllPlatforms ? 'border-[var(--brand)] bg-[var(--brand)] text-white' : 'border-gray-200 bg-white text-gray-700' }} px-3 py-2 cursor-pointer transition-colors hover:border-gray-300"
                                     >
-                                        <i class="fas {{ $isAllPlatforms ? 'fa-check-square' : 'fa-square' }} text-[11px]"></i>
+                                        <i
+                                            class="fas {{ $isAllPlatforms ? 'fa-check-square' : 'fa-square' }} text-[11px]"
+                                        ></i>
                                         <span class="text-[11px] font-semibold uppercase tracking-wide">All</span>
                                     </button>
                                     @foreach (self::PLATFORMS as $p)
@@ -1376,7 +1385,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                                 type="checkbox"
                                                 wire:model="formPlatforms"
                                                 value="{{ $p }}"
-                                                @checked($isAllPlatforms)
+                                                @checked ($isAllPlatforms)
                                                 class="rounded border-gray-300 text-[var(--brand)] focus:ring-[var(--brand)]"
                                             />
                                             <span class="badge badge-{{ $p }} text-[10px]">{{ ucfirst($p) }}</span>
@@ -1401,7 +1410,9 @@ new #[Layout('components.layouts.app')] class extends Component
                                         wire:click="toggleAllTypes"
                                         class="inline-flex items-center gap-2 rounded-lg border {{ $isAllTypes ? 'border-[var(--brand)] bg-[var(--brand)] text-white' : 'border-gray-200 bg-white text-gray-700' }} px-3 py-2 cursor-pointer transition-colors hover:border-gray-300"
                                     >
-                                        <i class="fas {{ $isAllTypes ? 'fa-check-square' : 'fa-square' }} text-[11px]"></i>
+                                        <i
+                                            class="fas {{ $isAllTypes ? 'fa-check-square' : 'fa-square' }} text-[11px]"
+                                        ></i>
                                         <span class="text-[11px] font-semibold uppercase tracking-wide">All</span>
                                     </button>
                                     @foreach (self::TYPES as $t)
@@ -1412,7 +1423,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                                 type="checkbox"
                                                 wire:model="formTypes"
                                                 value="{{ $t }}"
-                                                @checked($isAllTypes)
+                                                @checked ($isAllTypes)
                                                 class="rounded border-gray-300 text-[var(--brand)] focus:ring-[var(--brand)]"
                                             />
                                             <span class="badge badge-{{ $t }} text-[10px]">{{ ucfirst($t) }}</span>
@@ -1527,14 +1538,14 @@ new #[Layout('components.layouts.app')] class extends Component
                                 {{ $detailDate ? $detailDate->format('l, F j, Y') : '' }}
                             </h3>
                             <p class="text-xs text-gray-400 mt-0.5">
-                                @if($detailContentCount > 0)
+                                @if ($detailContentCount > 0)
                                     {{ $detailContentCount }} {{ Str::plural('content', $detailContentCount) }}
                                 @endif
-                                @if($detailContentCount > 0 && $detailTaskCount > 0) · @endif
-                                @if($detailTaskCount > 0)
+                                @if ($detailContentCount > 0 && $detailTaskCount > 0) · @endif
+                                @if ($detailTaskCount > 0)
                                     {{ $detailTaskCount }} {{ Str::plural('task', $detailTaskCount) }}
                                 @endif
-                                @if($detailContentCount === 0 && $detailTaskCount === 0)
+                                @if ($detailContentCount === 0 && $detailTaskCount === 0)
                                     No items scheduled
                                 @endif
                             </p>
@@ -1577,7 +1588,7 @@ new #[Layout('components.layouts.app')] class extends Component
                     @else
                         <div class="divide-y divide-gray-50">
                             @foreach ($detailItems as $item)
-                                @if(($item->_type ?? 'content') === 'task')
+                                @if (($item->_type ?? 'content') === 'task')
                                     {{-- Task / Shoot item --}}
                                     @php
                                         $taskStatusColors = [
@@ -1587,31 +1598,43 @@ new #[Layout('components.layouts.app')] class extends Component
                                         ];
                                         $taskIcons = ['task' => 'check-square', 'shoot' => 'camera', 'editing' => 'film'];
                                     @endphp
-                                    <div class="flex items-start gap-3 px-6 py-3.5 hover:bg-amber-50/30 cursor-pointer transition-colors">
-                                        <div class="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center flex-shrink-0 mt-0.5">
-                                            <i class="fas fa-{{ $taskIcons[$item->type ?? 'task'] ?? 'check-square' }} text-amber-600 text-xs"></i>
+                                    <div
+                                        class="flex items-start gap-3 px-6 py-3.5 hover:bg-amber-50/30 cursor-pointer transition-colors"
+                                    >
+                                        <div
+                                            class="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center flex-shrink-0 mt-0.5"
+                                        >
+                                            <i
+                                                class="fas fa-{{ $taskIcons[$item->type ?? 'task'] ?? 'check-square' }} text-amber-600 text-xs"
+                                            ></i>
                                         </div>
                                         <div class="flex-1 min-w-0">
                                             <div class="flex items-center gap-2">
-                                                <h4 class="text-sm font-semibold text-gray-800 truncate">{{ $item->title }}</h4>
-                                                <span class="flex-shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded-md {{ $taskStatusColors[$item->status ?? 'todo'] ?? 'bg-gray-100 text-gray-600' }}">
+                                                <h4 class="text-sm font-semibold text-gray-800 truncate">
+                                                    {{ $item->title }}
+                                                </h4>
+                                                <span
+                                                    class="flex-shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded-md {{ $taskStatusColors[$item->status ?? 'todo'] ?? 'bg-gray-100 text-gray-600' }}"
+                                                >
                                                     {{ ucwords(str_replace('-', ' ', $item->status ?? 'todo')) }}
                                                 </span>
                                             </div>
                                             <div class="flex items-center gap-1.5 mt-1 text-xs text-gray-400">
-                                                @if($item->client_name ?? null)
+                                                @if ($item->client_name ?? null)
                                                     <span class="text-gray-500">{{ $item->client_name }}</span>
                                                     <span>·</span>
                                                 @endif
                                                 <span class="capitalize">{{ ucfirst($item->type ?? 'task') }}</span>
-                                                @if($item->assignee ?? null)
+                                                @if ($item->assignee ?? null)
                                                     <span>·</span>
                                                     <span>Assigned</span>
                                                 @endif
                                             </div>
                                         </div>
                                         <div class="flex-shrink-0 ml-2">
-                                            <span class="text-[11px] px-2 py-1 rounded-lg bg-amber-50 text-amber-600 font-medium inline-flex items-center gap-1">
+                                            <span
+                                                class="text-[11px] px-2 py-1 rounded-lg bg-amber-50 text-amber-600 font-medium inline-flex items-center gap-1"
+                                            >
                                                 <i class="fas fa-video text-[9px]"></i>Shoot
                                             </span>
                                         </div>
@@ -1644,8 +1667,12 @@ new #[Layout('components.layouts.app')] class extends Component
                                         </div>
                                         <div class="flex-1 min-w-0">
                                             <div class="flex items-center gap-2">
-                                                <h4 class="text-sm font-semibold text-gray-800 truncate">{{ $item->title }}</h4>
-                                                <span class="flex-shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded-md {{ $statusColors[$item->status] ?? 'bg-gray-100 text-gray-600' }}">
+                                                <h4 class="text-sm font-semibold text-gray-800 truncate">
+                                                    {{ $item->title }}
+                                                </h4>
+                                                <span
+                                                    class="flex-shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded-md {{ $statusColors[$item->status] ?? 'bg-gray-100 text-gray-600' }}"
+                                                >
                                                     {{ str_replace('-', ' ', ucfirst($item->status)) }}
                                                 </span>
                                             </div>
@@ -1657,13 +1684,20 @@ new #[Layout('components.layouts.app')] class extends Component
                                                 <span>{{ $_ddTypeLabel }}</span>
                                                 @if ($workflow)
                                                     <span>·</span>
-                                                    <span class="text-indigo-500 font-medium capitalize">{{ str_replace('-', ' ', $workflow->stage) }}</span>
+                                                    <span
+                                                        class="text-indigo-500 font-medium capitalize"
+                                                        >{{ str_replace('-', ' ', $workflow->stage) }}</span
+                                                    >
                                                 @endif
                                             </div>
                                         </div>
                                         <div class="flex-shrink-0 ml-2 flex items-center gap-1.5">
                                             @if ($item->status !== 'published')
-                                                <button wire:click.stop="openDiscussion({{ $item->id }})" class="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition" title="Discussion">
+                                                <button
+                                                    wire:click.stop="openDiscussion({{ $item->id }})"
+                                                    class="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition"
+                                                    title="Discussion"
+                                                >
                                                     <i class="fas fa-comments text-[11px]"></i>
                                                 </button>
                                             @endif
@@ -1672,21 +1706,32 @@ new #[Layout('components.layouts.app')] class extends Component
                                                 $ddBtnIcon = match($item->status) { 'draft' => 'fa-arrow-right', 'scripting' => 'fa-paper-plane', 'revision' => 'fa-redo', default => 'fa-arrow-right' };
                                                 $ddBtnLabel = match($item->status) { 'draft' => 'Script', 'scripting' => 'Submit', 'revision' => 'Resubmit', default => '' };
                                             @endphp
-                                                <button wire:click.stop="submitForApproval({{ $item->id }})" class="text-[11px] px-2.5 py-1 rounded-lg {{ $item->status === 'draft' ? 'bg-gray-100 text-gray-600 hover:bg-gray-200' : 'bg-[var(--brand)] text-white hover:opacity-90' }} font-medium transition">
-                                                    <i class="fas {{ $ddBtnIcon }} mr-1 text-[9px]"></i>{{ $ddBtnLabel }}
+                                                <button
+                                                    wire:click.stop="submitForApproval({{ $item->id }})"
+                                                    class="text-[11px] px-2.5 py-1 rounded-lg {{ $item->status === 'draft' ? 'bg-gray-100 text-gray-600 hover:bg-gray-200' : 'bg-[var(--brand)] text-white hover:opacity-90' }} font-medium transition"
+                                                >
+                                                    <i class="fas {{ $ddBtnIcon }} mr-1 text-[9px]"></i
+                                                    >{{ $ddBtnLabel }}
                                                 </button>
                                             @elseif ($item->status === 'in-review')
                                                 @if ($approval)
-                                                    <span class="text-[11px] px-2 py-1 rounded-lg bg-amber-50 text-amber-600 font-medium inline-flex items-center gap-1">
-                                                        <i class="fas fa-clock text-[9px]"></i>{{ ucfirst($approval->status) }}
+                                                    <span
+                                                        class="text-[11px] px-2 py-1 rounded-lg bg-amber-50 text-amber-600 font-medium inline-flex items-center gap-1"
+                                                    >
+                                                        <i class="fas fa-clock text-[9px]"></i
+                                                        >{{ ucfirst($approval->status) }}
                                                     </span>
                                                 @else
-                                                    <span class="text-[11px] px-2 py-1 rounded-lg bg-amber-50 text-amber-600 font-medium inline-flex items-center gap-1">
+                                                    <span
+                                                        class="text-[11px] px-2 py-1 rounded-lg bg-amber-50 text-amber-600 font-medium inline-flex items-center gap-1"
+                                                    >
                                                         <i class="fas fa-clock text-[9px]"></i>In Review
                                                     </span>
                                                 @endif
                                             @elseif ($item->status === 'published')
-                                                <span class="text-[11px] px-2 py-1 rounded-lg bg-emerald-50 text-emerald-600 font-medium inline-flex items-center gap-1">
+                                                <span
+                                                    class="text-[11px] px-2 py-1 rounded-lg bg-emerald-50 text-emerald-600 font-medium inline-flex items-center gap-1"
+                                                >
                                                     <i class="fas fa-check text-[9px]"></i>Published
                                                 </span>
                                             @endif

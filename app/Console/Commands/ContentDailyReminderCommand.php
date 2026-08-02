@@ -2,8 +2,8 @@
 
 namespace App\Console\Commands;
 
-use App\Support\ContentTags;
 use App\Services\NotificationService;
+use App\Support\ContentTags;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 
