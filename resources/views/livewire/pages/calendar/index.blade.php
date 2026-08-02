@@ -459,8 +459,12 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function deleteContent(int $id): void
     {
+        abort_unless(Auth::check(), 403);
         $content = Content::findOrFail($id);
-        if (in_array($content->status, ['published', 'in-review', 'scheduled'])) {
+        // Admin / super-admin can delete any status; other roles keep the status guard
+        // (and the UI hides the button for them anyway — this is the wire:call defence).
+        $isPrivileged = in_array(Auth::user()->role, ['super-admin', 'admin'], true);
+        if (!$isPrivileged && in_array($content->status, ['published', 'in-review', 'scheduled'])) {
             $this->dispatch('toast', message: 'Cannot delete content with status: ' . $content->status, type: 'error');
 
             return;
@@ -468,7 +472,7 @@ new #[Layout('components.layouts.app')] class extends Component
         $content->delete();
         $this->loadMonthContent();
         $this->dispatch('contentUpdated');
-        $this->dispatch('toast', message: 'Content deleted successfully', type: 'success');
+        $this->dispatch('toast', message: 'Content moved to trash', type: 'success');
     }
 
     public function getStats(): array
@@ -1162,8 +1166,19 @@ new #[Layout('components.layouts.app')] class extends Component
                                             </button>
                                         @else
                                             <span class="text-xs text-green-600 font-medium"
-                                                ><i class="fas fa-lock mr-1"></i>Published</span
+                                                ><i class="fas fa-lock mr-1"></i>{{ ucfirst($item->status) }}</span
                                             >
+                                            @if (in_array(Auth::user()->role, ['super-admin', 'admin'], true))
+                                                <button
+                                                    type="button"
+                                                    wire:click="$dispatch('open-confirm', { title: 'Delete {{ ucfirst($item->status) }} Content?', message: 'Admin override — this item will be moved to trash.', type: 'danger', action: 'deleteContent', params: [{{ $item->id }}] })"
+                                                    class="btn btn-icon btn-ghost"
+                                                    aria-label="Delete content (admin)"
+                                                    title="Delete (admin only)"
+                                                >
+                                                    <i class="fas fa-trash text-gray-400 hover:text-red-500"></i>
+                                                </button>
+                                            @endif
                                         @endif
                                     </div>
                                 </td>
@@ -1734,6 +1749,17 @@ new #[Layout('components.layouts.app')] class extends Component
                                                 >
                                                     <i class="fas fa-check text-[9px]"></i>Published
                                                 </span>
+                                            @endif
+                                            @if (in_array($item->status, ['published', 'in-review', 'scheduled']) && in_array(Auth::user()->role, ['super-admin', 'admin'], true))
+                                                <button
+                                                    type="button"
+                                                    wire:click.stop="$dispatch('open-confirm', { title: 'Delete Content?', message: 'Admin override — this item will be moved to trash.', type: 'danger', action: 'deleteContent', params: [{{ $item->id }}] })"
+                                                    class="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:bg-red-50 hover:text-red-600 transition"
+                                                    aria-label="Delete content (admin)"
+                                                    title="Delete (admin only)"
+                                                >
+                                                    <i class="fas fa-trash text-[11px]"></i>
+                                                </button>
                                             @endif
                                         </div>
                                     </div>

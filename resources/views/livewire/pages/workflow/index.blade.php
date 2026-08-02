@@ -543,11 +543,19 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function delete(int $id): void
     {
+        abort_unless(Auth::check(), 403);
         $workflow = Workflow::find($id);
         if (!$workflow) {
             return;
         }
-        // Allow deletion of published/ready-for-production items (they go to trash for recovery)
+        // Only super-admin / admin can delete locked stages (published, ready-for-production).
+        // Everyone else needs the UI's stage guard — but wire:call bypasses UI, so re-check here.
+        $viewer = Auth::user()->role;
+        $isPrivileged = in_array($viewer, ['super-admin', 'admin'], true);
+        if (!$isPrivileged && in_array($workflow->stage, ['published', 'ready-for-production'], true)) {
+            $this->dispatch('toast', message: 'Only admins can delete locked items', type: 'error');
+            return;
+        }
         $workflow->delete();
         app(ActivityLogger::class)->record(Auth::user(), "Deleted workflow #{$id}");
         $this->dispatch('workflowUpdated');
@@ -1242,6 +1250,16 @@ new #[Layout('components.layouts.app')] class extends Component
                             @if ($this->canEditWorkflow && !in_array($detail->stage, ['published', 'ready-for-production']))
                                 <button type="button" wire:click="editFromDetail" class="btn btn-secondary btn-sm">
                                     <i class="fas fa-pen text-xs"></i> Edit
+                                </button>
+                            @endif
+                            @if (in_array(Auth::user()->role, ['super-admin', 'admin'], true))
+                                <button
+                                    type="button"
+                                    wire:click="$dispatch('open-confirm', { title: 'Delete Workflow Item?', message: 'This item and its activity will be moved to trash.', type: 'danger', action: 'delete', params: [{{ $detail->id }}] })"
+                                    class="btn btn-sm bg-red-50 text-red-600 border border-red-200 hover:bg-red-100"
+                                    aria-label="Delete workflow item"
+                                >
+                                    <i class="fas fa-trash text-xs"></i> Delete
                                 </button>
                             @endif
                             <button
