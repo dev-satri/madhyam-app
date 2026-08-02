@@ -91,6 +91,15 @@ new #[Layout('components.layouts.app')] class extends Component
         $this->allPermissions = RbacService::PERMISSIONS;
         $this->allRoles = DB::table('feature_access')->pluck('role')->toArray();
 
+        // Hide the super-admin column from anyone below super-admin — they can never
+        // read or write super-admin's row, so it must never appear in the matrix.
+        if (Auth::user()->role !== 'super-admin') {
+            $this->allRoles = array_values(array_filter(
+                $this->allRoles,
+                fn ($r) => $r !== 'super-admin'
+            ));
+        }
+
         foreach ($this->allFeatures as $feat) {
             foreach ($this->allRoles as $role) {
                 $row = DB::table('feature_access')->where('role', $role)->first();
@@ -140,7 +149,10 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function toggleFeature(string $role, string $feature): void
     {
-        abort_unless(Auth::user()->role === 'super-admin', 403);
+        $viewer = Auth::user()->role;
+        abort_unless(in_array($viewer, ['super-admin', 'admin'], true), 403);
+        // Non-super-admin can never write the super-admin row, even via a crafted wire:call.
+        abort_if($viewer !== 'super-admin' && $role === 'super-admin', 403);
         $this->featureMatrix[$role][$feature] = !$this->featureMatrix[$role][$feature];
         DB::table('feature_access')->where('role', $role)->update([
             'features' => json_encode($this->featureMatrix[$role]),
@@ -151,14 +163,22 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function togglePerm(string $role, string $perm): void
     {
-        abort_unless(Auth::user()->role === 'super-admin', 403);
+        $viewer = Auth::user()->role;
+        abort_unless(in_array($viewer, ['super-admin', 'admin'], true), 403);
+        abort_if($viewer !== 'super-admin' && $role === 'super-admin', 403);
         $this->dataMatrix[$role][$perm] = !$this->dataMatrix[$role][$perm];
     }
 
     public function saveDataAccess(): void
     {
-        abort_unless(Auth::user()->role === 'super-admin', 403);
+        $viewer = Auth::user()->role;
+        abort_unless(in_array($viewer, ['super-admin', 'admin'], true), 403);
         foreach ($this->allRoles as $role) {
+            // Belt-and-suspenders: $allRoles is already filtered in mount(), but never
+            // let a non-super-admin overwrite super-admin's permissions.
+            if ($viewer !== 'super-admin' && $role === 'super-admin') {
+                continue;
+            }
             DB::table('data_access')->where('role', $role)->update([
                 'permissions' => json_encode($this->dataMatrix[$role] ?? []),
                 'updated_at' => now(),
@@ -170,6 +190,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function openRoleForm(?int $id = null): void
     {
+        abort_unless(Auth::user()->role === 'super-admin', 403);
         $this->formRoleFeatures = array_fill_keys(RbacService::FEATURES, false);
         $this->formRolePerms = array_fill_keys(RbacService::PERMISSIONS, false);
 
@@ -206,6 +227,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function saveRole(): void
     {
+        abort_unless(Auth::user()->role === 'super-admin', 403);
         $this->validate(['formRoleName' => 'required|string|max:255']);
         $key = \Illuminate\Support\Str::slug($this->formRoleName);
 
@@ -219,9 +241,13 @@ new #[Layout('components.layouts.app')] class extends Component
             $role = DB::table('custom_roles')->where('id', $this->editingRoleId)->first();
             $roleKey = $role->role_key;
         } else {
-            $exists = DB::table('custom_roles')->where('role_key', $key)->exists();
-            if ($exists) {
-                $this->dispatch('toast', message: 'Role already exists', type: 'error');
+            // Reject slug collisions with any existing role — built-in (feature_access
+            // seed) or custom. Without this, a role named "Admin" or "Super Admin"
+            // would silently hijack the real admin/super-admin toggles.
+            $collides = DB::table('custom_roles')->where('role_key', $key)->exists()
+                || DB::table('feature_access')->where('role', $key)->exists();
+            if ($collides) {
+                $this->dispatch('toast', message: 'That role name is reserved or already exists', type: 'error');
                 return;
             }
             DB::table('custom_roles')->insert([
@@ -255,6 +281,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function deleteRole(int $id): void
     {
+        abort_unless(Auth::user()->role === 'super-admin', 403);
         $role = DB::table('custom_roles')->where('id', $id)->first();
         if ($role) {
             $memberCount = DB::table('users')->where('role', $role->role_key)->count();
@@ -467,7 +494,7 @@ new #[Layout('components.layouts.app')] class extends Component
                     <div class="bg-white rounded-2xl border border-gray-100 p-2 flex lg:flex-col gap-1 overflow-x-auto lg:overflow-x-visible flex-nowrap">
                         <button wire:click="$set('activeTab', 'general')" class="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors {{ $activeTab === 'general' ? 'bg-[rgba(var(--brand-rgb),0.08)] text-[var(--brand)]' : 'text-gray-600 hover:bg-gray-50' }}"><i class="fas fa-cog"></i> General</button>
                         <button wire:click="$set('activeTab', 'working-hours')" class="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors {{ $activeTab === 'working-hours' ? 'bg-[rgba(var(--brand-rgb),0.08)] text-[var(--brand)]' : 'text-gray-600 hover:bg-gray-50' }}"><i class="fas fa-clock"></i> Working Hours</button>
-                        @if(Auth::user()->role === 'super-admin')
+                        @if(in_array(Auth::user()->role, ['super-admin', 'admin'], true))
                         <button wire:click="$set('activeTab', 'feature-access')" class="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors {{ $activeTab === 'feature-access' ? 'bg-[rgba(var(--brand-rgb),0.08)] text-[var(--brand)]' : 'text-gray-600 hover:bg-gray-50' }}"><i class="fas fa-key"></i> Feature Access</button>
                         <button wire:click="$set('activeTab', 'data-access')" class="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors {{ $activeTab === 'data-access' ? 'bg-[rgba(var(--brand-rgb),0.08)] text-[var(--brand)]' : 'text-gray-600 hover:bg-gray-50' }}"><i class="fas fa-database"></i> Data Access</button>
                         @endif
@@ -556,7 +583,9 @@ new #[Layout('components.layouts.app')] class extends Component
                                     <h2 class="font-bold text-lg">Feature Access Control</h2>
                                     <p class="text-sm text-gray-500 mt-1">Toggle which features each role can access in the sidebar</p>
                                 </div>
-                                <button wire:click="openRoleForm" class="btn btn-secondary btn-sm"><i class="fas fa-plus text-sm"></i> Manage Roles</button>
+                                @if(Auth::user()->role === 'super-admin')
+                                    <button wire:click="openRoleForm" class="btn btn-secondary btn-sm"><i class="fas fa-plus text-sm"></i> Manage Roles</button>
+                                @endif
                             </div>
 
                             @php
@@ -631,10 +660,11 @@ new #[Layout('components.layouts.app')] class extends Component
                                     <div class="text-sm text-blue-700">
                                         <p class="font-medium">How it works</p>
                                         <ul class="mt-1 space-y-1 text-xs">
-                                            <li>• <strong>Super Admin</strong> always has access to all features (cannot be changed)</li>
                                             <li>• Toggle switches control sidebar visibility for each role</li>
                                             <li>• Changes take effect immediately for users with that role</li>
-                                            <li>• Use "Manage Roles" to create custom roles</li>
+                                            @if(Auth::user()->role === 'super-admin')
+                                                <li>• Use "Manage Roles" to create custom roles</li>
+                                            @endif
                                         </ul>
                                     </div>
                                 </div>
