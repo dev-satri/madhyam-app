@@ -6,6 +6,7 @@ use App\Models\File;
 use App\Services\ActivityLogger;
 use App\Services\NotificationService;
 use App\Services\PackageService;
+use Anuzpandey\LaravelNepaliDate\LaravelNepaliDate;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -87,8 +88,14 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function mount(): void
     {
-        $this->currentMonth = (int) now()->month;
-        $this->currentYear = (int) now()->year;
+        if (\App\Support\NepaliDate::isBs()) {
+            $bsDate = LaravelNepaliDate::from(now()->format('Y-m-d'))->toNepaliDateArray();
+            $this->currentMonth = (int) $bsDate->month;
+            $this->currentYear = (int) $bsDate->year;
+        } else {
+            $this->currentMonth = (int) now()->month;
+            $this->currentYear = (int) now()->year;
+        }
         $this->loadClients();
         $this->loadMonthContent();
     }
@@ -142,15 +149,31 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function goToday(): void
     {
-        $this->currentMonth = (int) now()->month;
-        $this->currentYear = (int) now()->year;
+        if (\App\Support\NepaliDate::isBs()) {
+            $bsDate = LaravelNepaliDate::from(now()->format('Y-m-d'))->toNepaliDateArray();
+            $this->currentMonth = (int) $bsDate->month;
+            $this->currentYear = (int) $bsDate->year;
+        } else {
+            $this->currentMonth = (int) now()->month;
+            $this->currentYear = (int) now()->year;
+        }
         $this->loadMonthContent();
     }
 
     public function loadMonthContent(): void
     {
-        $start = Carbon::createFromDate($this->currentYear, $this->currentMonth, 1)->startOfWeek(Carbon::SUNDAY);
-        $end = Carbon::createFromDate($this->currentYear, $this->currentMonth, 1)->endOfMonth()->endOfWeek(Carbon::SATURDAY);
+        if (\App\Support\NepaliDate::isBs()) {
+            $startBs = sprintf('%04d-%02d-01', $this->currentYear, $this->currentMonth);
+            $startAd = LaravelNepaliDate::from($startBs, 'Y-m-d', 'np')->toEnglishDate('Y-m-d');
+            $startCarbon = Carbon::parse($startAd);
+
+            $totalDays = LaravelNepaliDate::daysInMonth($this->currentMonth, $this->currentYear);
+            $start = $startCarbon->copy()->startOfWeek(Carbon::SUNDAY);
+            $end = $startCarbon->copy()->addDays($totalDays - 1)->endOfWeek(Carbon::SATURDAY);
+        } else {
+            $start = Carbon::createFromDate($this->currentYear, $this->currentMonth, 1)->startOfWeek(Carbon::SUNDAY);
+            $end = Carbon::createFromDate($this->currentYear, $this->currentMonth, 1)->endOfMonth()->endOfWeek(Carbon::SATURDAY);
+        }
 
         // ── Content items ──
         $query = DB::table('contents')
@@ -240,6 +263,47 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function getCalendarDays(): array
     {
+        if (\App\Support\NepaliDate::isBs()) {
+            $startBs = sprintf('%04d-%02d-01', $this->currentYear, $this->currentMonth);
+            $startAd = LaravelNepaliDate::from($startBs, 'Y-m-d', 'np')->toEnglishDate('Y-m-d');
+            $firstDayCarbon = Carbon::parse($startAd);
+
+            $totalDays = LaravelNepaliDate::daysInMonth($this->currentMonth, $this->currentYear);
+
+            $gridStart = $firstDayCarbon->copy()->startOfWeek(Carbon::SUNDAY);
+            $gridEnd = $firstDayCarbon->copy()->addDays($totalDays - 1)->endOfWeek(Carbon::SATURDAY);
+
+            $days = [];
+            $current = $gridStart->copy();
+            $bsDay = 0;
+
+            while ($current->lte($gridEnd)) {
+                $adDate = $current->format('Y-m-d');
+
+                if ($current->format('Y-m-d') === $firstDayCarbon->format('Y-m-d')) {
+                    $bsDay = 1;
+                }
+
+                $isCurrentMonth = $bsDay >= 1 && $bsDay <= $totalDays;
+
+                $days[] = [
+                    'carbon' => $current->copy(),
+                    'ad_date' => $adDate,
+                    'bs_date' => $isCurrentMonth ? sprintf('%04d-%02d-%02d', $this->currentYear, $this->currentMonth, $bsDay) : '',
+                    'bs_day' => $isCurrentMonth ? $bsDay : 0,
+                    'bs_month' => $isCurrentMonth ? $this->currentMonth : 0,
+                    'is_current_bs_month' => $isCurrentMonth,
+                ];
+
+                if ($bsDay > 0) {
+                    $bsDay++;
+                }
+                $current->addDay();
+            }
+
+            return $days;
+        }
+
         $start = Carbon::createFromDate($this->currentYear, $this->currentMonth, 1)->startOfWeek(Carbon::SUNDAY);
         $end = Carbon::createFromDate($this->currentYear, $this->currentMonth, 1)->endOfMonth()->endOfWeek(Carbon::SATURDAY);
 
@@ -947,7 +1011,11 @@ new #[Layout('components.layouts.app')] class extends Component
                         <i class="fas fa-chevron-left text-xs"></i>
                     </button>
                     <h3 class="text-sm font-bold text-gray-900 min-w-[160px] text-center">
-                        {{ Carbon::createFromDate($currentYear, $currentMonth, 1)->format('F Y') }}
+                        @if (\App\Support\NepaliDate::isBs())
+                            {{ \App\Support\NepaliDate::bsMonthName($currentMonth) }} {{ $currentYear }}
+                        @else
+                            {{ Carbon::createFromDate($currentYear, $currentMonth, 1)->format('F Y') }}
+                        @endif
                     </h3>
                     <button wire:click="nextMonth" class="btn btn-ghost btn-sm" title="Next Month">
                         <i class="fas fa-chevron-right text-xs"></i>
@@ -971,18 +1039,28 @@ new #[Layout('components.layouts.app')] class extends Component
 
             {{-- Calendar Grid --}}
             @php
-                $calendarDays = $this->getCalendarDays();
-                $today = now()->format('Y-m-d');
                 $monthDays = $this->getCalendarDays();
+                $todayAd = now()->format('Y-m-d');
+                $isBsMode = \App\Support\NepaliDate::isBs();
             @endphp
             <div class="grid grid-cols-7">
                 @foreach ($monthDays as $day)
                     @php
-                        $dateStr = $day->format('Y-m-d');
-                        $isToday = $dateStr === $today;
-                        $isWeekend = in_array($day->dayOfWeek, [0, 6]);
-                        $isOtherMonth = $day->month !== $currentMonth;
-                        $dayContent = $this->getContentForDay($dateStr);
+                        if ($isBsMode) {
+                            $dateStr = $day['ad_date'];
+                            $isToday = $dateStr === $todayAd;
+                            $isWeekend = in_array($day['carbon']->dayOfWeek, [0, 6]);
+                            $isOtherMonth = !$day['is_current_bs_month'];
+                            $dayContent = $this->getContentForDay($dateStr);
+                            $dayNumber = $day['bs_day'];
+                        } else {
+                            $dateStr = $day->format('Y-m-d');
+                            $isToday = $dateStr === $todayAd;
+                            $isWeekend = in_array($day->dayOfWeek, [0, 6]);
+                            $isOtherMonth = $day->month !== $currentMonth;
+                            $dayContent = $this->getContentForDay($dateStr);
+                            $dayNumber = (int) $day->format('j');
+                        }
                     @endphp
                     <div
                         class="cal-day {{ $isToday ? 'today' : '' }} {{ $isWeekend && !$isOtherMonth ? 'weekend' : '' }} {{ $isOtherMonth ? 'other-month' : '' }}"
@@ -993,7 +1071,7 @@ new #[Layout('components.layouts.app')] class extends Component
                             <span
                                 class="text-[11px] font-semibold {{ $isToday ? 'bg-[var(--brand)] text-white w-5 h-5 rounded-full flex items-center justify-center' : ($isOtherMonth ? 'text-gray-300' : 'text-gray-600') }}"
                             >
-                                {{ $day->format('j') }}
+                                {{ ($isBsMode && $dayNumber <= 0) ? '' : $dayNumber }}
                             </span>
                             @if (count($dayContent) > 0)
                                 <span
@@ -1063,7 +1141,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                 <td class="whitespace-nowrap">
                                     <span
                                         class="text-gray-600"
-                                        >{{ \Carbon\Carbon::parse($item->date)->format('M d, Y') }}</span
+                                        >{{ \App\Support\NepaliDate::display($item->date) }}</span
                                     >
                                 </td>
                                 <td>
@@ -1340,7 +1418,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
                             <div>
                                 <label class="form-label">Date <span class="text-red-500">*</span></label>
-                                <input type="date" wire:model="formDate" class="form-input" />
+                                <x-date-input model="formDate" name="formDate" />
                                 @error ('formDate')
                                     <span class="text-xs text-red-500 mt-1 block">{{ $message }}</span>
                                 @enderror
@@ -1351,7 +1429,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                 <label class="form-label"
                                     >Due Date <span class="text-gray-400 text-xs">(optional)</span></label
                                 >
-                                <input type="date" wire:model="formDueDate" class="form-input" />
+                                <x-date-input model="formDueDate" name="formDueDate" />
                                 <p class="text-[11px] text-gray-400 mt-1">When content must be completed by</p>
                             </div>
 
@@ -1550,7 +1628,7 @@ new #[Layout('components.layouts.app')] class extends Component
                     <div class="flex items-center justify-between">
                         <div>
                             <h3 class="text-base font-bold text-gray-900">
-                                {{ $detailDate ? $detailDate->format('l, F j, Y') : '' }}
+                                {{ $detailDate ? \App\Support\NepaliDate::display($detailDate) : '' }}
                             </h3>
                             <p class="text-xs text-gray-400 mt-0.5">
                                 @if ($detailContentCount > 0)
@@ -1863,13 +1941,13 @@ new #[Layout('components.layouts.app')] class extends Component
                                 <p class="text-[11px] uppercase tracking-wide font-semibold text-gray-400 mb-1">Date</p>
                                 <p class="text-gray-800 text-xs flex items-center gap-1.5">
                                     <i class="fas fa-calendar-alt text-gray-400"></i>
-                                    {{ $discContent->date ? $discContent->date->format('M d, Y') : '—' }}
+                                    {{ $discContent->date ? \App\Support\NepaliDate::display($discContent->date) : '—' }}
                                 </p>
                             </div>
                             @if ($discContent->due_date)
                                 <div>
                                     <p class="text-[11px] uppercase tracking-wide font-semibold text-gray-400 mb-1">Due Date</p>
-                                    <p class="text-gray-800 text-xs flex items-center gap-1.5"><i class="fas fa-clock text-gray-400"></i> {{ $discContent->due_date->format('M d, Y') }}</p>
+                                    <p class="text-gray-800 text-xs flex items-center gap-1.5"><i class="fas fa-clock text-gray-400"></i> {{ \App\Support\NepaliDate::display($discContent->due_date) }}</p>
                                 </div>
                             @endif
                             <div>

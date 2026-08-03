@@ -542,7 +542,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                 </span>
                             </td>
                             <td class="text-gray-600">
-                                {{ $client->contract_end ? $client->contract_end->format('M d, Y') : '-' }}
+                                {{ $client->contract_end ? \App\Support\NepaliDate::display($client->contract_end) : '-' }}
                             </td>
                             <td>
                                 <div class="flex items-center justify-end gap-1">
@@ -684,11 +684,11 @@ new #[Layout('components.layouts.app')] class extends Component
                             </div>
                             <div>
                                 <label class="form-label">Contract Start</label>
-                                <input type="date" wire:model="contract_start" class="form-input" />
+                                <x-date-input model="contract_start" name="contract_start" />
                             </div>
                             <div>
                                 <label class="form-label">Contract End</label>
-                                <input type="date" wire:model="contract_end" class="form-input" />
+                                <x-date-input model="contract_end" name="contract_end" />
                                 @error ('contract_end')
                                     <span class="text-xs text-red-500 mt-1 block">{{ $message }}</span>
                                 @enderror
@@ -934,11 +934,11 @@ new #[Layout('components.layouts.app')] class extends Component
                                 </div>
                                 <div>
                                     <p class="text-[11px] font-semibold uppercase tracking-wider text-gray-400 mb-1">Contract Start</p>
-                                    <p class="text-sm text-gray-700">{{ $selectedClient->contract_start ? $selectedClient->contract_start->format('M d, Y') : '-' }}</p>
+                                    <p class="text-sm text-gray-700">{{ $selectedClient->contract_start ? \App\Support\NepaliDate::display($selectedClient->contract_start) : '-' }}</p>
                                 </div>
                                 <div>
                                     <p class="text-[11px] font-semibold uppercase tracking-wider text-gray-400 mb-1">Contract End</p>
-                                    <p class="text-sm text-gray-700">{{ $selectedClient->contract_end ? $selectedClient->contract_end->format('M d, Y') : '-' }}</p>
+                                    <p class="text-sm text-gray-700">{{ $selectedClient->contract_end ? \App\Support\NepaliDate::display($selectedClient->contract_end) : '-' }}</p>
                                 </div>
                             </div>
 
@@ -1139,7 +1139,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                                 <td class="text-gray-600">{{ $wf->type ?? '-' }}</td>
                                                 <td class="text-gray-600">{{ $wf->stage ?? '-' }}</td>
                                                 <td class="text-gray-600">
-                                                    {{ $wf->deadline ? $wf->deadline->format('M d, Y') : '-' }}
+                                                    {{ $wf->deadline ? \App\Support\NepaliDate::display($wf->deadline) : '-' }}
                                                 </td>
                                                 <td>
                                                     <span
@@ -1192,7 +1192,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                                 </td>
                                                 <td class="text-gray-600">{{ $c->type ?? '-' }}</td>
                                                 <td class="text-gray-600">
-                                                    {{ $c->date ? $c->date->format('M d, Y') : '-' }}
+                                                    {{ $c->date ? \App\Support\NepaliDate::display($c->date) : '-' }}
                                                 </td>
                                                 <td>
                                                     <span
@@ -1251,7 +1251,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                                     >
                                                 </td>
                                                 <td class="text-gray-600">
-                                                    {{ $inv->due_date ? $inv->due_date->format('M d, Y') : '-' }}
+                                                    {{ $inv->due_date ? \App\Support\NepaliDate::display($inv->due_date) : '-' }}
                                                 </td>
                                             </tr>
                                         @endforeach

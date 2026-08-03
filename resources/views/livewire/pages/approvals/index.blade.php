@@ -1227,7 +1227,7 @@ new #[Layout('components.layouts.app')] class extends Component
                             </div>
                             <div>
                                 <p class="text-[11px] uppercase tracking-wide font-semibold text-gray-400 mb-1">Date</p>
-                                <p class="text-gray-800 text-xs flex items-center gap-1.5"><i class="fas fa-calendar-alt text-gray-400"></i> {{ $appr->created_at ? \Carbon\Carbon::parse($appr->created_at)->format('M d, Y') : '—' }}</p>
+                                <p class="text-gray-800 text-xs flex items-center gap-1.5"><i class="fas fa-calendar-alt text-gray-400"></i> {{ $appr->created_at ? \App\Support\NepaliDate::display($appr->created_at) : '—' }}</p>
                             </div>
                         </div>
 
@@ -1260,9 +1260,9 @@ new #[Layout('components.layouts.app')] class extends Component
                                     @endif
                                     @if($linkedContent->date)
                                         <div class="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-4 text-xs text-gray-500">
-                                            <span><i class="fas fa-calendar-alt mr-1"></i>{{ \Carbon\Carbon::parse($linkedContent->date)->format('M d, Y') }}</span>
+                                            <span><i class="fas fa-calendar-alt mr-1"></i>{{ \App\Support\NepaliDate::display($linkedContent->date) }}</span>
                                             @if($linkedContent->due_date)
-                                                <span><i class="fas fa-clock mr-1"></i>Due {{ \Carbon\Carbon::parse($linkedContent->due_date)->format('M d, Y') }}</span>
+                                                <span><i class="fas fa-clock mr-1"></i>Due {{ \App\Support\NepaliDate::display($linkedContent->due_date) }}</span>
                                             @endif
                                         </div>
                                     @endif

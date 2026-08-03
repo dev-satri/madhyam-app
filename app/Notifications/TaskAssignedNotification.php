@@ -6,6 +6,7 @@ use App\Models\Task;
 use App\Models\User;
 use App\Notifications\Channels\InAppDatabaseChannel;
 use App\Notifications\Concerns\SkipsSelfActor;
+use App\Support\NepaliDate;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -43,7 +44,7 @@ class TaskAssignedNotification extends Notification implements ShouldQueue
     {
         return [
             'text' => 'You were assigned ' . strtolower($this->kindLabel()) . ' "' . $this->task->title . '"'
-                . ($this->task->due_date ? ' — due ' . $this->task->due_date->format('M d, Y') : ''),
+                . ($this->task->due_date ? ' — due ' . NepaliDate::display($this->task->due_date) : ''),
             'type' => 'info',
             'link' => route('tasks', absolute: false) . '#task-' . $this->task->id,
         ];

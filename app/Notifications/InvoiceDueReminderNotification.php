@@ -3,6 +3,7 @@
 namespace App\Notifications;
 
 use App\Models\Invoice;
+use App\Support\NepaliDate;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -27,7 +28,7 @@ class InvoiceDueReminderNotification extends Notification implements ShouldQueue
         $client = $this->invoice->client;
         $contactName = $client->contact ?? $client->name;
         $netAmount = number_format($this->invoice->net_amount, 2);
-        $dueDate = $this->invoice->due_date->format('M d, Y');
+        $dueDate = NepaliDate::display($this->invoice->due_date);
         $dayWord = $this->daysUntilDue === 1 ? 'day' : 'days';
 
         $urgency = match (true) {

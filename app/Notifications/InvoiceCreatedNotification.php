@@ -4,6 +4,7 @@ namespace App\Notifications;
 
 use App\Models\Invoice;
 use App\Services\InvoicePdfService;
+use App\Support\NepaliDate;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -26,7 +27,7 @@ class InvoiceCreatedNotification extends Notification implements ShouldQueue
         $client = $this->invoice->client;
         $contactName = $client->contact ?? $client->name;
         $netAmount = number_format($this->invoice->net_amount, 2);
-        $dueDate = $this->invoice->due_date->format('M d, Y');
+        $dueDate = NepaliDate::display($this->invoice->due_date);
 
         $isInstallment = $this->invoice->payment_status === 'installment' && ! empty($this->invoice->installment_plan);
         $installmentInfo = '';

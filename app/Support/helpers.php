@@ -6,6 +6,7 @@ use App\Models\Department;
 use App\Models\Package;
 use App\Models\Setting;
 use App\Models\User;
+use App\Support\NepaliDate;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
 
@@ -165,7 +166,7 @@ if (! function_exists('fmtDate')) {
             return '';
         }
 
-        return ($date instanceof Carbon ? $date : Carbon::parse($date))->format('M d, Y');
+        return NepaliDate::display($date);
     }
 }
 
@@ -176,6 +177,39 @@ if (! function_exists('fmtDateTime')) {
             return '';
         }
 
-        return ($ts instanceof Carbon ? $ts : Carbon::parse($ts))->format('M d, Y g:i A');
+        return NepaliDate::displayDateTime($ts);
+    }
+}
+
+if (! function_exists('fmtDateShort')) {
+    function fmtDateShort($date): string
+    {
+        if (! $date) {
+            return '';
+        }
+
+        return NepaliDate::displayShort($date);
+    }
+}
+
+if (! function_exists('fmtDateDayMonth')) {
+    function fmtDateDayMonth($date): string
+    {
+        if (! $date) {
+            return '';
+        }
+
+        return NepaliDate::displayDayMonth($date);
+    }
+}
+
+if (! function_exists('fmtDateMonthYear')) {
+    function fmtDateMonthYear($date): string
+    {
+        if (! $date) {
+            return '';
+        }
+
+        return NepaliDate::displayMonthYear($date);
     }
 }

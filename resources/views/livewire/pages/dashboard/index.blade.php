@@ -564,7 +564,7 @@ new #[Layout('components.layouts.app')] class extends Component
                             </div>
                             <div class="flex-1 min-w-0">
                                 <p class="text-sm font-medium text-gray-900 truncate">{{ $d->title }}</p>
-                                <p class="text-[11px] text-gray-400">{{ \Carbon\Carbon::parse($d->date)->format('M d, Y') }}</p>
+                                <p class="text-[11px] text-gray-400">{{ \App\Support\NepaliDate::display($d->date) }}</p>
                             </div>
                             @if(\Carbon\Carbon::parse($d->date)->isPast())
                                 <span class="badge badge-overdue text-[10px]">Overdue</span>

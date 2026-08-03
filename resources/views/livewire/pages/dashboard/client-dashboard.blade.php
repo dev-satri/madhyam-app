@@ -438,7 +438,7 @@ new #[Layout('components.layouts.app')] class extends Component {
                                             >
                                             <span class="text-xs text-gray-400"
                                                 ><i class="fas fa-calendar-alt mr-1"></i
-                                                >{{ $project->deadline?->format('M d, Y') ?? 'No deadline' }}</span
+                                                >{{ $project->deadline ? \App\Support\NepaliDate::display($project->deadline) : 'No deadline' }}</span
                                             >
                                         </div>
                                     </div>

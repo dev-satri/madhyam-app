@@ -27,13 +27,13 @@ Thanks for choosing <strong>{{ config('app.name', 'Madhyam') }}</strong> as your
 @if ($client->contract_start)
 <tr>
 <td style="padding: 4px 0; font-size: 14px; color: #64748b;">Contract Start</td>
-<td style="padding: 4px 0; font-size: 14px; color: #1e293b; font-weight: 600; text-align: right;">{{ $client->contract_start->format('M d, Y') }}</td>
+<td style="padding: 4px 0; font-size: 14px; color: #1e293b; font-weight: 600; text-align: right;">{{ \App\Support\NepaliDate::display($client->contract_start) }}</td>
 </tr>
 @endif
 @if ($client->contract_end)
 <tr>
 <td style="padding: 4px 0; font-size: 14px; color: #64748b;">Contract End</td>
-<td style="padding: 4px 0; font-size: 14px; color: #1e293b; font-weight: 600; text-align: right;">{{ $client->contract_end->format('M d, Y') }}</td>
+<td style="padding: 4px 0; font-size: 14px; color: #1e293b; font-weight: 600; text-align: right;">{{ \App\Support\NepaliDate::display($client->contract_end) }}</td>
 </tr>
 @endif
 </table>

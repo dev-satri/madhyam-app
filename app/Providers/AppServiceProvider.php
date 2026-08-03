@@ -48,6 +48,30 @@ class AppServiceProvider extends ServiceProvider
             return $user && $user->role === 'super-admin';
         });
 
+        Blade::directive('date', function (string $expression) {
+            return "<?php echo \\App\\Support\\NepaliDate::display($expression); ?>";
+        });
+
+        Blade::directive('dateShort', function (string $expression) {
+            return "<?php echo \\App\\Support\\NepaliDate::displayShort($expression); ?>";
+        });
+
+        Blade::directive('dateDayMonth', function (string $expression) {
+            return "<?php echo \\App\\Support\\NepaliDate::displayDayMonth($expression); ?>";
+        });
+
+        Blade::directive('dateDateTime', function (string $expression) {
+            return "<?php echo \\App\\Support\\NepaliDate::displayDateTime($expression); ?>";
+        });
+
+        Blade::directive('dateMonthYear', function (string $expression) {
+            return "<?php echo \\App\\Support\\NepaliDate::displayMonthYear($expression); ?>";
+        });
+
+        Blade::directive('dateInput', function (string $expression) {
+            return "<?php echo \\App\\Support\\NepaliDate::displayInputValue($expression); ?>";
+        });
+
         // Persist scheduler run history for the System Health tab.
         // Laravel doesn't track last-run out of the box — hook into
         // ScheduledTaskFinished and append to a JSON ledger.

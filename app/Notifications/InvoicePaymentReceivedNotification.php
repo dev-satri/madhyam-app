@@ -5,6 +5,7 @@ namespace App\Notifications;
 use App\Models\Invoice;
 use App\Models\InvoicePayment;
 use App\Services\InvoicePdfService;
+use App\Support\NepaliDate;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -34,7 +35,7 @@ class InvoicePaymentReceivedNotification extends Notification implements ShouldQ
         $netAmount = number_format($this->invoice->net_amount, 2);
         $remaining = number_format(max(0, $this->invoice->net_amount - $this->invoice->total_paid), 2);
         $method = ucfirst($this->payment->method);
-        $paymentDate = $this->payment->date->format('M d, Y');
+        $paymentDate = NepaliDate::display($this->payment->date);
         $isFullyPaid = $this->invoice->status === 'paid';
         $note = $this->payment->note;
 

@@ -791,7 +791,7 @@ new #[Layout('components.layouts.app')] class extends Component
                             </div>
                             <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                 <div><label class="form-label">Phone</label><input type="text" wire:model="formPhone" class="form-input"></div>
-                                <div><label class="form-label">Join Date</label><input type="date" wire:model="formJoinDate" class="form-input"></div>
+                                <div><label class="form-label">Join Date</label><x-date-input model="formJoinDate" name="formJoinDate" /></div>
                             </div>
                             <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                 <div>

@@ -371,7 +371,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                 <span class="badge {{ $l->status_class }}">{{ ucfirst($l->status) }}</span>
                             </div>
                             <p class="text-xs text-gray-500">
-                                {{ \Carbon\Carbon::parse($l->start_date)->format('M d, Y') }} — {{ \Carbon\Carbon::parse($l->end_date)->format('M d, Y') }}
+                                {{ \App\Support\NepaliDate::display($l->start_date) }} — {{ \App\Support\NepaliDate::display($l->end_date) }}
                                 · {{ \Carbon\Carbon::parse($l->start_date)->diffInDays(\Carbon\Carbon::parse($l->end_date)) + 1 }} day(s)
                             </p>
                             @if($l->reason)
@@ -434,8 +434,8 @@ new #[Layout('components.layouts.app')] class extends Component
                         </div>
                         @endif
                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                            <div><label class="form-label">Start Date</label><input type="date" wire:model="formStartDate" class="form-input"></div>
-                            <div><label class="form-label">End Date</label><input type="date" wire:model="formEndDate" class="form-input"></div>
+                            <div><label class="form-label">Start Date</label><x-date-input model="formStartDate" name="formStartDate" /></div>
+                            <div><label class="form-label">End Date</label><x-date-input model="formEndDate" name="formEndDate" /></div>
                         </div>
                         <div><label class="form-label">Reason</label><textarea wire:model="formReason" class="form-textarea" rows="2" placeholder="Optional reason"></textarea></div>
                     </div>
@@ -491,8 +491,8 @@ new #[Layout('components.layouts.app')] class extends Component
                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
                             <div><span class="text-gray-500">Type:</span> <span class="badge badge-{{ $dl->type === 'sick' ? 'danger' : ($dl->type === 'casual' ? 'info' : ($dl->type === 'annual' ? 'success' : 'warning')) }}">{{ ucfirst($dl->type ?? '') }}</span></div>
                             <div><span class="text-gray-500">Status:</span> <span class="badge badge-{{ $dl->status === 'approved' ? 'success' : ($dl->status === 'rejected' ? 'danger' : 'warning') }}">{{ ucfirst($dl->status ?? '') }}</span></div>
-                            <div><span class="text-gray-500">Start:</span> {{ $dl->start_date ? \Carbon\Carbon::parse($dl->start_date)->format('M d, Y') : '—' }}</div>
-                            <div><span class="text-gray-500">End:</span> {{ $dl->end_date ? \Carbon\Carbon::parse($dl->end_date)->format('M d, Y') : '—' }}</div>
+                            <div><span class="text-gray-500">Start:</span> {{ $dl->start_date ? \App\Support\NepaliDate::display($dl->start_date) : '—' }}</div>
+                            <div><span class="text-gray-500">End:</span> {{ $dl->end_date ? \App\Support\NepaliDate::display($dl->end_date) : '—' }}</div>
                             <div class="col-span-2"><span class="text-gray-500">Duration:</span> {{ $dl->start_date && $dl->end_date ? \Carbon\Carbon::parse($dl->start_date)->diffInDays(\Carbon\Carbon::parse($dl->end_date)) + 1 : 0 }} day(s)</div>
                         </div>
 

@@ -316,7 +316,7 @@ new #[Layout('components.layouts.app')] class extends Component
                     <div class="flex items-baseline justify-between mb-4">
                         <div>
                             <h3 class="font-bold text-sm text-gray-900">Where the money went</h3>
-                            <p class="text-xs text-gray-400 mt-0.5">{{ $this->monthFilter ? \Illuminate\Support\Carbon::createFromFormat('Y-m', $this->monthFilter)->format('F Y') : now()->format('F Y') }} · {{ count($this->categoryBreakdown) }} categor{{ count($this->categoryBreakdown) === 1 ? 'y' : 'ies' }}</p>
+                            <p class="text-xs text-gray-400 mt-0.5">{{ $this->monthFilter ? \App\Support\NepaliDate::displayMonthYear(\Illuminate\Support\Carbon::createFromFormat('Y-m', $this->monthFilter)) : \App\Support\NepaliDate::displayMonthYear(now()) }} · {{ count($this->categoryBreakdown) }} categor{{ count($this->categoryBreakdown) === 1 ? 'y' : 'ies' }}</p>
                         </div>
                         <div class="text-right">
                             <div class="text-xs uppercase tracking-wider text-gray-400">Total</div>
@@ -602,7 +602,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                 </div>
                                 <div>
                                     <label class="form-label">Date</label>
-                                    <input type="date" wire:model="formDate" class="form-input">
+                                    <x-date-input model="formDate" name="formDate" />
                                     <span wire:error="formDate" class="text-red-500 text-xs mt-1 block"></span>
                                 </div>
                             </div>

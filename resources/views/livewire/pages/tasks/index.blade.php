@@ -684,7 +684,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                 <td><span class="badge badge-{{ $t->type }}">{{ ucfirst($t->type) }}</span></td>
                                 <td><span class="badge badge-{{ $t->priority }}">{{ ucfirst($t->priority) }}</span></td>
                                 <td class="text-gray-500">{{ $t->assignee_name ?? '—' }}</td>
-                                <td class="{{ $t->due_date && \Carbon\Carbon::parse($t->due_date)->isPast() && $t->status!=='completed' ? 'text-red-600 font-semibold' : '' }}">{{ $t->due_date ? \Carbon\Carbon::parse($t->due_date)->format('M d, Y') : '—' }}</td>
+                                <td class="{{ $t->due_date && \Carbon\Carbon::parse($t->due_date)->isPast() && $t->status!=='completed' ? 'text-red-600 font-semibold' : '' }}">{{ $t->due_date ? \App\Support\NepaliDate::display($t->due_date) : '—' }}</td>
                                 <td>
                                     @php
                                         $nextStatus = match($t->status) { 'todo' => 'In Progress', 'in-progress' => 'Completed', default => 'To Do' };
@@ -737,7 +737,7 @@ new #[Layout('components.layouts.app')] class extends Component
                         @if ($formClientId)
                             <div><label class="form-label">Link to Workflow <span class="text-gray-400 text-xs">(optional)</span></label><select wire:model="formWorkflowId" class="form-select"><option value="">No linked workflow</option>@foreach($this->getAvailableWorkflows() as $wf)<option value="{{ $wf->id }}">{{ $wf->title }} — {{ ucfirst($wf->type) }} ({{ ucfirst($wf->stage) }})</option>@endforeach</select></div>
                         @endif
-                        <div><label class="form-label">Due Date</label><input type="date" wire:model="formDueDate" class="form-input" min="{{ now()->format('Y-m-d') }}"></div>
+                        <div><label class="form-label">Due Date</label><x-date-input model="formDueDate" name="formDueDate" /></div>
                         @if($formType === 'shoot')
                         <div><label class="form-label">Location</label><input type="text" wire:model="formLocation" class="form-input" placeholder="Shoot location"></div>
                         <div><label class="form-label">Checklist</label><textarea wire:model="formChecklist" class="form-textarea" placeholder="One item per line"></textarea></div>
@@ -824,7 +824,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                 @if ($task->due_date)
                                     <p class="{{ $isTaskOverdue ? 'text-red-600 font-semibold' : 'text-gray-800' }} text-xs flex items-center gap-1.5">
                                         <i class="fas fa-calendar-alt {{ $isTaskOverdue ? 'text-red-500' : 'text-gray-400' }}"></i>
-                                        {{ \Carbon\Carbon::parse($task->due_date)->format('M d, Y') }}
+                                        {{ \App\Support\NepaliDate::display($task->due_date) }}
                                     </p>
                                 @else
                                     <p class="text-gray-400 italic text-xs">No due date</p>
@@ -844,7 +844,7 @@ new #[Layout('components.layouts.app')] class extends Component
                             @endif
                             <div>
                                 <p class="text-[11px] uppercase tracking-wide font-semibold text-gray-400 mb-1">Created</p>
-                                <p class="text-gray-800 text-xs flex items-center gap-1.5"><i class="fas fa-clock text-gray-400"></i> {{ $task->created_at ? \Carbon\Carbon::parse($task->created_at)->format('M d, Y') : '—' }}</p>
+                                <p class="text-gray-800 text-xs flex items-center gap-1.5"><i class="fas fa-clock text-gray-400"></i> {{ $task->created_at ? \App\Support\NepaliDate::display($task->created_at) : '—' }}</p>
                             </div>
                         </div>
 

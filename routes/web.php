@@ -1,9 +1,12 @@
 <?php
 
+use Anuzpandey\LaravelNepaliDate\LaravelNepaliDate;
 use App\Http\Controllers\DataBackupController;
 use App\Livewire\Actions\Logout;
 use App\Models\Invoice;
 use App\Services\InvoicePdfService;
+use Carbon\Carbon;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
@@ -231,4 +234,91 @@ Route::middleware('auth:web,client')->group(function () {
 
         return $pdf->inline($pdfService->getFileName($invoice));
     })->name('invoices.pdf.view');
+});
+
+/*
+|--------------------------------------------------------------------------
+| Date Conversion API (for BS date picker)
+|--------------------------------------------------------------------------
+*/
+Route::middleware('auth:web,client')->prefix('api')->group(function () {
+    Route::get('convert/ad-to-bs', function (Request $request) {
+        $date = $request->input('date');
+        if (! $date) {
+            return response()->json(['error' => 'Date parameter required'], 400);
+        }
+
+        try {
+            $dto = LaravelNepaliDate::from($date)->toNepaliDateArray();
+
+            return response()->json([
+                'bs_date' => $dto->year . '-' . $dto->month . '-' . $dto->day,
+                'year' => (int) $dto->year,
+                'month' => (int) $dto->month,
+                'day' => (int) $dto->day,
+                'month_name' => $dto->monthName,
+                'day_name' => $dto->dayName,
+            ]);
+        } catch (Exception $e) {
+            return response()->json(['error' => 'Invalid date'], 400);
+        }
+    });
+
+    Route::get('convert/bs-to-ad', function (Request $request) {
+        $date = $request->input('date');
+        if (! $date) {
+            return response()->json(['error' => 'Date parameter required'], 400);
+        }
+
+        try {
+            $adDate = LaravelNepaliDate::from($date, 'Y-m-d', 'np')->toEnglishDate('Y-m-d');
+
+            return response()->json(['ad_date' => $adDate]);
+        } catch (Exception $e) {
+            return response()->json(['error' => 'Invalid BS date'], 400);
+        }
+    });
+
+    Route::get('bs-calendar', function (Request $request) {
+        $year = (int) $request->input('year');
+        $month = (int) $request->input('month');
+
+        if ($year < 2000 || $year > 2099 || $month < 1 || $month > 12) {
+            return response()->json(['error' => 'Invalid year or month'], 400);
+        }
+
+        $totalDays = LaravelNepaliDate::daysInMonth($month, $year);
+
+        $firstDayBs = sprintf('%04d-%02d-01', $year, $month);
+        $firstDayAd = LaravelNepaliDate::from($firstDayBs, 'Y-m-d', 'np')->toEnglishDate('Y-m-d');
+        $startOfWeek = Carbon::parse($firstDayAd)->dayOfWeek;
+
+        $days = [];
+        for ($i = 0; $i < $startOfWeek; $i++) {
+            $days[] = ['day' => 0, 'bs_date' => '', 'ad_date' => '', 'other_month' => true];
+        }
+
+        for ($day = 1; $day <= $totalDays; $day++) {
+            $bsDate = sprintf('%04d-%02d-%02d', $year, $month, $day);
+            $adDate = LaravelNepaliDate::from($bsDate, 'Y-m-d', 'np')->toEnglishDate('Y-m-d');
+            $days[] = [
+                'day' => $day,
+                'bs_date' => $bsDate,
+                'ad_date' => $adDate,
+                'other_month' => false,
+            ];
+        }
+
+        $remaining = (7 - (count($days) % 7)) % 7;
+        for ($i = 0; $i < $remaining; $i++) {
+            $days[] = ['day' => 0, 'bs_date' => '', 'ad_date' => '', 'other_month' => true];
+        }
+
+        return response()->json([
+            'year' => $year,
+            'month' => $month,
+            'total_days' => $totalDays,
+            'days' => $days,
+        ]);
+    });
 });

@@ -19,6 +19,7 @@ new #[Layout('components.layouts.app')] class extends Component
     public string $agencyEmail = '';
     public string $agencyPhone = '';
     public string $currency = 'NPR';
+    public string $dateFormat = 'AD';
     public string $brandColor = '#4f46e5';
     public int $fileRetentionDays = 5;
     public float $baseSalaryDefault = 25000;
@@ -59,6 +60,18 @@ new #[Layout('components.layouts.app')] class extends Component
     public ?string $lastActionOutput = null;
     public ?string $expandedFailedUuid = null;
 
+    #[\Livewire\Attributes\Computed]
+    public function datePreview(): string
+    {
+        return \App\Support\NepaliDate::display(now());
+    }
+
+    #[\Livewire\Attributes\Computed]
+    public function datePreviewFull(): string
+    {
+        return \App\Support\NepaliDate::displayDateTime(now());
+    }
+
     public function mount(): void
     {
         $settings = DB::table('settings')->where('id', 1)->first();
@@ -67,6 +80,7 @@ new #[Layout('components.layouts.app')] class extends Component
             $this->agencyEmail = $settings->agency_email ?? '';
             $this->agencyPhone = $settings->agency_phone ?? '';
             $this->currency = $settings->currency;
+            $this->dateFormat = $settings->date_format ?? 'AD';
             $this->brandColor = $settings->brand_color;
             $this->fileRetentionDays = $settings->file_retention_days;
             $this->baseSalaryDefault = (float) $settings->base_salary_default;
@@ -124,6 +138,7 @@ new #[Layout('components.layouts.app')] class extends Component
             'agency_email' => $this->agencyEmail ?: null,
             'agency_phone' => $this->agencyPhone ?: null,
             'currency' => $this->currency,
+            'date_format' => $this->dateFormat,
             'brand_color' => $this->brandColor,
             'file_retention_days' => $this->fileRetentionDays,
             'base_salary_default' => $this->baseSalaryDefault,
@@ -133,6 +148,7 @@ new #[Layout('components.layouts.app')] class extends Component
             'daily_wage_divisor' => $this->dailyWageDivisor,
             'updated_at' => now(),
         ]);
+        \App\Support\NepaliDate::resetCache();
         $this->dispatch('toast', message: 'General settings saved', type: 'success');
     }
 
@@ -519,6 +535,38 @@ new #[Layout('components.layouts.app')] class extends Component
                                 <div>
                                     <label class="form-label">Currency</label>
                                     <select wire:model="currency" class="form-select"><option value="NPR">NPR (रु)</option><option value="INR">INR (₹)</option><option value="USD">USD ($)</option></select>
+                                </div>
+                                <div>
+                                    <label class="form-label">Date Format</label>
+                                    <select wire:model="dateFormat" class="form-select">
+                                        <option value="AD">AD (Gregorian)</option>
+                                        <option value="BS">BS (Bikram Sambat)</option>
+                                    </select>
+                                </div>
+                                <div class="md:col-span-2">
+                                    <div class="rounded-xl border border-gray-100 bg-gray-50 p-4">
+                                        <div class="flex items-center gap-2 mb-3">
+                                            <i class="fas fa-eye text-gray-400 text-sm"></i>
+                                            <span class="text-xs font-semibold text-gray-500 uppercase tracking-wider">Date Preview</span>
+                                        </div>
+                                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                            <div class="bg-white rounded-lg border border-gray-100 p-3">
+                                                <span class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Today's Date</span>
+                                                <p class="text-lg font-bold text-gray-900 mt-1">{{ $this->datePreview }}</p>
+                                            </div>
+                                            <div class="bg-white rounded-lg border border-gray-100 p-3">
+                                                <span class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">With Time</span>
+                                                <p class="text-lg font-bold text-gray-900 mt-1">{{ $this->datePreviewFull }}</p>
+                                            </div>
+                                        </div>
+                                        <p class="text-xs text-gray-400 mt-3">
+                                            @if($dateFormat === 'BS')
+                                                <i class="fas fa-info-circle mr-1"></i>Bikram Sambat (B.S.) is the official calendar of Nepal. All dates will display in BS format.
+                                            @else
+                                                <i class="fas fa-info-circle mr-1"></i>Gregorian calendar (A.D.) is the international standard. All dates will display in AD format.
+                                            @endif
+                                        </p>
+                                    </div>
                                 </div>
                                 <div>
                                     <label class="form-label">Brand Color</label>

@@ -6,6 +6,7 @@ use App\Models\Client;
 use App\Models\Notification;
 use App\Models\Task;
 use App\Models\User;
+use App\Support\NepaliDate;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 
@@ -113,7 +114,7 @@ class NotificationService
         $package = $client->linkedPackage?->name ?? ucfirst($client->package);
 
         $note = $this->sendNotification(
-            text: "Contract for {$client->name} ({$package}) expires in {$daysUntil} day(s) on {$client->contract_end->format('M d, Y')}. Monthly: NPR " . number_format($client->amount, 2),
+            text: "Contract for {$client->name} ({$package}) expires in {$daysUntil} day(s) on " . NepaliDate::display($client->contract_end) . '. Monthly: NPR ' . number_format($client->amount, 2),
             type: $type,
             link: route('clients', absolute: false),
             forRole: 'manager',
@@ -123,7 +124,7 @@ class NotificationService
         // Also email the client contact if available
         if ($client->email) {
             $contactName = $client->contact ?? $client->name;
-            $expiryDate = $client->contract_end->format('M d, Y');
+            $expiryDate = NepaliDate::display($client->contract_end);
             $monthlyAmount = number_format($client->amount, 2);
             $this->emailNotify(
                 to: $client->email,
@@ -150,7 +151,7 @@ class NotificationService
         // Email escalation to manager
         $managerEmail = User::where('role', 'manager')->value('email');
         if ($managerEmail) {
-            $expiryDate = $client->contract_end->format('M d, Y');
+            $expiryDate = NepaliDate::display($client->contract_end);
             $monthlyAmount = number_format($client->amount, 2);
             $this->emailNotify(
                 to: $managerEmail,

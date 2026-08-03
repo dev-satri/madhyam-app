@@ -1311,7 +1311,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                         <i
                                             class="fas fa-calendar-alt {{ $isOverdueDetail ? 'text-red-500' : 'text-gray-400' }}"
                                         ></i>
-                                        {{ $detail->deadline->format('M d, Y') }}
+                                        {{ \App\Support\NepaliDate::display($detail->deadline) }}
                                         @if ($isOverdueDetail)
                                             <span
                                                 class="inline-flex items-center rounded-md bg-red-100 text-red-700 px-1.5 py-0.5 text-[10px] font-semibold"
@@ -1325,7 +1325,7 @@ new #[Layout('components.layouts.app')] class extends Component
                             </div>
                             <div>
                                 <p class="text-[11px] uppercase tracking-wide font-semibold text-gray-400 mb-1">Created</p>
-                                <p class="text-gray-800 text-xs flex items-center gap-1.5"><i class="fas fa-clock text-gray-400"></i> {{ $detail->created_at?->format('M d, Y') ?? '—' }}</p>
+                                <p class="text-gray-800 text-xs flex items-center gap-1.5"><i class="fas fa-clock text-gray-400"></i> {{ $detail->created_at ? \App\Support\NepaliDate::display($detail->created_at) : '—' }}</p>
                             </div>
                             @if ($detail->content_id)
                                 <div>
@@ -1598,12 +1598,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
                             <div>
                                 <label class="form-label">Deadline</label>
-                                <input
-                                    type="date"
-                                    wire:model="formDeadline"
-                                    class="form-input"
-                                    min="{{ now()->format('Y-m-d') }}"
-                                />
+                                <x-date-input model="formDeadline" name="formDeadline" />
                             </div>
 
                             <div class="md:col-span-2">

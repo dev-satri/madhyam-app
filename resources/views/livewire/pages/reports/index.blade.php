@@ -1147,7 +1147,7 @@ new #[Layout('components.layouts.app')] class extends Component
                 @if($topCategories->count())
                     <div class="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
                         <div class="px-4 py-3 bg-gray-50 border-b border-gray-100">
-                            <h3 class="text-sm font-bold text-gray-700"><i class="fas fa-chart-pie mr-1.5 text-gray-400"></i>Top Expense Categories — {{ now()->format('F Y') }}</h3>
+                            <h3 class="text-sm font-bold text-gray-700"><i class="fas fa-chart-pie mr-1.5 text-gray-400"></i>Top Expense Categories — {{ \App\Support\NepaliDate::displayMonthYear(now()) }}</h3>
                         </div>
                         <div class="p-4 space-y-3">
                             @foreach($topCategories as $cat)
@@ -1226,7 +1226,7 @@ new #[Layout('components.layouts.app')] class extends Component
                             </div>
                             <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                 <div><label class="form-label">Amount</label><input type="number" wire:model="formAmount" class="form-input" step="0.01"><span wire:error="formAmount" class="text-red-500 text-xs mt-1 block"></span></div>
-                                <div><label class="form-label">Due Date</label><input type="date" wire:model="formDueDate" class="form-input"><span wire:error="formDueDate" class="text-red-500 text-xs mt-1 block"></span></div>
+                                <div><label class="form-label">Due Date</label><x-date-input model="formDueDate" name="formDueDate" /><span wire:error="formDueDate" class="text-red-500 text-xs mt-1 block"></span></div>
                             </div>
                             <div><label class="form-label">Description</label><input type="text" wire:model="formDescription" class="form-input"></div>
                             <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -1324,7 +1324,7 @@ new #[Layout('components.layouts.app')] class extends Component
                             </div>
 
                             {{-- Date --}}
-                            <div><label class="form-label">Date</label><input type="date" wire:model="payDate" class="form-input"><span wire:error="payDate" class="text-red-500 text-xs mt-1 block"></span></div>
+                            <div><label class="form-label">Date</label><x-date-input model="payDate" name="payDate" /><span wire:error="payDate" class="text-red-500 text-xs mt-1 block"></span></div>
 
                             {{-- Method --}}
                             <div><label class="form-label">Payment Method</label>

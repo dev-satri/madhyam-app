@@ -393,16 +393,18 @@
         <tr>
             <td>
                 <div class="m-label">Issued</div>
-                <div class="m-value">{{ $invoice->created_at->format('M d, Y') }}</div>
+                <div class="m-value">{{ \App\Support\NepaliDate::display($invoice->created_at) }}</div>
             </td>
             <td>
                 <div class="m-label">Due date</div>
-                <div class="m-value {{ $isOverdue ? 'overdue' : '' }}">{{ $invoice->due_date->format('M d, Y') }}</div>
+                <div class="m-value {{ $isOverdue ? 'overdue' : '' }}">
+                    {{ \App\Support\NepaliDate::display($invoice->due_date) }}
+                </div>
             </td>
             <td>
                 <div class="m-label">{{ $isPaid ? 'Paid on' : 'Balance due' }}</div>
                 @if ($isPaid && $invoice->paid_date)
-                    <div class="m-value paid">{{ $invoice->paid_date->format('M d, Y') }}</div>
+                    <div class="m-value paid">{{ \App\Support\NepaliDate::display($invoice->paid_date) }}</div>
                 @else
                     <div class="m-value {{ $isOverdue ? 'overdue' : '' }}">Rs. {{ number_format($remaining, 2) }}</div>
                 @endif
@@ -546,7 +548,7 @@
                 @foreach ($payments as $payment)
                     <tr>
                         <td class="pay-date" style="width: 20%">
-                            {{ \Carbon\Carbon::parse($payment->date)->format('M d, Y') }}
+                            {{ \App\Support\NepaliDate::display($payment->date) }}
                         </td>
                         <td class="pay-method" style="width: 20%">
                             {{ ucfirst($payment->method) }}
@@ -569,10 +571,10 @@
             This document serves as your receipt.
         @else
             <strong>Thank you for your business.</strong>
-            Please settle by {{ $invoice->due_date->format('M d, Y') }} to avoid service disruption.
+            Please settle by {{ \App\Support\NepaliDate::display($invoice->due_date) }} to avoid service disruption.
         @endif
         <br />
-        System-generated invoice · Generated {{ now()->format('M d, Y') }}
+        System-generated invoice · Generated {{ \App\Support\NepaliDate::display(now()) }}
     </div>
 </body>
 </html>

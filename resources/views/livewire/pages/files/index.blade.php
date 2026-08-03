@@ -796,7 +796,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                         <span class="text-xs text-gray-500 font-mono">{{ $file->size_label }}</span>
                                     </div>
                                     <div class="col-span-2">
-                                        <span class="text-xs text-gray-500">{{ $file->created_at ? \Carbon\Carbon::parse($file->created_at)->format('M d, Y') : '—' }}</span>
+                                        <span class="text-xs text-gray-500">{{ $file->created_at ? \App\Support\NepaliDate::display($file->created_at) : '—' }}</span>
                                     </div>
                                     <div class="col-span-2 flex justify-end gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
                                         @if(!$file->extended && isset($file->expiry_class) && $file->expiry_class !== 'badge-danger')
@@ -1133,7 +1133,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                         <div class="space-y-2">
                                             <div class="flex items-center justify-between text-sm">
                                                 <span class="text-gray-500">Uploaded</span>
-                                                <span class="text-gray-800 text-xs">{{ $pf->created_at ? \Carbon\Carbon::parse($pf->created_at)->format('M d, Y') : '—' }}</span>
+                                                <span class="text-gray-800 text-xs">{{ $pf->created_at ? \App\Support\NepaliDate::display($pf->created_at) : '—' }}</span>
                                             </div>
                                             @if($pf->expiry_date)
                                                 <div class="flex items-center justify-between text-sm">

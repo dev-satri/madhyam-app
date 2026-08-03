@@ -294,7 +294,7 @@ new #[Layout('components.layouts.app')] class extends Component
                 'client_id' => $client->id,
                 'client_name' => $client->name,
                 'amount' => (float) $client->amount,
-                'contract_end' => $client->contract_end ? Carbon::parse($client->contract_end)->format('M d, Y') : 'N/A',
+'contract_end' => $client->contract_end ? \App\Support\NepaliDate::display($client->contract_end) : 'N/A',
                 'contract_days_left' => $client->contract_end ? max(0, Carbon::parse($client->contract_end)->diffInDays(now())) : null,
                 'content_used' => $usage['content_created'] ?? 0,
                 'content_limit' => (int) $pkg->content_limit,
@@ -446,8 +446,8 @@ new #[Layout('components.layouts.app')] class extends Component
             'package_name' => $pkg?->name ?? 'Unknown',
             'package_slug' => $client->package,
             'amount' => (float) $client->amount,
-            'contract_start' => $client->contract_start ? Carbon::parse($client->contract_start)->format('M d, Y') : 'N/A',
-            'contract_end' => $client->contract_end ? Carbon::parse($client->contract_end)->format('M d, Y') : 'N/A',
+            'contract_start' => $client->contract_start ? \App\Support\NepaliDate::display($client->contract_start) : 'N/A',
+            'contract_end' => $client->contract_end ? \App\Support\NepaliDate::display($client->contract_end) : 'N/A',
             'contract_days_left' => $client->contract_end ? max(0, Carbon::parse($client->contract_end)->diffInDays(now())) : null,
             'content_used' => $usage['content_created'] ?? 0,
             'content_limit' => $pkg ? (int) $pkg->content_limit : 0,
@@ -768,7 +768,7 @@ new #[Layout('components.layouts.app')] class extends Component
         @endphp
             <div class="bg-blue-50 rounded-xl p-3 mb-4 flex items-center gap-4 text-xs text-blue-700">
                 <i class="fas fa-calendar-day text-blue-500"></i>
-                <span class="font-semibold">{{ $now->format('F Y') }}</span>
+                <span class="font-semibold">{{ \App\Support\NepaliDate::displayMonthYear($now) }}</span>
                 <span>{{ $daysPassed }}/{{ $daysInMonth }} days passed</span>
                 <span>{{ $daysRemaining }} days remaining</span>
                 <div class="flex-1 h-1.5 bg-blue-200 rounded-full overflow-hidden">
@@ -1484,7 +1484,9 @@ new #[Layout('components.layouts.app')] class extends Component
                     <div class="bg-blue-50 rounded-xl p-4">
                         <div class="flex items-center gap-2 mb-2">
                             <i class="fas fa-clock text-blue-500"></i>
-                            <h4 class="text-xs font-bold text-blue-900">Current Month: {{ $now->format('F Y') }}</h4>
+                            <h4 class="text-xs font-bold text-blue-900">
+                                Current Month: {{ \App\Support\NepaliDate::displayMonthYear($now) }}
+                            </h4>
                         </div>
                         <div class="flex items-center gap-4 text-xs text-blue-700">
                             <span
@@ -1694,7 +1696,7 @@ new #[Layout('components.layouts.app')] class extends Component
                         <div class="flex items-center gap-2 mb-2">
                             <i class="fas fa-clock text-blue-500"></i>
                             <h4 class="text-xs font-bold text-blue-900">
-                                {{ now()->format('F Y') }} — {{ $clientDetail['days_passed'] }}/{{ $clientDetail['days_in_month'] }} days
+                                {{ \App\Support\NepaliDate::displayMonthYear(now()) }} — {{ $clientDetail['days_passed'] }}/{{ $clientDetail['days_in_month'] }} days
                                 ({{ $clientDetail['month_progress'] }}%)
                             </h4>
                         </div>

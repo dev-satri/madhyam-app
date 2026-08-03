@@ -98,7 +98,7 @@ new class extends Component
                 <div><span class="text-gray-500">Type:</span> <span class="badge badge-info">{{ ucfirst($file->type) }}</span></div>
                 <div><span class="text-gray-500">Size:</span> {{ round($file->size / 1024, 1) }} KB</div>
                 <div><span class="text-gray-500">Uploaded by:</span> {{ $file->uploader_name ?? 'Unknown' }}</div>
-                <div><span class="text-gray-500">Date:</span> {{ $file->created_at?->format('M d, Y') ?? 'Unknown' }}</div>
+                <div><span class="text-gray-500">Date:</span> {{ $file->created_at ? \App\Support\NepaliDate::display($file->created_at) : 'Unknown' }}</div>
                 @if($file->expiry_date)
                     <div><span class="text-gray-500">Expiry:</span> <span class="badge {{ $expiryClass }}">{{ $expiryLabel }}</span></div>
                 @endif

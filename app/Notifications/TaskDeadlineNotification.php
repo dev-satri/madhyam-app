@@ -4,6 +4,7 @@ namespace App\Notifications;
 
 use App\Models\Task;
 use App\Notifications\Channels\InAppDatabaseChannel;
+use App\Support\NepaliDate;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -42,7 +43,7 @@ class TaskDeadlineNotification extends Notification implements ShouldQueue
     {
         return [
             'text' => $this->headline() . ': "' . $this->task->title . '"'
-                . ($this->task->due_date ? ' — due ' . $this->task->due_date->format('M d, Y') : ''),
+                . ($this->task->due_date ? ' — due ' . NepaliDate::display($this->task->due_date) : ''),
             'type' => $this->when === 'today' ? 'warning' : 'info',
             'link' => route('tasks', absolute: false) . '#task-' . $this->task->id,
         ];

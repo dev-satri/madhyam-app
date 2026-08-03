@@ -1,6 +1,7 @@
 import './bootstrap';
 import './tiptap-editor';
 import './attachment-preview';
+import './bs-datepicker';
 
 import Chart from 'chart.js/auto';
 import ChartDataLabels from 'chartjs-plugin-datalabels';
