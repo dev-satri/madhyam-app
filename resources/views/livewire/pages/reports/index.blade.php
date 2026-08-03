@@ -1108,7 +1108,7 @@ new #[Layout('components.layouts.app')] class extends Component
             {{-- SALARY & WORKERS TAB --}}
             @if($activeTab === 'salary' && !$this->isClient)
                 <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-                    <div class="stat-card"><div class="stat-icon bg-indigo-100 text-indigo-600"><i class="fas fa-users"></i></div><div class="stat-value">{{ $this->salaryStats['member_count'] }}</div><div class="stat-label">Team Members</div></div>
+                    <div class="stat-card"><div class="stat-icon brand-bg-light brand-text"><i class="fas fa-users"></i></div><div class="stat-value">{{ $this->salaryStats['member_count'] }}</div><div class="stat-label">Team Members</div></div>
                     <div class="stat-card"><div class="stat-icon bg-green-100 text-green-600"><i class="fas fa-money-bill-wave"></i></div><div class="stat-value">{{ fmtCurrency($this->salaryStats['total_payroll']) }}</div><div class="stat-label">Total Payroll</div></div>
                     <div class="stat-card"><div class="stat-icon bg-blue-100 text-blue-600"><i class="fas fa-check-circle"></i></div><div class="stat-value">{{ fmtCurrency($this->salaryStats['paid']) }}</div><div class="stat-label">Paid</div></div>
                     <div class="stat-card"><div class="stat-icon bg-amber-100 text-amber-600"><i class="fas fa-hourglass-half"></i></div><div class="stat-value">{{ fmtCurrency($this->salaryStats['pending']) }}</div><div class="stat-label">Pending</div></div>
@@ -1120,8 +1120,8 @@ new #[Layout('components.layouts.app')] class extends Component
                 </div>
 
                 <div class="bg-white rounded-xl border border-gray-200 p-6 text-center">
-                    <div class="w-12 h-12 rounded-full bg-indigo-100 flex items-center justify-center mx-auto mb-3">
-                        <i class="fas fa-users-cog text-indigo-500 text-xl"></i>
+                    <div class="w-12 h-12 rounded-full brand-bg-light flex items-center justify-center mx-auto mb-3">
+                        <i class="fas fa-users-cog brand-text text-xl"></i>
                     </div>
                     <h3 class="font-bold text-gray-800 mb-1">Salary & Workers</h3>
                     <p class="text-sm text-gray-500 mb-4">Manage salaries, generate payslips, and track worker payments</p>

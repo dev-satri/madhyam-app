@@ -82,6 +82,9 @@ new #[Layout('components.layouts.app')] class extends Component
             $this->currency = $settings->currency;
             $this->dateFormat = $settings->date_format ?? 'AD';
             $this->brandColor = $settings->brand_color;
+            $rgb = self::hexToRgb($this->brandColor);
+            config(['app.brand_color' => $this->brandColor]);
+            config(['app.brand_color_rgb' => $rgb]);
             $this->fileRetentionDays = $settings->file_retention_days;
             $this->baseSalaryDefault = (float) $settings->base_salary_default;
             $this->overtimeRateDefault = (float) $settings->overtime_rate_default;
@@ -148,8 +151,23 @@ new #[Layout('components.layouts.app')] class extends Component
             'daily_wage_divisor' => $this->dailyWageDivisor,
             'updated_at' => now(),
         ]);
+
+        $rgb = self::hexToRgb($this->brandColor);
+        config(['app.brand_color' => $this->brandColor]);
+        config(['app.brand_color_rgb' => $rgb]);
+
         \App\Support\NepaliDate::resetCache();
         $this->dispatch('toast', message: 'General settings saved', type: 'success');
+    }
+
+    public static function hexToRgb(string $hex): string
+    {
+        $hex = ltrim($hex, '#');
+        if (strlen($hex) === 3) {
+            $hex = $hex[0].$hex[0].$hex[1].$hex[1].$hex[2].$hex[2];
+        }
+
+        return hexdec(substr($hex, 0, 2)).', '.hexdec(substr($hex, 2, 2)).', '.hexdec(substr($hex, 4, 2));
     }
 
     public function saveWorkingHours(): void
@@ -888,7 +906,7 @@ new #[Layout('components.layouts.app')] class extends Component
                             <div class="bg-white rounded-2xl border border-gray-100 p-6 space-y-4">
                                 <div class="flex items-center justify-between gap-3">
                                     <div class="flex items-center gap-3">
-                                        <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600"><i class="fas fa-tasks"></i></div>
+                                        <div class="flex h-10 w-10 items-center justify-center rounded-xl brand-bg-lighter brand-text"><i class="fas fa-tasks"></i></div>
                                         <div>
                                             <h3 class="font-semibold text-sm">Queue Health</h3>
                                             <p class="text-xs text-gray-500">Pending, reserved, and failed jobs on the database driver</p>

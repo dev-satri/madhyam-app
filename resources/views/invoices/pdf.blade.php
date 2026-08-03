@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <title>Invoice #{{ $invoice->id }} — {{ $agency->agency_name ?? 'Madhyam' }}</title>
     @php
-    $brand = $brandColor ?? '#4f46e5';
+    $brand = $brandColor ?? config('app.brand_color', '#4f46e5');
     $isPaid = $invoice->status === 'paid';
     $isOverdue = $invoice->status === 'overdue';
     $balanceColor = $isPaid ? '#059669' : ($isOverdue ? '#dc2626' : '#111827');

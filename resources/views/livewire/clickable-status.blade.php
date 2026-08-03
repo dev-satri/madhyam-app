@@ -46,7 +46,7 @@ new class extends Component
             'completed', 'approved', 'published', 'paid' => 'bg-green-100 text-green-700',
             'overdue', 'rejected' => 'bg-red-100 text-red-700',
             'revision', 'review', 'in-review' => 'bg-orange-100 text-orange-700',
-            'scheduled' => 'bg-indigo-100 text-indigo-700',
+            'scheduled' => 'brand-bg-light brand-text-dark',
             default => 'bg-gray-100 text-gray-600',
         };
     }

@@ -139,7 +139,7 @@ new class extends Component
             'File' => 'text-purple-500',
             'Folder' => 'text-amber-500',
             'Content' => 'text-green-500',
-            'Workflow' => 'text-indigo-500',
+            'Workflow' => 'brand-text',
             'Approval' => 'text-teal-500',
             'Client' => 'text-cyan-500',
             'Invoice' => 'text-emerald-500',

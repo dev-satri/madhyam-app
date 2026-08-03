@@ -274,7 +274,7 @@
                 if (this.wireModel && typeof Livewire !== 'undefined') {
                     try {
                         this.$wire.set(this.wireModel, this.adValue);
-                    } catch (e) {}
+                    } catch { /* Livewire not available */ }
                 }
 
                 this.showPicker = false;

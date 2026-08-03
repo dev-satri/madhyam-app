@@ -5,9 +5,60 @@
 /* ============================================================
    Madhyam Design Tokens
    ============================================================ */
-:root {
-    --brand: #4f46e5;
-    --brand-rgb: 79, 70, 229;
+/* Brand variables are set dynamically in app.blade.php layout from DB settings */
+
+/* ============================================================
+   Brand Color Utilities (dynamic via CSS variables)
+   ============================================================ */
+.brand-bg {
+    background-color: var(--brand);
+}
+.brand-bg-light {
+    background-color: rgba(var(--brand-rgb), 0.08);
+}
+.brand-bg-lighter {
+    background-color: rgba(var(--brand-rgb), 0.04);
+}
+.brand-bg-medium {
+    background-color: rgba(var(--brand-rgb), 0.12);
+}
+.brand-text {
+    color: var(--brand);
+}
+.brand-text-dark {
+    color: color-mix(in srgb, var(--brand) 80%, black);
+}
+.brand-border {
+    border-color: var(--brand);
+}
+.brand-border-light {
+    border-color: rgba(var(--brand-rgb), 0.5);
+}
+
+.brand-focus-ring:focus {
+    border-color: var(--brand);
+    box-shadow: 0 0 0 3px rgba(var(--brand-rgb), 0.12);
+}
+
+.brand-ring:focus {
+    --tw-ring-color: var(--brand);
+}
+
+.brand-focus-outline:focus {
+    outline-color: var(--brand);
+}
+
+.brand-active-nav {
+    border-color: rgba(var(--brand-rgb), 0.5);
+    color: var(--brand);
+}
+
+.brand-active-nav-text {
+    color: color-mix(in srgb, var(--brand) 80%, black);
+}
+
+.brand-active-nav-bg {
+    background-color: rgba(var(--brand-rgb), 0.08);
 }
 
 html {
@@ -35,7 +86,7 @@ body {
 }
 
 *:focus-visible {
-    outline: 2px solid #6366f1;
+    outline: 2px solid var(--brand);
     outline-offset: 2px;
     border-radius: 4px;
 }
@@ -317,7 +368,12 @@ body {
    Login Page (guest layout)
    ============================================================ */
 .login-bg {
-    background: linear-gradient(135deg, #312e81 0%, #4f46e5 50%, #6366f1 100%);
+    background: linear-gradient(
+        135deg,
+        color-mix(in srgb, var(--brand) 80%, black) 0%,
+        var(--brand) 50%,
+        color-mix(in srgb, var(--brand) 70%, white) 100%
+    );
     min-height: 100vh;
 }
 

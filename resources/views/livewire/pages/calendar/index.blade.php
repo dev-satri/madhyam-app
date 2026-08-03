@@ -1778,7 +1778,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                                 @if ($workflow)
                                                     <span>·</span>
                                                     <span
-                                                        class="text-indigo-500 font-medium capitalize"
+                                                        class="brand-text font-medium capitalize"
                                                         >{{ str_replace('-', ' ', $workflow->stage) }}</span
                                                     >
                                                 @endif
