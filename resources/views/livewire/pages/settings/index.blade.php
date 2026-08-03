@@ -4,7 +4,9 @@ use Livewire\Volt\Component;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\On;
 use Livewire\Attributes\Computed;
+use Livewire\WithFileUploads;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Auth;
 use App\Models\CustomRole;
 use App\Services\RbacService;
@@ -12,6 +14,8 @@ use App\Services\SystemHealthService;
 
 new #[Layout('components.layouts.app')] class extends Component
 {
+    use WithFileUploads;
+
     public string $activeTab = 'general';
 
     // General
@@ -21,6 +25,10 @@ new #[Layout('components.layouts.app')] class extends Component
     public string $currency = 'NPR';
     public string $dateFormat = 'AD';
     public string $brandColor = '#4f46e5';
+    public ?string $logoPath = null;
+    public ?string $faviconPath = null;
+    public $logoUpload = null;
+    public $faviconUpload = null;
     public int $fileRetentionDays = 5;
     public float $baseSalaryDefault = 25000;
     public float $overtimeRateDefault = 500;
@@ -92,6 +100,8 @@ new #[Layout('components.layouts.app')] class extends Component
             $this->workingDaysPerMonth = (int) ($settings->working_days_per_month ?? 22);
             $this->dailyWageDivisor = (float) ($settings->daily_wage_divisor ?? 30);
             $this->backupIntervalDays = $settings->backup_reminder_days ?? 7;
+            $this->logoPath = $settings->logo_path ?? null;
+            $this->faviconPath = $settings->favicon_path ?? null;
         }
 
         $days = ['mon','tue','wed','thu','fri','sat','sun'];
@@ -149,6 +159,8 @@ new #[Layout('components.layouts.app')] class extends Component
             'paid_leaves_per_year' => $this->paidLeavesPerYear,
             'working_days_per_month' => $this->workingDaysPerMonth,
             'daily_wage_divisor' => $this->dailyWageDivisor,
+            'logo_path' => $this->logoPath,
+            'favicon_path' => $this->faviconPath,
             'updated_at' => now(),
         ]);
 
@@ -158,6 +170,68 @@ new #[Layout('components.layouts.app')] class extends Component
 
         \App\Support\NepaliDate::resetCache();
         $this->dispatch('toast', message: 'General settings saved', type: 'success');
+    }
+
+    public function updatedLogoUpload(): void
+    {
+        $this->validate(['logoUpload' => 'nullable|image|mimes:png,jpg,jpeg,svg|max:2048']);
+        if (! $this->logoUpload) {
+            return;
+        }
+
+        if ($this->logoPath && Storage::disk('public')->exists($this->logoPath)) {
+            Storage::disk('public')->delete($this->logoPath);
+        }
+
+        $this->logoPath = $this->logoUpload->store('branding', 'public');
+        $this->logoUpload = null;
+
+        DB::table('settings')->where('id', 1)->update(['logo_path' => $this->logoPath, 'updated_at' => now()]);
+        config(['app.logo_path' => $this->logoPath]);
+        $this->dispatch('toast', message: 'Logo uploaded', type: 'success');
+    }
+
+    public function removeLogo(): void
+    {
+        if ($this->logoPath && Storage::disk('public')->exists($this->logoPath)) {
+            Storage::disk('public')->delete($this->logoPath);
+        }
+        $this->logoPath = null;
+
+        DB::table('settings')->where('id', 1)->update(['logo_path' => null, 'updated_at' => now()]);
+        config(['app.logo_path' => null]);
+        $this->dispatch('toast', message: 'Logo removed', type: 'success');
+    }
+
+    public function updatedFaviconUpload(): void
+    {
+        $this->validate(['faviconUpload' => 'nullable|image|mimes:png,ico,svg|max:2048']);
+        if (! $this->faviconUpload) {
+            return;
+        }
+
+        if ($this->faviconPath && Storage::disk('public')->exists($this->faviconPath)) {
+            Storage::disk('public')->delete($this->faviconPath);
+        }
+
+        $this->faviconPath = $this->faviconUpload->store('branding', 'public');
+        $this->faviconUpload = null;
+
+        DB::table('settings')->where('id', 1)->update(['favicon_path' => $this->faviconPath, 'updated_at' => now()]);
+        config(['app.favicon_path' => $this->faviconPath]);
+        $this->dispatch('toast', message: 'Favicon uploaded', type: 'success');
+    }
+
+    public function removeFavicon(): void
+    {
+        if ($this->faviconPath && Storage::disk('public')->exists($this->faviconPath)) {
+            Storage::disk('public')->delete($this->faviconPath);
+        }
+        $this->faviconPath = null;
+
+        DB::table('settings')->where('id', 1)->update(['favicon_path' => null, 'updated_at' => now()]);
+        config(['app.favicon_path' => null]);
+        $this->dispatch('toast', message: 'Favicon removed', type: 'success');
     }
 
     public static function hexToRgb(string $hex): string
@@ -594,6 +668,84 @@ new #[Layout('components.layouts.app')] class extends Component
                                             @foreach(['#4f46e5','#059669','#dc2626','#d97706','#7c3aed','#0891b2','#be185d','#334155'] as $c)
                                                 <button wire:click="$set('brandColor', '{{ $c }}')" class="w-6 h-6 rounded-full border-2 {{ $brandColor === $c ? 'border-gray-900' : 'border-transparent' }}" style="background:{{ $c }}"></button>
                                             @endforeach
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="md:col-span-2">
+                                    <label class="form-label">Sidebar Logo</label>
+                                    <div class="flex items-start gap-4">
+                                        <div class="flex-shrink-0">
+                                            @if($logoUpload)
+                                                <div class="relative">
+                                                    <img src="{{ $logoUpload->temporaryUrl() }}" alt="Logo preview" class="h-14 w-14 rounded-xl object-contain border-2 border-blue-300 bg-white p-1">
+                                                    <div class="absolute -top-2 -right-2 w-5 h-5 bg-blue-500 text-white rounded-full flex items-center justify-center">
+                                                        <svg class="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
+                                                    </div>
+                                                </div>
+                                            @elseif($logoPath)
+                                                <div class="relative group">
+                                                    <img src="{{ Storage::disk('public')->url($logoPath) }}" alt="Logo" class="h-14 w-14 rounded-xl object-contain border border-gray-200 bg-white p-1">
+                                                    <button wire:click="removeLogo" wire:confirm="Remove logo?" class="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"><i class="fas fa-times"></i></button>
+                                                </div>
+                                            @else
+                                                <div class="h-14 w-14 rounded-xl border-2 border-dashed border-gray-200 flex items-center justify-center text-gray-300">
+                                                    <i class="fas fa-image text-xl"></i>
+                                                </div>
+                                            @endif
+                                        </div>
+                                        <div class="flex-1">
+                                            <div class="flex items-center gap-2">
+                                                <label class="btn btn-secondary btn-sm cursor-pointer" wire:loading.attr="disabled" wire:target="logoUpload">
+                                                    <i class="fas fa-upload mr-1"></i> Choose Logo
+                                                    <input type="file" wire:model.live="logoUpload" accept="image/png,image/jpeg,image/svg+xml" class="hidden">
+                                                </label>
+                                                @if($logoUpload)
+                                                    <span class="text-xs text-blue-600 font-medium"><i class="fas fa-spinner fa-spin mr-1"></i>Uploading...</span>
+                                                @elseif($logoPath)
+                                                    <span class="text-xs text-green-600 font-medium"><i class="fas fa-check-circle mr-1"></i>Uploaded</span>
+                                                @endif
+                                            </div>
+                                            @error('logoUpload') <p class="text-xs text-red-500 mt-1">{{ $message }}</p> @enderror
+                                            <p class="text-xs text-gray-400 mt-1">PNG, JPG, or SVG. Max 2MB. Recommended: square, transparent background.</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="md:col-span-2">
+                                    <label class="form-label">Favicon</label>
+                                    <div class="flex items-start gap-4">
+                                        <div class="flex-shrink-0">
+                                            @if($faviconUpload)
+                                                <div class="relative">
+                                                    <img src="{{ $faviconUpload->temporaryUrl() }}" alt="Favicon preview" class="h-10 w-10 rounded-lg object-contain border-2 border-blue-300 bg-white p-1">
+                                                    <div class="absolute -top-2 -right-2 w-5 h-5 bg-blue-500 text-white rounded-full flex items-center justify-center">
+                                                        <svg class="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
+                                                    </div>
+                                                </div>
+                                            @elseif($faviconPath)
+                                                <div class="relative group">
+                                                    <img src="{{ Storage::disk('public')->url($faviconPath) }}" alt="Favicon" class="h-10 w-10 rounded-lg object-contain border border-gray-200 bg-white p-1">
+                                                    <button wire:click="removeFavicon" wire:confirm="Remove favicon?" class="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"><i class="fas fa-times"></i></button>
+                                                </div>
+                                            @else
+                                                <div class="h-10 w-10 rounded-lg border-2 border-dashed border-gray-200 flex items-center justify-center text-gray-300">
+                                                    <i class="fas fa-image text-sm"></i>
+                                                </div>
+                                            @endif
+                                        </div>
+                                        <div class="flex-1">
+                                            <div class="flex items-center gap-2">
+                                                <label class="btn btn-secondary btn-sm cursor-pointer" wire:loading.attr="disabled" wire:target="faviconUpload">
+                                                    <i class="fas fa-upload mr-1"></i> Choose Favicon
+                                                    <input type="file" wire:model.live="faviconUpload" accept="image/png,image/x-icon,image/svg+xml" class="hidden">
+                                                </label>
+                                                @if($faviconUpload)
+                                                    <span class="text-xs text-blue-600 font-medium"><i class="fas fa-spinner fa-spin mr-1"></i>Uploading...</span>
+                                                @elseif($faviconPath)
+                                                    <span class="text-xs text-green-600 font-medium"><i class="fas fa-check-circle mr-1"></i>Uploaded</span>
+                                                @endif
+                                            </div>
+                                            @error('faviconUpload') <p class="text-xs text-red-500 mt-1">{{ $message }}</p> @enderror
+                                            <p class="text-xs text-gray-400 mt-1">PNG, ICO, or SVG. Max 2MB. Recommended: 32x32 or 64x64px.</p>
                                         </div>
                                     </div>
                                 </div>

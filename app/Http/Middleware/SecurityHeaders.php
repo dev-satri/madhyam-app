@@ -23,7 +23,7 @@ class SecurityHeaders
             // browser blocks every page load with a CSP violation.
             "script-src 'self' cdn.jsdelivr.net cdnjs.cloudflare.com fonts.googleapis.com static.cloudflareinsights.com 'unsafe-inline' 'unsafe-eval'",
             "style-src 'self' 'unsafe-inline' fonts.googleapis.com cdnjs.cloudflare.com",
-            "img-src 'self' data:",
+            "img-src 'self' data: blob: http: https:",
             "font-src 'self' fonts.gstatic.com cdnjs.cloudflare.com",
             // Livewire/Alpine talk back to 'self'; the CF beacon POSTs to cloudflareinsights.com.
             "connect-src 'self' cloudflareinsights.com",

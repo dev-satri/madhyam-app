@@ -36,6 +36,10 @@ class AppServiceProvider extends ServiceProvider
                 $rgb = hexdec(substr($hex, 0, 2)) . ', ' . hexdec(substr($hex, 2, 2)) . ', ' . hexdec(substr($hex, 4, 2));
                 config(['app.brand_color_rgb' => $rgb]);
             }
+            if ($settings) {
+                config(['app.logo_path' => $settings->logo_path ?? null]);
+                config(['app.favicon_path' => $settings->favicon_path ?? null]);
+            }
         } catch (\Throwable $e) {
             // DB may not exist yet (e.g. during CI composer install)
         }

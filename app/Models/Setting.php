@@ -8,7 +8,7 @@ class Setting extends Model
 {
     protected $fillable = [
         'agency_name', 'agency_email', 'agency_phone',
-        'currency', 'date_format', 'brand_color', 'file_retention_days',
+        'currency', 'date_format', 'brand_color', 'logo_path', 'favicon_path', 'file_retention_days',
         'base_salary_default', 'overtime_rate_default',
         'backup_reminder_days', 'last_backup_reminder',
         'paid_leaves_per_year', 'working_days_per_month', 'daily_wage_divisor',

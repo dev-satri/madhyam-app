@@ -6,6 +6,12 @@
     <meta name="csrf-token" content="{{ csrf_token() }}" />
     <title>{{ config('app.name', 'Madhyam') }}</title>
 
+    @if (config('app.favicon_path'))
+        <link rel="icon" type="image/x-icon" href="{{ Storage::disk('public')->url(config('app.favicon_path')) }}" />
+    @else
+        <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+    @endif
+
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -46,11 +52,19 @@
         >
             <!-- Logo -->
             <div class="flex items-center gap-3 border-b border-gray-100 px-5 py-4">
-                <div
-                    class="flex h-9 w-9 items-center justify-center rounded-lg bg-[var(--brand)] text-white shadow-md shadow-[rgba(var(--brand-rgb),0.3)]"
-                >
-                    <i class="fas fa-layer-group text-sm"></i>
-                </div>
+                @if (config('app.logo_path'))
+                    <img
+                        src="{{ Storage::disk('public')->url(config('app.logo_path')) }}"
+                        alt="Logo"
+                        class="h-9 w-9 rounded-lg object-contain"
+                    />
+                @else
+                    <div
+                        class="flex h-9 w-9 items-center justify-center rounded-lg bg-[var(--brand)] text-white shadow-md shadow-[rgba(var(--brand-rgb),0.3)]"
+                    >
+                        <i class="fas fa-layer-group text-sm"></i>
+                    </div>
+                @endif
                 <div class="flex-1">
                     <h1 class="text-[15px] font-extrabold tracking-tight text-gray-900">Madhyam</h1>
                     <p class="text-[9px] font-semibold uppercase tracking-widest text-gray-400">Agency System</p>

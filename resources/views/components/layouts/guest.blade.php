@@ -5,6 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="csrf-token" content="{{ csrf_token() }}" />
     <title>{{ config('app.name', 'Madhyam') }} — Login</title>
+
+    @if (config('app.favicon_path'))
+        <link rel="icon" type="image/x-icon" href="{{ Storage::disk('public')->url(config('app.favicon_path')) }}" />
+    @else
+        <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+    @endif
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
