@@ -25,15 +25,19 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        $settings = DB::table('settings')->where('id', 1)->first();
-        if ($settings && $settings->brand_color) {
-            config(['app.brand_color' => $settings->brand_color]);
-            $hex = ltrim($settings->brand_color, '#');
-            if (strlen($hex) === 3) {
-                $hex = $hex[0] . $hex[0] . $hex[1] . $hex[1] . $hex[2] . $hex[2];
+        try {
+            $settings = DB::table('settings')->where('id', 1)->first();
+            if ($settings && $settings->brand_color) {
+                config(['app.brand_color' => $settings->brand_color]);
+                $hex = ltrim($settings->brand_color, '#');
+                if (strlen($hex) === 3) {
+                    $hex = $hex[0] . $hex[0] . $hex[1] . $hex[1] . $hex[2] . $hex[2];
+                }
+                $rgb = hexdec(substr($hex, 0, 2)) . ', ' . hexdec(substr($hex, 2, 2)) . ', ' . hexdec(substr($hex, 4, 2));
+                config(['app.brand_color_rgb' => $rgb]);
             }
-            $rgb = hexdec(substr($hex, 0, 2)) . ', ' . hexdec(substr($hex, 2, 2)) . ', ' . hexdec(substr($hex, 4, 2));
-            config(['app.brand_color_rgb' => $rgb]);
+        } catch (\Throwable $e) {
+            // DB may not exist yet (e.g. during CI composer install)
         }
 
         Blade::if('hasFeature', function (string $feature) {
