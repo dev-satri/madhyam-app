@@ -1263,7 +1263,8 @@ new #[Layout('components.layouts.app')] class extends Component
                                 </button>
                             @endif
                             <button
-                                wire:click="$set('showDetail', false)"
+                                @click="$wire.set('showDetail', false)"
+                                type="button"
                                 class="btn btn-ghost btn-icon btn-sm"
                                 aria-label="Close"
                             >
@@ -1470,7 +1471,8 @@ new #[Layout('components.layouts.app')] class extends Component
                         {{ $formMode === 'edit' ? 'Edit Workflow Item' : 'Add Workflow Item' }}
                     </h3>
                     <button
-                        wire:click="$set('showForm', false)"
+                        @click="$wire.set('showForm', false)"
+                        type="button"
                         class="flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors"
                     >
                         <i class="fas fa-times text-sm"></i>
@@ -1616,7 +1618,7 @@ new #[Layout('components.layouts.app')] class extends Component
                         <div
                             class="mt-6 flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-3 border-t border-gray-100 pt-5"
                         >
-                            <button type="button" wire:click="$set('showForm', false)" class="btn btn-secondary">
+                            <button type="button" @click="$wire.set('showForm', false)" class="btn btn-secondary">
                                 Cancel
                             </button>
                             @if ($formMode === 'edit' && !in_array($formStage, ['published', 'ready-for-production']))
@@ -1672,7 +1674,8 @@ new #[Layout('components.layouts.app')] class extends Component
                         Manage Workflow Stages
                     </h3>
                     <button
-                        wire:click="$set('showStageManager', false)"
+                        @click="$wire.set('showStageManager', false)"
+                        type="button"
                         class="flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors"
                     >
                         <i class="fas fa-times text-sm"></i>
@@ -1873,7 +1876,8 @@ new #[Layout('components.layouts.app')] class extends Component
                         <i class="fas fa-undo text-red-500 mr-2"></i>Send Back for Revision
                     </h3>
                     <button
-                        wire:click="$set('showRevisionModal', false)"
+                        @click="$wire.set('showRevisionModal', false)"
+                        type="button"
                         class="flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors"
                     >
                         <i class="fas fa-times text-sm"></i>
@@ -1891,7 +1895,9 @@ new #[Layout('components.layouts.app')] class extends Component
                         ></textarea>
                     </div>
                     <div class="flex items-center justify-end gap-3 border-t border-gray-100 pt-4">
-                        <button wire:click="$set('showRevisionModal', false)" class="btn btn-secondary">Cancel</button>
+                        <button @click="$wire.set('showRevisionModal', false)" type="button" class="btn btn-secondary">
+                            Cancel
+                        </button>
                         <button
                             wire:click="confirmRevision"
                             class="btn btn-danger"
@@ -1928,7 +1934,8 @@ new #[Layout('components.layouts.app')] class extends Component
                         <i class="fas fa-paper-plane text-[var(--brand)] mr-2"></i>Resubmit for Approval
                     </h3>
                     <button
-                        wire:click="$set('showResubmitModal', false)"
+                        @click="$wire.set('showResubmitModal', false)"
+                        type="button"
                         class="flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors"
                     >
                         <i class="fas fa-times text-sm"></i>
@@ -1937,7 +1944,9 @@ new #[Layout('components.layouts.app')] class extends Component
                 <div class="modal-body space-y-4">
                     <p class="text-sm text-gray-600">This item will be moved to <strong>Review</strong> stage and sent for admin approval again.</p>
                     <div class="flex items-center justify-end gap-3 border-t border-gray-100 pt-4">
-                        <button wire:click="$set('showResubmitModal', false)" class="btn btn-secondary">Cancel</button>
+                        <button @click="$wire.set('showResubmitModal', false)" type="button" class="btn btn-secondary">
+                            Cancel
+                        </button>
                         <button
                             wire:click="confirmResubmit"
                             class="btn btn-primary"

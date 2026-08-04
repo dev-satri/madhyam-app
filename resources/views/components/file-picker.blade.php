@@ -23,6 +23,7 @@
         driveUrl: '',
         driveName: '',
         loading: false,
+        showDriveBrowser: false,
         getJson() {
             return JSON.stringify(this.attached);
         },
@@ -61,6 +62,21 @@
             this.driveUrl = '';
             this.driveName = '';
         },
+        addDriveFile(e) {
+            var file = e.detail;
+            if (!file || !file.url) return;
+            this.selected.push({
+                id: null,
+                name: file.name || 'Drive File',
+                url: file.url,
+                type: 'drive',
+                drive_file_id: file.drive_file_id || null,
+                mime: file.mime || null,
+                size: file.size || null,
+                thumbnail: file.thumbnail || null,
+            });
+            this.showDriveBrowser = false;
+        },
         removeSelected(idx) {
             this.selected.splice(idx, 1);
         },
@@ -82,11 +98,13 @@
             this.search = '';
             this.driveUrl = '';
             this.driveName = '';
+            this.showDriveBrowser = false;
             this.open = true;
             this.loadFiles();
         },
     }"
     x-init="$nextTick(() => syncInput())"
+    x-on:drive-file-selected.window="addDriveFile($event)"
 >
     <input type="hidden" id="{{ $inputId }}" value="[]" />
 
@@ -138,6 +156,7 @@
         </template>
     </div>
 
+    {{-- Main Picker Modal --}}
     <template x-if="open">
         <div
             class="fixed inset-0 z-[80] flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm p-0 sm:p-4"
@@ -147,118 +166,164 @@
             <div
                 class="bg-white rounded-t-2xl sm:rounded-2xl w-full sm:max-w-lg max-h-[85vh] flex flex-col overflow-hidden"
             >
+                {{-- Header --}}
                 <div class="flex items-center justify-between px-4 py-3 border-b shrink-0">
-                    <h3 class="font-bold text-gray-900">Attach Files</h3>
-                    <button
-                        @click="open = false"
-                        class="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-400"
-                    >
-                        <i class="fas fa-times"></i>
-                    </button>
-                </div>
-
-                <div class="px-4 py-3 border-b bg-blue-50/50 shrink-0">
-                    <p class="text-[11px] font-semibold text-blue-600 uppercase mb-2"><i class="fas fa-upload mr-1"></i> Upload from computer</p>
-                    <input
-                        type="file"
-                        wire:model="newFileUpload"
-                        x-ref="fileInput"
-                        class="hidden"
-                        accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv"
-                    />
-                    <button
-                        type="button"
-                        @click="$refs.fileInput.click()"
-                        class="w-full flex items-center justify-center gap-2 px-3 py-2.5 border-2 border-dashed border-blue-300 rounded-xl text-sm text-blue-600 hover:bg-blue-100 hover:border-blue-400 transition-colors"
-                    >
-                        <i class="fas fa-cloud-upload-alt text-base"></i>
-                        <span>Click to upload files</span>
-                    </button>
-                </div>
-
-                <div class="px-4 py-3 border-b bg-gray-50 shrink-0">
-                    <p class="text-[11px] font-semibold text-gray-500 uppercase mb-2">Paste a drive link</p>
-                    <div class="flex flex-col sm:flex-row gap-2">
-                        <input
-                            type="url"
-                            x-model="driveUrl"
-                            placeholder="https://drive.google.com/file/d/..."
-                            class="form-input text-sm flex-1"
-                        />
-                        <input
-                            type="text"
-                            x-model="driveName"
-                            placeholder="Label (optional)"
-                            class="form-input text-sm w-full sm:w-32"
-                        />
+                    <div class="flex items-center gap-2">
+                        <template x-if="showDriveBrowser">
+                            <button
+                                @click="showDriveBrowser = false"
+                                class="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-500"
+                            >
+                                <i class="fas fa-arrow-left text-sm"></i>
+                            </button>
+                        </template>
+                        <h3
+                            class="font-bold text-gray-900"
+                            x-text="showDriveBrowser ? 'Google Drive' : 'Attach Files'"
+                        ></h3>
+                    </div>
+                    <div class="flex items-center gap-1">
+                        <template x-if="showDriveBrowser">
+                            <div class="flex items-center gap-1 mr-2">
+                                <i class="fab fa-google-drive text-blue-500 text-sm"></i>
+                                <span class="text-xs text-gray-500">Drive</span>
+                            </div>
+                        </template>
                         <button
-                            type="button"
-                            @click="addDriveLink()"
-                            class="btn btn-primary btn-sm px-3 shrink-0"
-                            :disabled="!driveUrl"
+                            @click="open = false"
+                            class="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-400"
                         >
-                            <i class="fas fa-plus text-xs"></i> Add
+                            <i class="fas fa-times"></i>
                         </button>
                     </div>
                 </div>
 
-                <div class="px-4 py-2 border-b shrink-0">
-                    <x-search-input
-                        x-model.debounce.300ms="search"
-                        @input.debounce.300ms="loadFiles()"
-                        placeholder="Search files from Media library..."
-                        class="px-4 py-2"
-                    />
-                </div>
+                {{-- Content: Drive Browser or Local Picker --}}
+                <template x-if="showDriveBrowser">
+                    <div class="flex-1 overflow-y-auto min-h-0">
+                        @livewire ('partials.drive-browser')
+                    </div>
+                </template>
 
-                <div class="flex-1 overflow-y-auto p-4 space-y-1 min-h-0">
-                    <template x-if="loading">
-                        <div class="text-center py-8 text-gray-400 text-sm">
-                            <i class="fas fa-spinner fa-spin mr-1"></i> Loading...
-                        </div>
-                    </template>
-                    <template x-if="!loading && files.length === 0">
-                        <div class="text-center py-8 text-gray-400 text-sm">
-                            <i class="fas fa-folder-open text-2xl text-gray-200 mb-2 block"></i>
-                            No files found
-                        </div>
-                    </template>
-                    <template x-for="file in files" :key="file.id">
-                        <label
-                            class="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors"
-                            :class="isSelected(file) && 'bg-blue-50 ring-1 ring-blue-200'"
-                        >
+                <template x-if="!showDriveBrowser">
+                    <div class="flex flex-col flex-1 min-h-0">
+                        {{-- Upload from computer --}}
+                        <div class="px-4 py-3 border-b bg-blue-50/50 shrink-0">
+                            <p class="text-[11px] font-semibold text-blue-600 uppercase mb-2"><i class="fas fa-upload mr-1"></i> Upload from computer</p>
                             <input
-                                type="checkbox"
-                                :checked="isSelected(file)"
-                                @change="toggleFile(file)"
-                                class="rounded border-gray-300 text-blue-600 focus:ring-blue-500 shrink-0"
+                                type="file"
+                                wire:model="newFileUpload"
+                                x-ref="fileInput"
+                                class="hidden"
+                                accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv"
                             />
-                            <div
-                                class="flex-shrink-0 w-8 h-8 rounded flex items-center justify-center"
-                                :class="file.type === 'image'
-                                    ? 'bg-blue-50'
-                                    : file.type === 'video'
-                                      ? 'bg-purple-50'
-                                      : 'bg-gray-50'"
+                            <button
+                                type="button"
+                                @click="$refs.fileInput.click()"
+                                class="w-full flex items-center justify-center gap-2 px-3 py-2.5 border-2 border-dashed border-blue-300 rounded-xl text-sm text-blue-600 hover:bg-blue-100 hover:border-blue-400 transition-colors"
                             >
-                                <i
-                                    class="fas text-xs"
-                                    :class="file.type === 'image'
-                                        ? 'fa-image text-blue-500'
-                                        : file.type === 'video'
-                                          ? 'fa-video text-purple-500'
-                                          : 'fa-file text-gray-500'"
-                                ></i>
-                            </div>
-                            <div class="flex-1 min-w-0">
-                                <p class="text-sm font-medium text-gray-800 truncate" x-text="file.name"></p>
-                                <p class="text-[11px] text-gray-400" x-text="file.size_label"></p>
-                            </div>
-                        </label>
-                    </template>
-                </div>
+                                <i class="fas fa-cloud-upload-alt text-base"></i>
+                                <span>Click to upload files</span>
+                            </button>
+                        </div>
 
+                        {{-- Google Drive section --}}
+                        <div class="px-4 py-3 border-b bg-gray-50 shrink-0">
+                            <p class="text-[11px] font-semibold text-gray-500 uppercase mb-2">Google Drive</p>
+                            <div class="flex flex-col sm:flex-row gap-2 mb-2">
+                                <input
+                                    type="url"
+                                    x-model="driveUrl"
+                                    placeholder="https://drive.google.com/file/d/..."
+                                    class="form-input text-sm flex-1"
+                                />
+                                <input
+                                    type="text"
+                                    x-model="driveName"
+                                    placeholder="Label (optional)"
+                                    class="form-input text-sm w-full sm:w-32"
+                                />
+                                <button
+                                    type="button"
+                                    @click="addDriveLink()"
+                                    class="btn btn-primary btn-sm px-3 shrink-0"
+                                    :disabled="!driveUrl"
+                                >
+                                    <i class="fas fa-plus text-xs"></i> Add
+                                </button>
+                            </div>
+                            <button
+                                type="button"
+                                @click="showDriveBrowser = true"
+                                class="w-full flex items-center justify-center gap-2 px-3 py-2.5 border-2 border-dashed border-blue-300 rounded-xl text-sm text-blue-600 hover:bg-blue-100 hover:border-blue-400 transition-colors"
+                            >
+                                <i class="fab fa-google-drive text-blue-500"></i>
+                                <span>Browse Google Drive</span>
+                            </button>
+                        </div>
+
+                        {{-- Search --}}
+                        <div class="px-4 py-2 border-b shrink-0">
+                            <x-search-input
+                                x-model.debounce.300ms="search"
+                                @input.debounce.300ms="loadFiles()"
+                                placeholder="Search files from Media library..."
+                                class="px-4 py-2"
+                            />
+                        </div>
+
+                        {{-- File List --}}
+                        <div class="flex-1 overflow-y-auto p-4 space-y-1 min-h-0">
+                            <template x-if="loading">
+                                <div class="text-center py-8 text-gray-400 text-sm">
+                                    <i class="fas fa-spinner fa-spin mr-1"></i> Loading...
+                                </div>
+                            </template>
+                            <template x-if="!loading && files.length === 0">
+                                <div class="text-center py-8 text-gray-400 text-sm">
+                                    <i class="fas fa-folder-open text-2xl text-gray-200 mb-2 block"></i>
+                                    No files found
+                                </div>
+                            </template>
+                            <template x-for="file in files" :key="file.id">
+                                <label
+                                    class="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors"
+                                    :class="isSelected(file) && 'bg-blue-50 ring-1 ring-blue-200'"
+                                >
+                                    <input
+                                        type="checkbox"
+                                        :checked="isSelected(file)"
+                                        @change="toggleFile(file)"
+                                        class="rounded border-gray-300 text-blue-600 focus:ring-blue-500 shrink-0"
+                                    />
+                                    <div
+                                        class="flex-shrink-0 w-8 h-8 rounded flex items-center justify-center"
+                                        :class="file.type === 'image'
+                                            ? 'bg-blue-50'
+                                            : file.type === 'video'
+                                              ? 'bg-purple-50'
+                                              : 'bg-gray-50'"
+                                    >
+                                        <i
+                                            class="fas text-xs"
+                                            :class="file.type === 'image'
+                                                ? 'fa-image text-blue-500'
+                                                : file.type === 'video'
+                                                  ? 'fa-video text-purple-500'
+                                                  : 'fa-file text-gray-500'"
+                                        ></i>
+                                    </div>
+                                    <div class="flex-1 min-w-0">
+                                        <p class="text-sm font-medium text-gray-800 truncate" x-text="file.name"></p>
+                                        <p class="text-[11px] text-gray-400" x-text="file.size_label"></p>
+                                    </div>
+                                </label>
+                            </template>
+                        </div>
+                    </div>
+                </template>
+
+                {{-- Selected Items --}}
                 <template x-if="selected.length > 0">
                     <div class="px-4 py-2 border-t bg-blue-50/50 shrink-0">
                         <p class="text-[11px] font-semibold text-blue-600 uppercase mb-1"><span x-text="selected.length"></span> selected</p>
@@ -287,9 +352,15 @@
                     </div>
                 </template>
 
+                {{-- Footer --}}
                 <div class="flex justify-end gap-2 px-4 py-3 border-t shrink-0">
                     <button @click="open = false" class="btn btn-secondary btn-sm">Cancel</button>
-                    <button @click="confirm()" class="btn btn-primary btn-sm" :disabled="selected.length === 0">
+                    <button
+                        @click="confirm()"
+                        class="btn btn-primary btn-sm"
+                        :disabled="selected.length === 0"
+                        x-show="!showDriveBrowser"
+                    >
                         <i class="fas fa-check text-xs mr-1"></i> Attach (<span x-text="selected.length"></span>)
                     </button>
                 </div>

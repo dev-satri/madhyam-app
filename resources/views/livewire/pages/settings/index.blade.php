@@ -9,6 +9,8 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Auth;
 use App\Models\CustomRole;
+use App\Models\GoogleDriveConnection;
+use App\Models\Setting;
 use App\Services\RbacService;
 use App\Services\SystemHealthService;
 
@@ -61,12 +63,23 @@ new #[Layout('components.layouts.app')] class extends Component
     public bool $showClearConfirm = false;
     public $importFile = null;
 
+    // Google Drive tab
+    public bool $googleDriveConnected = false;
+    public ?array $googleDriveStatus = null;
+    public bool $showDisconnectModal = false;
+    public string $drivePassword = '';
+    public bool $isTestingDrive = false;
+
     // System Health tab (super-admin only)
     public string $testMailTo = '';
     public ?string $mailTestResult = null;
     public bool $mailTestOk = false;
     public ?string $lastActionOutput = null;
     public ?string $expandedFailedUuid = null;
+
+    // Google OAuth tab (super-admin only)
+    public string $googleClientId = '';
+    public string $googleClientSecret = '';
 
     #[\Livewire\Attributes\Computed]
     public function datePreview(): string
@@ -103,6 +116,12 @@ new #[Layout('components.layouts.app')] class extends Component
             $this->logoPath = $settings->logo_path ?? null;
             $this->faviconPath = $settings->favicon_path ?? null;
         }
+
+        $setting = Setting::current();
+        $this->googleClientId = $setting->google_client_id ?? '';
+        $this->googleClientSecret = $setting->google_client_secret ?? '';
+
+        $this->loadGoogleDriveStatus();
 
         $days = ['mon','tue','wed','thu','fri','sat','sun'];
         foreach ($days as $day) {
@@ -587,6 +606,56 @@ new #[Layout('components.layouts.app')] class extends Component
         $this->dispatch('toast', message: $result['message'], type: $result['ok'] ? 'success' : 'error');
     }
 
+    public function saveGoogleOAuth(): void
+    {
+        $this->guardSuperAdmin();
+        $this->validate([
+            'googleClientId' => 'required|string|max:500',
+            'googleClientSecret' => 'required|string|max:500',
+        ]);
+
+        $setting = Setting::current();
+        $setting->update([
+            'google_client_id' => $this->googleClientId,
+            'google_client_secret' => $this->googleClientSecret,
+        ]);
+
+        $this->writeEnv('GOOGLE_CLIENT_ID', $this->googleClientId);
+        $this->writeEnv('GOOGLE_CLIENT_SECRET', $this->googleClientSecret);
+
+        $this->dispatch('toast', message: 'Google OAuth credentials saved', type: 'success');
+    }
+
+    private function writeEnv(string $key, string $value): void
+    {
+        $path = base_path('.env');
+        if (! file_exists($path)) {
+            return;
+        }
+
+        $lines = file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+        $found = false;
+
+        foreach ($lines as &$line) {
+            if (str_starts_with(trim($line), $key . '=')) {
+                $line = $key . '=' . $value;
+                $found = true;
+                break;
+            }
+        }
+        unset($line);
+
+        if (! $found) {
+            $lines[] = $key . '=' . $value;
+        }
+
+        file_put_contents($path, implode(PHP_EOL, $lines) . PHP_EOL);
+
+        $_ENV[$key] = $value;
+        $_SERVER[$key] = $value;
+        putenv($key . '=' . $value);
+    }
+
     public function render(): mixed
     {
         return <<<'blade'
@@ -607,8 +676,12 @@ new #[Layout('components.layouts.app')] class extends Component
                         <button wire:click="$set('activeTab', 'data-access')" class="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors {{ $activeTab === 'data-access' ? 'bg-[rgba(var(--brand-rgb),0.08)] text-[var(--brand)]' : 'text-gray-600 hover:bg-gray-50' }}"><i class="fas fa-database"></i> Data Access</button>
                         @endif
                         <button wire:click="$set('activeTab', 'backup')" class="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors {{ $activeTab === 'backup' ? 'bg-[rgba(var(--brand-rgb),0.08)] text-[var(--brand)]' : 'text-gray-600 hover:bg-gray-50' }}"><i class="fas fa-download"></i> Backup</button>
+                        @if(in_array(Auth::user()->role, ['super-admin', 'admin'], true))
+                        <button wire:click="$set('activeTab', 'google-drive')" class="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors {{ $activeTab === 'google-drive' ? 'bg-[rgba(var(--brand-rgb),0.08)] text-[var(--brand)]' : 'text-gray-600 hover:bg-gray-50' }}"><i class="fab fa-google"></i> Google Drive</button>
+                        @endif
                         @isSuperAdmin
                         <button wire:click="$set('activeTab', 'system-health')" class="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors {{ $activeTab === 'system-health' ? 'bg-[rgba(var(--brand-rgb),0.08)] text-[var(--brand)]' : 'text-gray-600 hover:bg-gray-50' }}"><i class="fas fa-heartbeat"></i> System Health</button>
+                        <button wire:click="$set('activeTab', 'google-oauth')" class="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors {{ $activeTab === 'google-oauth' ? 'bg-[rgba(var(--brand-rgb),0.08)] text-[var(--brand)]' : 'text-gray-600 hover:bg-gray-50' }}"><i class="fab fa-google"></i> Google OAuth</button>
                         @endisSuperAdmin
                     </div>
                 </div>
@@ -1241,6 +1314,178 @@ new #[Layout('components.layouts.app')] class extends Component
                             <div class="bg-white rounded-2xl border border-gray-100 p-6 text-sm text-gray-500">System Health is available to super-admins only.</div>
                         @endisSuperAdmin
                     @endif
+
+                    {{-- Google Drive --}}
+                    @if($activeTab === 'google-drive')
+                        @if(in_array(Auth::user()->role, ['super-admin', 'admin'], true))
+                        <div class="space-y-6">
+                            {{-- Main Card --}}
+                            <div class="bg-white rounded-2xl border border-gray-100 p-6">
+                                <div class="flex items-center justify-between mb-6">
+                                    <div>
+                                        <h2 class="font-bold text-lg">Google Drive Integration</h2>
+                                        <p class="text-sm text-gray-500 mt-1">Connect Google Drive to store and manage files directly from Madhyam</p>
+                                    </div>
+                                </div>
+
+                                @if($googleDriveConnected)
+                                    {{-- Connected State --}}
+                                    <div class="rounded-xl border border-green-200 bg-green-50 p-5">
+                                        <div class="flex items-start gap-4">
+                                            <div class="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center flex-shrink-0">
+                                                <i class="fas fa-check-circle text-green-600 text-xl"></i>
+                                            </div>
+                                            <div class="flex-1 min-w-0">
+                                                <h4 class="text-sm font-semibold text-green-900">Connected</h4>
+                                                <p class="text-sm text-green-700 mt-1">
+                                                    Connected as <span class="font-medium">{{ $googleDriveStatus['email'] ?? 'Unknown' }}</span>
+                                                </p>
+                                                <div class="mt-3 flex flex-wrap gap-4 text-xs text-green-600">
+                                                    <div><i class="fas fa-clock mr-1"></i> Connected {{ $googleDriveStatus['connected_at'] ?? 'Unknown' }}</div>
+                                                    <div><i class="fas fa-key mr-1"></i> Token expires {{ $googleDriveStatus['expires_at'] ?? 'Unknown' }}</div>
+                                                </div>
+                                            </div>
+                                            <div class="flex items-center gap-2 flex-shrink-0">
+                                                <button wire:click="testGoogleDriveConnection" wire:loading.attr="disabled" class="btn btn-secondary btn-sm">
+                                                    <span wire:loading.remove wire:target="testGoogleDriveConnection"><i class="fas fa-plug mr-1"></i> Test</span>
+                                                    <span wire:loading wire:target="testGoogleDriveConnection"><i class="fas fa-spinner fa-spin mr-1"></i> Testing...</span>
+                                                </button>
+                                                <button wire:click="$set('showDisconnectModal', true)" class="btn btn-danger btn-sm"><i class="fas fa-unlink mr-1"></i> Disconnect</button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                @else
+                                    {{-- Not Connected State --}}
+                                    <div class="space-y-5">
+                                        <div class="flex items-start gap-4">
+                                            <div class="w-12 h-12 rounded-full bg-blue-50 flex items-center justify-center flex-shrink-0">
+                                                <i class="fab fa-google text-blue-500 text-xl"></i>
+                                            </div>
+                                            <div class="flex-1">
+                                                <h4 class="text-sm font-semibold text-gray-900">Not Connected</h4>
+                                                <p class="text-sm text-gray-500 mt-1">
+                                                    Connect your organization's Google Drive account to enable cloud file storage and management.
+                                                </p>
+                                            </div>
+                                        </div>
+
+                                        {{-- Steps --}}
+                                        <div class="rounded-xl border border-gray-100 bg-gray-50 p-4 space-y-3">
+                                            <h5 class="text-xs font-bold text-gray-500 uppercase tracking-wider">How it works</h5>
+                                            <div class="space-y-2.5">
+                                                <div class="flex items-start gap-3">
+                                                    <div class="w-5 h-5 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center flex-shrink-0 text-[10px] font-bold mt-0.5">1</div>
+                                                    <p class="text-xs text-gray-600">Click the button below to go to Google</p>
+                                                </div>
+                                                <div class="flex items-start gap-3">
+                                                    <div class="w-5 h-5 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center flex-shrink-0 text-[10px] font-bold mt-0.5">2</div>
+                                                    <p class="text-xs text-gray-600">Sign in with your Google account and grant Drive access</p>
+                                                </div>
+                                                <div class="flex items-start gap-3">
+                                                    <div class="w-5 h-5 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center flex-shrink-0 text-[10px] font-bold mt-0.5">3</div>
+                                                    <p class="text-xs text-gray-600">You'll be redirected back here — connection established</p>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div class="flex items-center gap-3">
+                                            <button
+                                                onclick="window.location.href='{{ route('google.drive.redirect') }}'"
+                                                wire:loading.attr="disabled"
+                                                class="btn btn-primary"
+                                            >
+                                                <i class="fas fa-link mr-1"></i> Connect Google Drive
+                                            </button>
+                                            <span class="text-xs text-gray-400"><i class="fas fa-lock mr-1"></i> Secure OAuth 2.0</span>
+                                        </div>
+                                    </div>
+                                @endif
+                            </div>
+                        </div>
+
+                        {{-- Disconnect Confirmation Modal --}}
+                        @if($showDisconnectModal)
+                            <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" wire:click.self="$set('showDisconnectModal', false)" x-on:keydown.escape.window="$wire.set('showDisconnectModal', false)">
+                                <div class="modal-box w-full max-w-md mx-4">
+                                    <div class="sticky top-0 bg-white flex items-center justify-between p-4 border-b">
+                                        <h3 class="font-bold text-lg text-red-600"><i class="fas fa-exclamation-triangle mr-2"></i>Disconnect Google Drive?</h3>
+                                        <button wire:click="$set('showDisconnectModal', false)" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
+                                    </div>
+                                    <div class="p-6 space-y-4">
+                                        <p class="text-sm text-gray-600">This will remove access to Google Drive. Files already uploaded will remain in your drive.</p>
+                                        <div>
+                                            <label class="form-label">Enter your password to confirm</label>
+                                            <input type="password" wire:model="drivePassword" class="form-input" placeholder="Your password" required>
+                                        </div>
+                                    </div>
+                                    <div class="sticky bottom-0 bg-white flex justify-end gap-2 p-4 border-t">
+                                        <button wire:click="$set('showDisconnectModal', false)" class="btn btn-secondary">Cancel</button>
+                                        <button wire:click="disconnectGoogleDrive" class="btn btn-danger" wire:loading.attr="disabled" wire:target="disconnectGoogleDrive">
+                                            <span wire:loading.remove wire:target="disconnectGoogleDrive"><i class="fas fa-unlink mr-1"></i> Disconnect</span>
+                                            <span wire:loading wire:target="disconnectGoogleDrive"><i class="fas fa-spinner fa-spin mr-1"></i> Disconnecting...</span>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        @endif
+                        @else
+                            <div class="bg-white rounded-2xl border border-gray-100 p-6 text-sm text-gray-500">Google Drive settings are available to admins only.</div>
+                        @endif
+                    @endif
+
+                    {{-- Google OAuth --}}
+                    @if($activeTab === 'google-oauth')
+                        @isSuperAdmin
+                        <div class="bg-white rounded-2xl border border-gray-100 p-6 space-y-6">
+                            <div>
+                                <h2 class="font-bold text-lg">Google OAuth Credentials</h2>
+                                <p class="text-sm text-gray-500 mt-1">Configure Google OAuth client ID and secret for Drive integration</p>
+                            </div>
+
+                            <div class="rounded-xl border border-amber-200 bg-amber-50 p-4">
+                                <div class="flex items-start gap-3">
+                                    <i class="fas fa-info-circle text-amber-500 mt-0.5"></i>
+                                    <div class="text-sm text-amber-800">
+                                        <p class="font-medium">Where to find these credentials:</p>
+                                        <ol class="list-decimal list-inside mt-1 space-y-0.5 text-xs text-amber-700">
+                                            <li>Go to <a href="https://console.cloud.google.com/apis/credentials" target="_blank" class="underline font-medium">Google Cloud Console - Credentials</a></li>
+                                            <li>Create an OAuth 2.0 Client ID (Web application type)</li>
+                                            <li>Add your redirect URI: <code class="bg-amber-100 px-1 rounded">{{ url('/settings/google/callback') }}</code></li>
+                                            <li>Copy the Client ID and Client Secret below</li>
+                                        </ol>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="grid grid-cols-1 gap-4">
+                                <div>
+                                    <label class="form-label">Google Client ID</label>
+                                    <input type="text" wire:model="googleClientId" class="form-input" placeholder="xxxxxxxxxxxx-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.apps.googleusercontent.com">
+                                    @error('googleClientId') <p class="text-xs text-red-500 mt-1">{{ $message }}</p> @enderror
+                                </div>
+                                <div>
+                                    <label class="form-label">Google Client Secret</label>
+                                    <input type="password" wire:model="googleClientSecret" class="form-input" placeholder="GOCSPX-xxxxxxxxxxxxxxxxxxxxxxxxxx" autocomplete="new-password">
+                                    @error('googleClientSecret') <p class="text-xs text-red-500 mt-1">{{ $message }}</p> @enderror
+                                </div>
+                            </div>
+
+                            <div class="flex items-center justify-between pt-2">
+                                <p class="text-xs text-gray-400">
+                                    <i class="fas fa-lock mr-1"></i>Client secret is stored encrypted. Only super-admins can view or modify these values.
+                                </p>
+                                <button wire:click="saveGoogleOAuth" class="btn btn-primary" wire:loading.attr="disabled" wire:target="saveGoogleOAuth">
+                                    <span wire:loading.remove wire:target="saveGoogleOAuth"><i class="fas fa-save mr-1"></i> Save Credentials</span>
+                                    <span wire:loading wire:target="saveGoogleOAuth" class="flex items-center gap-2">
+                                        <svg class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Saving...
+                                    </span>
+                                </button>
+                            </div>
+                        </div>
+                        @else
+                            <div class="bg-white rounded-2xl border border-gray-100 p-6 text-sm text-gray-500">Google OAuth settings are available to super-admins only.</div>
+                        @endisSuperAdmin
+                    @endif
                 </div>
             </div>
 
@@ -1378,6 +1623,76 @@ new #[Layout('components.layouts.app')] class extends Component
     {
         if ($action !== '' && method_exists($this, $action)) {
             $this->{$action}(...$params);
+        }
+    }
+
+    /* ---------------- Google Drive ---------------- */
+
+    public function loadGoogleDriveStatus(): void
+    {
+        $connection = GoogleDriveConnection::getActive();
+        $this->googleDriveConnected = $connection && $connection->isActive();
+
+        if ($this->googleDriveConnected) {
+            $this->googleDriveStatus = [
+                'email' => $connection->google_email,
+                'connected_at' => $connection->created_at->diffForHumans(),
+                'expires_at' => $connection->access_token_expires_at->diffForHumans(),
+            ];
+        } else {
+            $this->googleDriveStatus = null;
+        }
+    }
+
+    public function connectGoogleDrive(): void
+    {
+        $this->redirect(route('google.drive.redirect'));
+    }
+
+    public function disconnectGoogleDrive(): void
+    {
+        abort_unless(in_array(Auth::user()->role, ['super-admin', 'admin'], true), 403);
+
+        if (empty($this->drivePassword)) {
+            $this->dispatch('toast', message: 'Please enter your password.', type: 'error');
+
+            return;
+        }
+
+        if (! Hash::check($this->drivePassword, Auth::user()->password)) {
+            $this->dispatch('toast', message: 'Invalid password.', type: 'error');
+
+            return;
+        }
+
+        GoogleDriveConnection::disconnect();
+
+        $this->showDisconnectModal = false;
+        $this->drivePassword = '';
+        $this->loadGoogleDriveStatus();
+
+        $this->dispatch('toast', message: 'Google Drive disconnected.', type: 'success');
+    }
+
+    public function testGoogleDriveConnection(): void
+    {
+        abort_unless(in_array(Auth::user()->role, ['super-admin', 'admin'], true), 403);
+
+        if (! $this->googleDriveConnected) {
+            $this->dispatch('toast', message: 'Google Drive is not connected.', type: 'error');
+
+            return;
+        }
+
+        $this->isTestingDrive = true;
+
+        try {
+            app(\App\Services\GoogleDriveService::class)->listFiles(null, 1);
+            $this->dispatch('toast', message: 'Google Drive connection is working.', type: 'success');
+        } catch (\Exception $e) {
+            $this->dispatch('toast', message: 'Connection test failed: ' . $e->getMessage(), type: 'error');
+        } finally {
+            $this->isTestingDrive = false;
         }
     }
 };

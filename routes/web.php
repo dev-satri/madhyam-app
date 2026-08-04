@@ -2,6 +2,7 @@
 
 use Anuzpandey\LaravelNepaliDate\LaravelNepaliDate;
 use App\Http\Controllers\DataBackupController;
+use App\Http\Controllers\GoogleDriveController;
 use App\Livewire\Actions\Logout;
 use App\Models\Invoice;
 use App\Services\InvoicePdfService;
@@ -152,6 +153,18 @@ Route::middleware('auth:web')->group(function () {
     Route::middleware('feature:settings')->group(function () {
         Volt::route('settings', 'pages.settings.index')->name('settings');
         Route::get('settings/export', [DataBackupController::class, 'export'])->name('settings.export');
+    });
+
+    // Google Drive OAuth Routes (admin only)
+    Route::middleware(['feature:settings'])->prefix('settings/google')->group(function () {
+        Route::get('/redirect', [GoogleDriveController::class, 'redirect'])
+            ->name('google.drive.redirect');
+        Route::get('/callback', [GoogleDriveController::class, 'callback'])
+            ->name('google.drive.callback');
+        Route::post('/disconnect', [GoogleDriveController::class, 'disconnect'])
+            ->name('google.drive.disconnect');
+        Route::get('/status', [GoogleDriveController::class, 'status'])
+            ->name('google.drive.status');
     });
 
     Route::middleware('feature:userGuide')->group(function () {

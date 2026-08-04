@@ -15,7 +15,7 @@ class File extends Model
     use InteractsWithTrash, SoftDeletes;
 
     protected $fillable = [
-        'name', 'path', 'type', 'size', 'storage_type', 'external_url',
+        'name', 'path', 'type', 'size', 'storage_type', 'external_url', 'drive_file_id',
         'folder_id', 'client_id', 'tags', 'uploaded_by',
     ];
 

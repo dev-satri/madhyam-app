@@ -9,8 +9,10 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
 use App\Services\PackageService;
+use App\Models\GoogleDriveConnection;
 use App\Models\Folder;
 use App\Models\File;
+use App\Services\GoogleDriveService;
 
 new #[Layout('components.layouts.app')] class extends Component
 {
@@ -35,16 +37,34 @@ new #[Layout('components.layouts.app')] class extends Component
     public string $externalUrl = '';
     public string $externalFileName = '';
     public string $externalFileType = 'document';
+    public bool $googleDriveConnected = false;
+    public bool $showDriveBrowser = false;
 
     public function mount(): void
     {
         $this->currentFolderId = request()->query('folder', 0);
+        $connection = GoogleDriveConnection::getActive();
+        $this->googleDriveConnected = $connection && $connection->isActive();
     }
 
     #[Computed]
     public function storageInfo(): array
     {
         return $this->getStorageInfo();
+    }
+
+    #[Computed]
+    public function driveQuota(): ?array
+    {
+        if (! $this->googleDriveConnected) {
+            return null;
+        }
+
+        try {
+            return app(GoogleDriveService::class)->getStorageQuota();
+        } catch (\Exception $e) {
+            return null;
+        }
     }
 
     public function getStorageInfo(): array
@@ -250,13 +270,12 @@ new #[Layout('components.layouts.app')] class extends Component
             if ($folder) {
                 $this->editingFolderId = $id;
                 $this->folderName = $folder->name;
-                $this->folderClientId = $folder->client_id ?? 0;
             }
         } else {
             $this->editingFolderId = 0;
             $this->folderName = '';
-            $this->folderClientId = 0;
         }
+        $this->folderClientId = 0;
         $this->showFolderForm = true;
     }
 
@@ -347,6 +366,47 @@ new #[Layout('components.layouts.app')] class extends Component
     public function setUploadMode(string $mode): void
     {
         $this->uploadMode = $mode;
+    }
+
+    public function saveDriveFile(array $driveFile): void
+    {
+        $url = $driveFile['url'] ?? $driveFile['webViewLink'] ?? '';
+        if (! $url) {
+            $this->dispatch('toast', message: 'No URL returned from Google Drive', type: 'error');
+
+            return;
+        }
+
+        $name = $driveFile['name'] ?? 'Drive File';
+        $mimeType = $driveFile['mime'] ?? $driveFile['mimeType'] ?? '';
+        $size = $driveFile['size'] ?? 0;
+        $driveId = $driveFile['drive_file_id'] ?? $driveFile['id'] ?? null;
+
+        $type = match (true) {
+            str_starts_with($mimeType, 'image/') => 'image',
+            str_starts_with($mimeType, 'video/') => 'video',
+            str_starts_with($mimeType, 'audio/') => 'audio',
+            default => 'document',
+        };
+
+        DB::table('files')->insertGetId([
+            'name' => $name,
+            'path' => '',
+            'type' => $type,
+            'size' => is_numeric($size) ? (int) $size : 0,
+            'storage_type' => 'external',
+            'external_url' => $url,
+            'folder_id' => $this->currentFolderId ?: null,
+            'client_id' => $this->folderClientId ?: null,
+            'tags' => $this->uploadTags ?: null,
+            'uploaded_by' => Auth::id(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->showUpload = false;
+        $this->uploadTags = '';
+        $this->dispatch('toast', message: "File \"{$name}\" added from Google Drive", type: 'success');
     }
 
     public function saveExternalLink(): void
@@ -451,6 +511,90 @@ new #[Layout('components.layouts.app')] class extends Component
         $this->dispatch('toast', message: "$uploaded file(s) uploaded successfully", type: 'success');
     }
 
+    public function uploadToGoogleDrive(): void
+    {
+        if (empty($this->pendingFiles)) {
+            $this->dispatch('toast', message: 'No files selected', type: 'warning');
+            return;
+        }
+
+        $connection = GoogleDriveConnection::getActive();
+        if (! $connection || ! $connection->isActive()) {
+            $this->dispatch('toast', message: 'Google Drive is not connected. Please connect first.', type: 'error');
+            return;
+        }
+
+        $driveService = app(GoogleDriveService::class);
+        $quota = $driveService->getStorageQuota();
+
+        if ($quota && $quota['limit'] > 0) {
+            $totalNewBytes = array_sum(array_map(fn ($f) => $f->getSize(), $this->pendingFiles));
+            if (($quota['used'] + $totalNewBytes) > $quota['limit']) {
+                $this->dispatch('toast', message: 'Google Drive storage quota exceeded. Free up space first.', type: 'error');
+                return;
+            }
+        }
+
+        $uploaded = 0;
+        $errors = 0;
+
+        foreach ($this->pendingFiles as $file) {
+            try {
+                $ext = strtolower($file->getClientOriginalExtension());
+                $type = match(true) {
+                    in_array($ext, ['jpg','jpeg','png','gif','svg','webp']) => 'image',
+                    in_array($ext, ['mp4','mov','avi','mkv','webm']) => 'video',
+                    in_array($ext, ['mp3','wav','ogg','flac']) => 'audio',
+                    default => 'document',
+                };
+
+                $driveResult = $driveService->uploadFile(
+                    $file->getClientOriginalName(),
+                    file_get_contents($file->getRealPath()),
+                    null,
+                    $file->getMimeType()
+                );
+
+                $driveFileId = $driveResult['id'] ?? null;
+                $webViewLink = $driveResult['webViewLink'] ?? ("https://drive.google.com/file/d/{$driveFileId}/view");
+
+                DB::table('files')->insertGetId([
+                    'name' => $file->getClientOriginalName(),
+                    'path' => '',
+                    'type' => $type,
+                    'size' => $file->getSize(),
+                    'storage_type' => 'drive',
+                    'external_url' => $webViewLink,
+                    'drive_file_id' => $driveFileId,
+                    'folder_id' => $this->currentFolderId ?: null,
+                    'client_id' => $this->folderClientId ?: null,
+                    'tags' => $this->uploadTags ?: null,
+                    'uploaded_by' => Auth::id(),
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+
+                $uploaded++;
+            } catch (\Exception $e) {
+                $errors++;
+                \Illuminate\Support\Facades\Log::error('Google Drive upload failed', [
+                    'file' => $file->getClientOriginalName(),
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        $this->pendingFiles = [];
+        $this->uploadTags = '';
+        $this->showUpload = false;
+
+        if ($errors > 0) {
+            $this->dispatch('toast', message: "$uploaded file(s) uploaded, $errors failed", type: 'warning');
+        } else {
+            $this->dispatch('toast', message: "$uploaded file(s) uploaded to Google Drive", type: 'success');
+        }
+    }
+
     public function openPreview(int $id): void
     {
         $this->previewFileId = $id;
@@ -542,42 +686,92 @@ new #[Layout('components.layouts.app')] class extends Component
             {{-- Header --}}
             <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
                 <div>
-                    <h1 class="text-2xl font-extrabold text-gray-900">Files & Media</h1>
-                    <p class="text-sm text-gray-500">{{ $this->stats['total'] }} files &middot; {{ $this->stats['storage'] }} used</p>
+                    <h1 class="text-2xl font-extrabold text-gray-900">Shared Files</h1>
+                    <p class="text-sm text-gray-500">Upload and download files shared across your team &middot; {{ $this->stats['total'] }} files &middot; {{ $this->stats['storage'] }} used</p>
                 </div>
                 <div class="flex gap-2">
                     <button wire:click="openFolderForm" class="btn btn-secondary btn-sm"><i class="fas fa-folder-plus text-sm"></i> New Folder</button>
+                    @if($googleDriveConnected)
+                        <button wire:click="$set('showDriveBrowser', true)" class="btn btn-secondary btn-sm"><i class="fab fa-google-drive text-sm"></i> Google Drive</button>
+                    @endif
                     <button wire:click="openUpload" class="btn btn-primary btn-sm"><i class="fas fa-cloud-upload-alt text-sm"></i> Upload</button>
                 </div>
             </div>
 
-            {{-- Storage Bar --}}
+            {{-- Storage Bars --}}
             @php $si = $this->storageInfo; @endphp
-            <div class="bg-white rounded-xl border border-gray-200 p-4 mb-4 shadow-sm">
-                <div class="flex items-center justify-between mb-2">
-                    <div class="flex items-center gap-2">
-                        <i class="fas fa-database text-gray-400 text-sm"></i>
-                        <span class="text-sm font-semibold text-gray-700">Storage</span>
-                        @if($si['client_name'])
-                            <span class="text-xs text-gray-400">— {{ $si['client_name'] }}</span>
+            <div class="grid grid-cols-1 {{ $googleDriveConnected ? 'lg:grid-cols-2' : '' }} gap-3 mb-4">
+                {{-- Local Storage --}}
+                <div class="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
+                    <div class="flex items-center justify-between mb-2">
+                        <div class="flex items-center gap-2">
+                            <i class="fas fa-database text-gray-400 text-sm"></i>
+                            <span class="text-sm font-semibold text-gray-700">Local Storage</span>
+                            @if($si['client_name'])
+                                <span class="text-xs text-gray-400">— {{ $si['client_name'] }}</span>
+                            @endif
+                        </div>
+                        <span class="text-sm font-mono {{ $si['is_over'] ? 'text-red-600 font-bold' : ($si['is_near'] ? 'text-amber-600' : 'text-gray-600') }}">
+                            {{ $si['used_mb'] }} MB / {{ $si['limit_mb'] }} MB
+                        </span>
+                    </div>
+                    <div class="w-full bg-gray-200 rounded-full h-2.5">
+                        <div class="h-2.5 rounded-full transition-all duration-500 {{ $si['is_over'] ? 'bg-red-500' : ($si['is_near'] ? 'bg-amber-400' : 'bg-[var(--brand)]') }}"
+                             style="width: {{ min(100, $si['percent']) }}%"></div>
+                    </div>
+                    <div class="flex items-center justify-between mt-1.5">
+                        <span class="text-[11px] text-gray-400">{{ $si['percent'] }}% used</span>
+                        @if($si['is_over'])
+                            <span class="text-[11px] text-red-500 font-semibold"><i class="fas fa-exclamation-triangle mr-1"></i>Quota exceeded</span>
+                        @elseif($si['is_near'])
+                            <span class="text-[11px] text-amber-500 font-semibold"><i class="fas fa-exclamation-triangle mr-1"></i>Nearing limit</span>
                         @endif
                     </div>
-                    <span class="text-sm font-mono {{ $si['is_over'] ? 'text-red-600 font-bold' : ($si['is_near'] ? 'text-amber-600' : 'text-gray-600') }}">
-                        {{ $si['used_mb'] }} MB / {{ $si['limit_mb'] }} MB
-                    </span>
                 </div>
-                <div class="w-full bg-gray-200 rounded-full h-2.5">
-                    <div class="h-2.5 rounded-full transition-all duration-500 {{ $si['is_over'] ? 'bg-red-500' : ($si['is_near'] ? 'bg-amber-400' : 'bg-[var(--brand)]') }}"
-                         style="width: {{ min(100, $si['percent']) }}%"></div>
-                </div>
-                <div class="flex items-center justify-between mt-1.5">
-                    <span class="text-[11px] text-gray-400">{{ $si['percent'] }}% used</span>
-                    @if($si['is_over'])
-                        <span class="text-[11px] text-red-500 font-semibold"><i class="fas fa-exclamation-triangle mr-1"></i>Quota exceeded — use "Add Drive Link" for new files</span>
-                    @elseif($si['is_near'])
-                        <span class="text-[11px] text-amber-500 font-semibold"><i class="fas fa-exclamation-triangle mr-1"></i>Nearing limit</span>
-                    @endif
-                </div>
+
+                {{-- Google Drive Storage --}}
+                @if($googleDriveConnected)
+                    @php $dq = $this->driveQuota; @endphp
+                    <div class="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
+                        <div class="flex items-center justify-between mb-2">
+                            <div class="flex items-center gap-2">
+                                <i class="fab fa-google text-blue-500 text-sm"></i>
+                                <span class="text-sm font-semibold text-gray-700">Google Drive</span>
+                            </div>
+                            @if($dq)
+                                <span class="text-sm font-mono {{ $dq['is_over'] ? 'text-red-600 font-bold' : ($dq['is_near'] ? 'text-amber-600' : 'text-gray-600') }}">
+                                    @if($dq['limit'] > 0)
+                                        {{ $dq['used_gb'] }} GB / {{ $dq['limit_gb'] }} GB
+                                    @else
+                                        {{ $dq['used_gb'] }} GB / Unlimited
+                                    @endif
+                                </span>
+                            @endif
+                        </div>
+                        @if($dq)
+                            <div class="w-full bg-gray-200 rounded-full h-2.5">
+                                <div class="h-2.5 rounded-full transition-all duration-500 {{ $dq['is_over'] ? 'bg-red-500' : ($dq['is_near'] ? 'bg-amber-400' : 'bg-blue-500') }}"
+                                     style="width: {{ $dq['limit'] > 0 ? min(100, $dq['percent']) : 0 }}%"></div>
+                            </div>
+                            <div class="flex items-center justify-between mt-1.5">
+                                <span class="text-[11px] text-gray-400">
+                                    @if($dq['limit'] > 0)
+                                        {{ $dq['percent'] }}% used · {{ $dq['free_gb'] }} GB free
+                                    @else
+                                        {{ $dq['used_gb'] }} GB used · Unlimited
+                                    @endif
+                                </span>
+                                @if($dq['is_over'])
+                                    <span class="text-[11px] text-red-500 font-semibold"><i class="fas fa-exclamation-triangle mr-1"></i>Quota exceeded</span>
+                                @elseif($dq['is_near'])
+                                    <span class="text-[11px] text-amber-500 font-semibold"><i class="fas fa-exclamation-triangle mr-1"></i>Nearing limit</span>
+                                @endif
+                            </div>
+                        @else
+                            <div class="text-xs text-gray-400 py-1">Unable to load Drive quota</div>
+                        @endif
+                    </div>
+                @endif
             </div>
 
             {{-- Breadcrumb + Search + View Toggle --}}
@@ -927,13 +1121,6 @@ new #[Layout('components.layouts.app')] class extends Component
                                 <input type="text" wire:model="folderName" class="form-input" placeholder="Enter folder name" x-ref="folderNameInput" x-init="$nextTick(() => $refs.folderNameInput.focus())">
                                 <span wire:error="folderName" class="text-red-500 text-xs mt-1 block"></span>
                             </div>
-                            <div>
-                                <label class="form-label">Client (optional)</label>
-                                <select wire:model="folderClientId" class="form-select">
-                                    <option value="">None</option>
-                                    @foreach($this->clients as $c)<option value="{{ $c->id }}">{{ $c->name }}</option>@endforeach
-                                </select>
-                            </div>
                         </div>
                         <div class="sticky bottom-0 bg-white flex justify-end gap-2 p-4 border-t">
                             <button wire:click="$set('showFolderForm', false)" class="btn btn-secondary">Cancel</button>
@@ -1204,40 +1391,60 @@ new #[Layout('components.layouts.app')] class extends Component
 
             {{-- Upload Modal --}}
             @if($showUpload)
-                <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" wire:click.self="$set('showUpload', false)" x-on:keydown.escape.window="$wire.set('showUpload', false)">
-                    <div class="modal-box w-full max-w-lg mx-4">
-                        <div class="sticky top-0 bg-white flex items-center justify-between p-4 border-b">
+                <div class="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm" wire:click.self="$set('showUpload', false)" x-on:keydown.escape.window="$wire.set('showUpload', false)">
+                    <div class="modal-box w-full sm:max-w-lg sm:mx-4 max-h-[90vh] rounded-t-2xl sm:rounded-2xl flex flex-col">
+                        <div class="sticky top-0 bg-white flex items-center justify-between p-4 border-b flex-shrink-0">
                             <h3 class="font-bold text-lg">Upload Files</h3>
                             <button wire:click="$set('showUpload', false)" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
                         </div>
 
                         {{-- Mode Toggle --}}
-                        <div class="px-4 pt-4">
-                            <div class="flex bg-gray-100 rounded-lg p-1 gap-1">
+                        <div class="px-4 pt-4 flex-shrink-0">
+                            <div class="grid grid-cols-2 sm:grid-cols-4 bg-gray-100 rounded-lg p-1 gap-1">
                                 <button wire:click="setUploadMode('local')"
-                                    class="flex-1 py-2 text-sm font-semibold rounded-md transition-all {{ $uploadMode === 'local' ? 'bg-white shadow-sm text-gray-800' : 'text-gray-500 hover:text-gray-700' }}">
-                                    <i class="fas fa-hard-drive mr-1.5"></i> Local Upload
+                                    class="py-2 px-2 text-xs sm:text-sm font-semibold rounded-md transition-all {{ $uploadMode === 'local' ? 'bg-white shadow-sm text-gray-800' : 'text-gray-500 hover:text-gray-700' }}">
+                                    <i class="fas fa-hard-drive sm:mr-1.5"></i><span class="hidden sm:inline">Local</span><span class="sm:hidden">Local</span>
                                 </button>
+                                @if($googleDriveConnected)
+                                <button wire:click="setUploadMode('drive-upload')"
+                                    class="py-2 px-2 text-xs sm:text-sm font-semibold rounded-md transition-all {{ $uploadMode === 'drive-upload' ? 'bg-white shadow-sm text-gray-800' : 'text-gray-500 hover:text-gray-700' }}">
+                                    <i class="fab fa-google sm:mr-1.5"></i><span class="hidden sm:inline">Upload to Drive</span><span class="sm:hidden">Drive</span>
+                                </button>
+                                @endif
                                 <button wire:click="setUploadMode('drive')"
-                                    class="flex-1 py-2 text-sm font-semibold rounded-md transition-all {{ $uploadMode === 'drive' ? 'bg-white shadow-sm text-gray-800' : 'text-gray-500 hover:text-gray-700' }}">
-                                    <i class="fab fa-google-drive mr-1.5"></i> Add Drive Link
+                                    class="py-2 px-2 text-xs sm:text-sm font-semibold rounded-md transition-all {{ $uploadMode === 'drive' ? 'bg-white shadow-sm text-gray-800' : 'text-gray-500 hover:text-gray-700' }}">
+                                    <i class="fas fa-link sm:mr-1.5"></i><span class="hidden sm:inline">Drive Link</span><span class="sm:hidden">Link</span>
                                 </button>
+                                @if($googleDriveConnected)
+                                <button wire:click="setUploadMode('drive-browse')"
+                                    class="py-2 px-2 text-xs sm:text-sm font-semibold rounded-md transition-all {{ $uploadMode === 'drive-browse' ? 'bg-white shadow-sm text-gray-800' : 'text-gray-500 hover:text-gray-700' }}">
+                                    <i class="fas fa-folder-open sm:mr-1.5"></i><span class="hidden sm:inline">Browse</span><span class="sm:hidden">Browse</span>
+                                </button>
+                                @endif
                             </div>
                         </div>
 
-                        <div class="p-4 space-y-4">
-                            @if($uploadMode === 'local')
-                                {{-- Local Upload --}}
+                        <div class="p-4 space-y-4 overflow-y-auto flex-1 min-h-0">
+                            @if($uploadMode === 'local' || $uploadMode === 'drive-upload')
+                                {{-- Upload Zone --}}
                                 <div
-                                    class="border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-colors hover:border-[var(--brand)] hover:bg-[rgba(var(--brand-rgb),0.02)]"
+                                    class="border-2 border-dashed rounded-xl p-6 sm:p-8 text-center cursor-pointer transition-colors hover:border-[var(--brand)] hover:bg-[rgba(var(--brand-rgb),0.02)]"
                                     x-data="{ dragging: false }"
                                     x-on:dragover.prevent="dragging = true"
                                     x-on:dragleave="dragging = false"
-                                    x-on:drop.prevent="dragging = false; $refs.fileInput.files = $event.dataTransfer.files; $wire.set('showUpload', false); $wire.uploadFiles()"
+                                    x-on:drop.prevent="dragging = false; $refs.fileInput.files = $event.dataTransfer.files; $wire.set('showUpload', false); {{ $uploadMode === 'drive-upload' ? '$wire.uploadToGoogleDrive()' : '$wire.uploadFiles()' }}"
                                     x-bind:class="dragging ? 'border-[var(--brand)] bg-[rgba(var(--brand-rgb),0.05)]' : ''"
                                 >
-                                    <i class="fas fa-cloud-upload-alt text-4xl text-gray-300 mb-3"></i>
-                                    <p class="text-sm text-gray-600 mb-1">Drag & drop files here, or</p>
+                                    @if($uploadMode === 'drive-upload')
+                                        <div class="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-blue-50 flex items-center justify-center mx-auto mb-3">
+                                            <i class="fab fa-google text-blue-500 text-xl sm:text-2xl"></i>
+                                        </div>
+                                        <p class="text-sm font-semibold text-gray-700 mb-1">Upload to Google Drive</p>
+                                        <p class="text-xs text-gray-500 mb-3">Files go directly to your connected Drive</p>
+                                    @else
+                                        <i class="fas fa-cloud-upload-alt text-3xl sm:text-4xl text-gray-300 mb-3"></i>
+                                        <p class="text-sm text-gray-600 mb-1">Drag & drop files here, or</p>
+                                    @endif
                                     <label class="btn btn-secondary btn-sm cursor-pointer">
                                         <i class="fas fa-folder-open text-sm"></i> Browse Files
                                         <input type="file" wire:model="pendingFiles" x-ref="fileInput" multiple class="hidden" accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.txt,.zip">
@@ -1252,10 +1459,10 @@ new #[Layout('components.layouts.app')] class extends Component
                                         <p class="text-xs font-semibold text-gray-500">{{ count($pendingFiles) }} file(s) selected</p>
                                         @foreach($pendingFiles as $index => $file)
                                             <div class="flex items-center gap-2 rounded-lg bg-gray-50 px-3 py-2">
-                                                <i class="fas fa-file text-gray-400 text-sm"></i>
-                                                <span class="text-sm flex-1 truncate">{{ $file->getClientOriginalName() }}</span>
-                                                <span class="text-xs text-gray-400 font-mono">{{ $this->formatSize($file->getSize()) }}</span>
-                                                <button wire:click="removePendingFile({{ $index }})" class="text-gray-400 hover:text-red-500"><i class="fas fa-times text-xs"></i></button>
+                                                <i class="fas fa-file text-gray-400 text-sm flex-shrink-0"></i>
+                                                <span class="text-sm flex-1 min-w-0 truncate">{{ $file->getClientOriginalName() }}</span>
+                                                <span class="text-xs text-gray-400 font-mono flex-shrink-0">{{ $this->formatSize($file->getSize()) }}</span>
+                                                <button wire:click="removePendingFile({{ $index }})" class="text-gray-400 hover:text-red-500 flex-shrink-0"><i class="fas fa-times text-xs"></i></button>
                                             </div>
                                         @endforeach
                                     </div>
@@ -1293,22 +1500,53 @@ new #[Layout('components.layouts.app')] class extends Component
                                 </div>
                             @endif
 
+                            @if($uploadMode === 'drive-browse')
+                                <div x-on:drive-file-selected.window="if($event.detail.url) $wire.saveDriveFile($event.detail)">
+                                    @livewire('partials.drive-browser')
+                                </div>
+                            @endif
+
                             <div>
                                 <label class="form-label">Tags (comma-separated)</label>
                                 <input type="text" wire:model="uploadTags" class="form-input" placeholder="e.g. logo, banner, social">
                             </div>
                         </div>
-                        <div class="sticky bottom-0 bg-white flex justify-end gap-2 p-4 border-t">
-                            <button wire:click="$set('showUpload', false)" class="btn btn-secondary">Cancel</button>
+                        <div class="sticky bottom-0 bg-white flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-2 p-4 border-t flex-shrink-0">
+                            <button wire:click="$set('showUpload', false)" class="btn btn-secondary order-2 sm:order-1">Cancel</button>
                             @if($uploadMode === 'local')
-                                <button wire:click="uploadFiles" class="btn btn-primary" x-bind:disabled="$wire.pendingFiles.length === 0">
+                                <button wire:click="uploadFiles" class="btn btn-primary order-1 sm:order-2" x-bind:disabled="$wire.pendingFiles.length === 0">
                                     <i class="fas fa-upload text-sm"></i> Upload
                                 </button>
-                            @else
-                                <button wire:click="saveExternalLink" class="btn btn-primary" x-bind:disabled="!$wire.externalUrl || !$wire.externalFileName">
+                            @elseif($uploadMode === 'drive-upload')
+                                <button wire:click="uploadToGoogleDrive" class="btn btn-primary order-1 sm:order-2" wire:loading.attr="disabled" x-bind:disabled="$wire.pendingFiles.length === 0">
+                                    <span wire:loading.remove wire:target="uploadToGoogleDrive"><i class="fab fa-google text-sm mr-1"></i> Upload to Drive</span>
+                                    <span wire:loading wire:target="uploadToGoogleDrive"><i class="fas fa-spinner fa-spin mr-1"></i> Uploading...</span>
+                                </button>
+                            @elseif($uploadMode === 'drive')
+                                <button wire:click="saveExternalLink" class="btn btn-primary order-1 sm:order-2" x-bind:disabled="!$wire.externalUrl || !$wire.externalFileName">
                                     <i class="fas fa-link text-sm"></i> Add Link
                                 </button>
                             @endif
+                        </div>
+                    </div>
+                </div>
+            @endif
+
+            {{-- Google Drive Browser Modal --}}
+            @if($showDriveBrowser)
+                <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" wire:click.self="$set('showDriveBrowser', false)" x-on:keydown.escape.window="$wire.set('showDriveBrowser', false)">
+                    <div class="modal-box w-full max-w-3xl mx-4 max-h-[85vh] flex flex-col">
+                        <div class="sticky top-0 bg-white flex items-center justify-between p-4 border-b">
+                            <div class="flex items-center gap-2">
+                                <i class="fab fa-google-drive text-blue-500"></i>
+                                <h3 class="font-bold text-gray-900">Google Drive</h3>
+                            </div>
+                            <button wire:click="$set('showDriveBrowser', false)" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
+                        </div>
+                        <div class="flex-1 overflow-y-auto p-4 min-h-0">
+                            <div x-on:drive-file-selected.window="if($event.detail.url) { $wire.saveDriveFile($event.detail); $wire.set('showDriveBrowser', false); }">
+                                @livewire('partials.drive-browser')
+                            </div>
                         </div>
                     </div>
                 </div>
