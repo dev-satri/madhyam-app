@@ -16,6 +16,7 @@ new class extends Component
             ->leftJoin('file_expiries', 'files.id', '=', 'file_expiries.file_id')
             ->leftJoin('users', 'files.uploaded_by', '=', 'users.id')
             ->where('files.id', $this->fileId)
+            ->whereNull('files.deleted_at')
             ->select('files.*', 'file_expiries.expiry_date', 'file_expiries.extended', 'users.name as uploader_name')
             ->first();
     }

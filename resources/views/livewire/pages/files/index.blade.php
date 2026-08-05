@@ -71,7 +71,7 @@ new #[Layout('components.layouts.app')] class extends Component
     {
         $clientId = $this->folderClientId;
         if (! $clientId) {
-            $totalSize = DB::table('files')->sum('size');
+            $totalSize = DB::table('files')->whereNull('deleted_at')->sum('size');
             return [
                 'used_bytes' => $totalSize,
                 'used_mb' => round($totalSize / 1048576, 2),
@@ -161,6 +161,7 @@ new #[Layout('components.layouts.app')] class extends Component
         if (!empty($folderIds)) {
             $fileStats = DB::table('files')
                 ->whereIn('folder_id', $folderIds)
+                ->whereNull('deleted_at')
                 ->selectRaw('folder_id, COUNT(*) as file_count, COALESCE(SUM(size), 0) as total_size')
                 ->groupBy('folder_id')
                 ->get()
@@ -189,7 +190,8 @@ new #[Layout('components.layouts.app')] class extends Component
     public function getFiles()
     {
         $q = DB::table('files')
-            ->leftJoin('file_expiries', 'files.id', '=', 'file_expiries.file_id');
+            ->leftJoin('file_expiries', 'files.id', '=', 'file_expiries.file_id')
+            ->whereNull('files.deleted_at');
 
         if ($this->currentFolderId) {
             $q->where('files.folder_id', $this->currentFolderId);
@@ -240,7 +242,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function getStats(): array
     {
-        $files = DB::table('files');
+        $files = DB::table('files')->whereNull('deleted_at');
         $totalSize = (clone $files)->sum('size');
         $expiring = DB::table('file_expiries')
             ->where('expiry_date', '<=', now()->addDays(3))
@@ -632,11 +634,24 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function deleteFile(int $id): void
     {
-        DB::table('file_expiries')->where('file_id', $id)->delete();
         $file = DB::table('files')->where('id', $id)->first();
+        DB::table('file_expiries')->where('file_id', $id)->delete();
         File::findOrFail($id)->delete();
-        if ($file && Storage::exists($file->path)) {
-            Storage::delete($file->path);
+        if ($file) {
+            if ($file->drive_file_id && $this->googleDriveConnected) {
+                try {
+                    app(GoogleDriveService::class)->deleteFile($file->drive_file_id);
+                } catch (\Exception $e) {
+                    \Illuminate\Support\Facades\Log::warning('Failed to delete Google Drive file', [
+                        'file_id' => $id,
+                        'drive_file_id' => $file->drive_file_id,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+            }
+            if ($file->path && Storage::exists($file->path)) {
+                Storage::delete($file->path);
+            }
         }
         $this->dispatch('toast', message: 'File deleted', type: 'success');
     }
