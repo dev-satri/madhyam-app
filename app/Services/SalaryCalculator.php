@@ -13,8 +13,22 @@ class SalaryCalculator
 {
     public function ensureFor(User $member, int $month, int $year): Salary
     {
-        return Salary::firstOrCreate(
-            ['member_id' => $member->id, 'month' => $month, 'year' => $year],
+        $existing = Salary::withoutGlobalScopes()
+            ->where('member_id', $member->id)
+            ->where('month', $month)
+            ->where('year', $year)
+            ->first();
+
+        if ($existing) {
+            if ($existing->trashed()) {
+                $existing->restore();
+            }
+
+            return $existing;
+        }
+
+        return Salary::create(
+            ['member_id' => $member->id, 'month' => $month, 'year' => $year] +
             $this->initialAttributes($member, $month, $year)
         );
     }
