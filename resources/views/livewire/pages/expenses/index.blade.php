@@ -45,7 +45,7 @@ new #[Layout('components.layouts.app')] class extends Component
         $startOfMonth = now()->startOfMonth();
         $endOfMonth = now()->endOfMonth();
 
-        $base = DB::table('expenses');
+        $base = DB::table('expenses')->whereNull('deleted_at');
         $monthQ = (clone $base)->whereBetween('date', [$startOfMonth, $endOfMonth]);
 
         $total = (clone $monthQ)->sum('amount');
@@ -73,6 +73,7 @@ new #[Layout('components.layouts.app')] class extends Component
         }
 
         $rows = DB::table('expenses')
+            ->whereNull('deleted_at')
             ->whereBetween('date', [$startOfMonth, $endOfMonth])
             ->selectRaw('category, SUM(amount) as total')
             ->groupBy('category')
@@ -110,7 +111,8 @@ new #[Layout('components.layouts.app')] class extends Component
     {
         $q = DB::table('expenses')
             ->leftJoin('clients', 'expenses.client_id', '=', 'clients.id')
-            ->leftJoin('users', 'expenses.staff_member_id', '=', 'users.id');
+            ->leftJoin('users', 'expenses.staff_member_id', '=', 'users.id')
+            ->whereNull('expenses.deleted_at');
 
         if ($this->search) {
             $q->where(function ($sub) {
@@ -144,7 +146,7 @@ new #[Layout('components.layouts.app')] class extends Component
     public function openForm(?int $id = null): void
     {
         if ($id) {
-            $e = DB::table('expenses')->where('id', $id)->first();
+            $e = DB::table('expenses')->whereNull('deleted_at')->where('id', $id)->first();
             if ($e) {
                 $this->editingId = $id;
                 $this->formCategory = $e->category;
@@ -218,7 +220,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function toggleStatus(int $id): void
     {
-        $e = DB::table('expenses')->where('id', $id)->first();
+        $e = DB::table('expenses')->whereNull('deleted_at')->where('id', $id)->first();
         if ($e) {
             $newStatus = $e->status === 'paid' ? 'pending' : 'paid';
             DB::table('expenses')->where('id', $id)->update(['status' => $newStatus, 'updated_at' => now()]);
@@ -253,7 +255,7 @@ new #[Layout('components.layouts.app')] class extends Component
     #[Computed]
     public function clients()
     {
-        return DB::table('clients')->orderBy('name')->get();
+        return DB::table('clients')->whereNull('deleted_at')->orderBy('name')->get();
     }
 
     #[Computed]
@@ -268,6 +270,7 @@ new #[Layout('components.layouts.app')] class extends Component
     public function months(): array
     {
         return DB::table('expenses')
+            ->whereNull('deleted_at')
             ->selectRaw('DISTINCT DATE_FORMAT(date, "%Y-%m") as month')
             ->orderBy('month', 'desc')
             ->limit(12)

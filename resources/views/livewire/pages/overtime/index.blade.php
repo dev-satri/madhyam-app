@@ -47,7 +47,7 @@ new #[Layout('components.layouts.app')] class extends Component
         $userId = Auth::id();
         $isMgr = $this->isManager();
 
-        $base = DB::table('overtime_logs');
+        $base = DB::table('overtime_logs')->whereNull('deleted_at');
         if (!$isMgr) $base->where('member_id', $userId);
 
         $monthQ = (clone $base)->whereBetween('date', [$startOfMonth, $endOfMonth]);
@@ -74,7 +74,8 @@ new #[Layout('components.layouts.app')] class extends Component
     public function getLogs()
     {
         $q = DB::table('overtime_logs')
-            ->join('users', 'overtime_logs.member_id', '=', 'users.id');
+            ->join('users', 'overtime_logs.member_id', '=', 'users.id')
+            ->whereNull('overtime_logs.deleted_at');
 
         if (!$this->isManager()) {
             $q->where('overtime_logs.member_id', Auth::id());
@@ -122,6 +123,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
         return DB::table('overtime_logs')
             ->join('users', 'overtime_logs.member_id', '=', 'users.id')
+            ->whereNull('overtime_logs.deleted_at')
             ->whereBetween('overtime_logs.date', [$startOfMonth, $endOfMonth])
             ->where('overtime_logs.approved', true)
             ->select('overtime_logs.member_id', 'users.name as member_name')
@@ -135,7 +137,7 @@ new #[Layout('components.layouts.app')] class extends Component
     public function openForm(?int $id = null): void
     {
         if ($id) {
-            $log = DB::table('overtime_logs')->where('id', $id)->first();
+            $log = DB::table('overtime_logs')->where('id', $id)->whereNull('deleted_at')->first();
             if ($log) {
                 $this->editingId = $id;
                 $this->formMemberId = $log->member_id;
@@ -209,7 +211,7 @@ new #[Layout('components.layouts.app')] class extends Component
     public function toggleApprove(int $id): void
     {
         if (!$this->isManager()) return;
-        $log = DB::table('overtime_logs')->where('id', $id)->first();
+        $log = DB::table('overtime_logs')->where('id', $id)->whereNull('deleted_at')->first();
         if ($log) {
             $newApproved = !$log->approved;
             DB::table('overtime_logs')->where('id', $id)->update([
@@ -234,7 +236,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function deleteLog(int $id): void
     {
-        $log = DB::table('overtime_logs')->where('id', $id)->first();
+        $log = DB::table('overtime_logs')->where('id', $id)->whereNull('deleted_at')->first();
         if ($log) {
             OvertimeLog::findOrFail($id)->delete();
             // Recalculate salary for that member/month/year
@@ -253,7 +255,7 @@ new #[Layout('components.layouts.app')] class extends Component
     public function togglePaid(int $id): void
     {
         if (!$this->isManager()) return;
-        $log = DB::table('overtime_logs')->where('id', $id)->first();
+        $log = DB::table('overtime_logs')->where('id', $id)->whereNull('deleted_at')->first();
         if ($log) {
             DB::table('overtime_logs')->where('id', $id)->update([
                 'paid' => !$log->paid,
@@ -300,6 +302,7 @@ new #[Layout('components.layouts.app')] class extends Component
     public function months(): array
     {
         return DB::table('overtime_logs')
+            ->whereNull('deleted_at')
             ->selectRaw('DISTINCT DATE_FORMAT(date, "%Y-%m") as month')
             ->orderBy('month', 'desc')
             ->limit(12)

@@ -88,7 +88,7 @@ new #[Layout('components.layouts.app')] class extends Component
         $usedMb = round(($usage['storage_used_bytes'] ?? 0) / 1048576, 2);
         $limitMb = $limits['storage_limit_mb'] ?? 5120;
         $pct = PackageService::getUsagePercent((int) $usedMb, $limitMb);
-        $client = DB::table('clients')->where('id', $clientId)->first();
+        $client = DB::table('clients')->whereNull('deleted_at')->where('id', $clientId)->first();
 
         return [
             'used_bytes' => $usage['storage_used_bytes'] ?? 0,
@@ -128,7 +128,7 @@ new #[Layout('components.layouts.app')] class extends Component
     #[Computed]
     public function clients()
     {
-        return DB::table('clients')->where('status', 'active')->orderBy('name')->get();
+        return DB::table('clients')->whereNull('deleted_at')->where('status', 'active')->orderBy('name')->get();
     }
 
     public function getBreadcrumbs(): array

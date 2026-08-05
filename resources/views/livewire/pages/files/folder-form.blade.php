@@ -47,7 +47,7 @@ new class extends Component
     }
 
     public function render(): mixed    {
-        $clients = DB::table('clients')->where('status', 'active')->orderBy('name')->get();
+        $clients = DB::table('clients')->whereNull('deleted_at')->where('status', 'active')->orderBy('name')->get();
 
         return <<<'blade'
         <div class="space-y-4">

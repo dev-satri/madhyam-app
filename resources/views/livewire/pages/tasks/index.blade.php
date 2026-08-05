@@ -136,7 +136,7 @@ new #[Layout('components.layouts.app')] class extends Component
     #[Computed]
     public function clients()
     {
-        return DB::table('clients')->where('status', 'active')->orderBy('name')->get();
+        return DB::table('clients')->whereNull('deleted_at')->where('status', 'active')->orderBy('name')->get();
     }
 
     #[Computed]

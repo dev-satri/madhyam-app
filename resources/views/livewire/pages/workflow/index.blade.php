@@ -100,6 +100,7 @@ new #[Layout('components.layouts.app')] class extends Component
     {
         if (!$this->formClientId) return collect();
         return DB::table('contents')
+            ->whereNull('deleted_at')
             ->where('client_id', $this->formClientId)
             ->orderBy('date', 'desc')
             ->get();
@@ -172,11 +173,13 @@ new #[Layout('components.layouts.app')] class extends Component
 
         if ($workflow->content_id) {
             $adminApproved = DB::table('approvals')
+                ->whereNull('deleted_at')
                 ->where('content_id', $workflow->content_id)
                 ->where('approval_stage', 'admin-pending')
                 ->where('status', 'approved')
                 ->exists();
             $clientApproved = DB::table('approvals')
+                ->whereNull('deleted_at')
                 ->where('content_id', $workflow->content_id)
                 ->where('approval_stage', 'client-pending')
                 ->where('status', 'approved')
@@ -185,6 +188,7 @@ new #[Layout('components.layouts.app')] class extends Component
             $baseTitle = preg_replace('/\s*\([^)]*\)\s*$/', '', $workflow->title ?? '');
             if ($baseTitle) {
                 $adminApproved = DB::table('approvals')
+                    ->whereNull('deleted_at')
                     ->where('approval_stage', 'admin-pending')
                     ->where('status', 'approved')
                     ->where(function ($q) use ($baseTitle) {
@@ -193,6 +197,7 @@ new #[Layout('components.layouts.app')] class extends Component
                     })
                     ->exists();
                 $clientApproved = DB::table('approvals')
+                    ->whereNull('deleted_at')
                     ->where('approval_stage', 'client-pending')
                     ->where('status', 'approved')
                     ->where(function ($q) use ($baseTitle) {
@@ -237,6 +242,7 @@ new #[Layout('components.layouts.app')] class extends Component
             // Standalone workflow items (created directly) don't need approval validation
             if ($workflow->content_id) {
                 $approval = DB::table('approvals')
+                    ->whereNull('deleted_at')
                     ->where('content_id', $workflow->content_id)
                     ->where(function ($q) {
                         $q->where('approval_stage', 'completed')
@@ -275,6 +281,7 @@ new #[Layout('components.layouts.app')] class extends Component
         // When moving to review → create Approval #2 (admin-pending)
         if ($newStage === 'review' && $oldStage !== 'review') {
             $existingPending = DB::table('approvals')
+                ->whereNull('deleted_at')
                 ->where(function ($q) use ($workflow) {
                     if ($workflow->content_id) {
                         $q->where('content_id', $workflow->content_id);
@@ -385,6 +392,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
         // Reset existing approval to pending (reuse, don't duplicate)
         $existingApproval = DB::table('approvals')
+            ->whereNull('deleted_at')
             ->where('content_id', $workflow->content_id)
             ->where('approval_stage', 'admin-pending')
             ->whereIn('status', ['rejected', 'revision'])
@@ -691,7 +699,7 @@ new #[Layout('components.layouts.app')] class extends Component
         }
 
         if (!empty($workflow->content_id)) {
-            $contentAtts = DB::table('contents')->where('id', $workflow->content_id)->value('attachments');
+            $contentAtts = DB::table('contents')->whereNull('deleted_at')->where('id', $workflow->content_id)->value('attachments');
             if (!empty($contentAtts)) {
                 if (is_string($contentAtts)) $contentAtts = json_decode($contentAtts, true);
                 if (is_array($contentAtts)) {
@@ -730,6 +738,7 @@ new #[Layout('components.layouts.app')] class extends Component
         if (!$workflow) return [];
 
         $approvals = DB::table('approvals')
+            ->whereNull('deleted_at')
             ->where(function ($q) use ($workflow) {
                 if ($workflow->content_id) {
                     $q->where('content_id', $workflow->content_id);
@@ -772,7 +781,7 @@ new #[Layout('components.layouts.app')] class extends Component
         if (!$this->detailId) return;
 
         if ($hasFiles && !$hasText) {
-            $existingRaw = DB::table('workflows')->where('id', $this->detailId)->value('attachments');
+            $existingRaw = DB::table('workflows')->whereNull('deleted_at')->where('id', $this->detailId)->value('attachments');
             $existing = $existingRaw ? (json_decode($existingRaw, true) ?: []) : [];
             $merged = array_values(array_merge($existing, $attachments));
 

@@ -85,6 +85,7 @@ new #[Layout('components.layouts.app')] class extends Component
     public function getStats(): array
     {
         $q = DB::table('salaries')
+            ->whereNull('deleted_at')
             ->where('month', $this->monthFilter)
             ->where('year', $this->yearFilter);
 
@@ -108,6 +109,7 @@ new #[Layout('components.layouts.app')] class extends Component
         $q = DB::table('salaries')
             ->join('users', 'salaries.member_id', '=', 'users.id')
             ->leftJoin('departments', 'users.department_id', '=', 'departments.id')
+            ->whereNull('salaries.deleted_at')
             ->where('salaries.month', $this->monthFilter)
             ->where('salaries.year', $this->yearFilter);
 
@@ -149,6 +151,7 @@ new #[Layout('components.layouts.app')] class extends Component
         if (!$this->selectedSalaryId) return null;
         return DB::table('salaries')
             ->join('users', 'salaries.member_id', '=', 'users.id')
+            ->whereNull('salaries.deleted_at')
             ->where('salaries.id', $this->selectedSalaryId)
             ->select('salaries.*', 'users.name as member_name', 'users.role as member_role')
             ->first();
@@ -156,7 +159,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function openBaseEdit(int $id): void
     {
-        $salary = DB::table('salaries')->where('id', $id)->first();
+        $salary = DB::table('salaries')->where('id', $id)->whereNull('deleted_at')->first();
         if ($salary) {
             $this->selectedSalaryId = $id;
             $this->editBaseSalary = (float) $salary->base_salary;
@@ -167,7 +170,7 @@ new #[Layout('components.layouts.app')] class extends Component
     public function saveBaseEdit(): void
     {
         $this->validate(['editBaseSalary' => 'required|numeric|min:0']);
-        $salary = DB::table('salaries')->where('id', $this->selectedSalaryId)->first();
+        $salary = DB::table('salaries')->where('id', $this->selectedSalaryId)->whereNull('deleted_at')->first();
         if ($salary) {
             DB::table('salaries')->where('id', $this->selectedSalaryId)->update([
                 'base_salary' => $this->editBaseSalary,
@@ -183,7 +186,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function openBonusEdit(int $id): void
     {
-        $salary = DB::table('salaries')->where('id', $id)->first();
+        $salary = DB::table('salaries')->where('id', $id)->whereNull('deleted_at')->first();
         if ($salary) {
             $this->selectedSalaryId = $id;
             $this->editBonus = (float) $salary->bonus;
@@ -194,7 +197,7 @@ new #[Layout('components.layouts.app')] class extends Component
     public function saveBonusEdit(): void
     {
         $this->validate(['editBonus' => 'required|numeric|min:0']);
-        $salary = DB::table('salaries')->where('id', $this->selectedSalaryId)->first();
+        $salary = DB::table('salaries')->where('id', $this->selectedSalaryId)->whereNull('deleted_at')->first();
         if ($salary) {
             DB::table('salaries')->where('id', $this->selectedSalaryId)->update([
                 'bonus' => $this->editBonus,
@@ -228,7 +231,7 @@ new #[Layout('components.layouts.app')] class extends Component
     public function cycleStatus(int $id): void
     {
         if (!$this->isManager()) return;
-        $salary = DB::table('salaries')->where('id', $id)->first();
+        $salary = DB::table('salaries')->where('id', $id)->whereNull('deleted_at')->first();
         if ($salary) {
             $next = match($salary->status) {
                 'pending' => 'paid',
@@ -264,7 +267,7 @@ new #[Layout('components.layouts.app')] class extends Component
         if (!$this->isManager()) return;
         DB::table('salaries')->where('id', $this->selectedSalaryId)->update(['status' => 'paid', 'updated_at' => now()]);
         // Mark associated overtime logs as paid
-        $salary = DB::table('salaries')->where('id', $this->selectedSalaryId)->first();
+        $salary = DB::table('salaries')->where('id', $this->selectedSalaryId)->whereNull('deleted_at')->first();
         if ($salary) {
             $start = \Carbon\Carbon::createFromDate($salary->year, $salary->month, 1)->startOfMonth();
             $end = $start->copy()->endOfMonth();
@@ -312,7 +315,7 @@ new #[Layout('components.layouts.app')] class extends Component
     public function confirmBulkPay(): void
     {
         if (!$this->isManager() || empty($this->selectedIds)) return;
-        $salaries = DB::table('salaries')->whereIn('id', $this->selectedIds)->where('status', '!=', 'paid')->get();
+        $salaries = DB::table('salaries')->whereNull('deleted_at')->whereIn('id', $this->selectedIds)->where('status', '!=', 'paid')->get();
         DB::table('salaries')->whereIn('id', $this->selectedIds)->where('status', 'pending')->update(['status' => 'paid', 'updated_at' => now()]);
         // Mark associated overtime logs as paid for each salary
         foreach ($salaries as $salary) {
@@ -338,6 +341,7 @@ new #[Layout('components.layouts.app')] class extends Component
         if (!$this->selectedSalaryId) return null;
         return DB::table('salaries')
             ->join('users', 'salaries.member_id', '=', 'users.id')
+            ->whereNull('salaries.deleted_at')
             ->where('salaries.id', $this->selectedSalaryId)
             ->select('salaries.*', 'users.name as member_name', 'users.email as member_email')
             ->first();
@@ -349,6 +353,7 @@ new #[Layout('components.layouts.app')] class extends Component
         if (empty($this->selectedIds)) return ['items' => [], 'total' => 0, 'count' => 0];
         $items = DB::table('salaries')
             ->join('users', 'salaries.member_id', '=', 'users.id')
+            ->whereNull('salaries.deleted_at')
             ->whereIn('salaries.id', $this->selectedIds)
             ->where('salaries.status', 'pending')
             ->select('salaries.*', 'users.name as member_name')
@@ -399,6 +404,7 @@ new #[Layout('components.layouts.app')] class extends Component
         $end = $start->copy()->endOfMonth();
         return DB::table('overtime_logs')
             ->join('users', 'overtime_logs.member_id', '=', 'users.id')
+            ->whereNull('overtime_logs.deleted_at')
             ->where('overtime_logs.member_id', $salary->member_id)
             ->whereBetween('overtime_logs.date', [$start, $end])
             ->where('overtime_logs.approved', true)
@@ -438,6 +444,7 @@ new #[Layout('components.layouts.app')] class extends Component
         $end = $start->copy()->endOfMonth();
         return DB::table('leaves')
             ->join('users', 'leaves.member_id', '=', 'users.id')
+            ->whereNull('leaves.deleted_at')
             ->where('leaves.member_id', $salary->member_id)
             ->where('leaves.status', 'approved')
             ->whereDate('leaves.start_date', '<=', $end)

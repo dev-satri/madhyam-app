@@ -93,11 +93,13 @@
                     try {
                         if ($isClient) {
                             $pendingApprovals = \Illuminate\Support\Facades\DB::table('approvals')
+                                ->whereNull('deleted_at')
                                 ->where('status', 'pending')
                                 ->where('client_id', $user->client_id)
                                 ->count();
                         } elseif ($user && in_array($role, ['super-admin', 'admin', 'manager'])) {
                             $pendingApprovals = \Illuminate\Support\Facades\DB::table('approvals')
+                                ->whereNull('deleted_at')
                                 ->where('status', 'pending')
                                 ->count();
                         }

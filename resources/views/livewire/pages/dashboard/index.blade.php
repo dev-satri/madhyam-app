@@ -79,11 +79,12 @@ new #[Layout('components.layouts.app')] class extends Component
             $this->stats = [
                 'type' => 'admin',
                 'clients' => DB::table('clients')
+                    ->whereNull('deleted_at')
                     ->where('status', 'active')
                     ->where('created_at', '>=', $dateFilter)
                     ->count(),
                 'projects' => DB::table('workflows')->where('created_at', '>=', $dateFilter)->count(),
-                'approvals' => DB::table('approvals')->where('created_at', '>=', $dateFilter)->where('status', 'pending')->count(),
+                'approvals' => DB::table('approvals')->whereNull('deleted_at')->where('created_at', '>=', $dateFilter)->where('status', 'pending')->count(),
                 'revenue' => DB::table('invoice_payments')->where('created_at', '>=', $dateFilter)->sum('amount'),
             ];
         } else {
@@ -91,7 +92,7 @@ new #[Layout('components.layouts.app')] class extends Component
                 'type' => 'staff',
                 'tasks' => DB::table('tasks')->where('assignee', $userId)->where('created_at', '>=', $dateFilter)->count(),
                 'workflows' => DB::table('workflows')->where('assignee', $userId)->where('created_at', '>=', $dateFilter)->count(),
-                'approvals' => DB::table('approvals')->where('submitted_by', $userId)->where('created_at', '>=', $dateFilter)->where('status', 'pending')->count(),
+                'approvals' => DB::table('approvals')->whereNull('deleted_at')->where('submitted_by', $userId)->where('created_at', '>=', $dateFilter)->where('status', 'pending')->count(),
                 'overdue' => DB::table('tasks')->where('assignee', $userId)->where('due_date', '<', now())->where('status', '!=', 'completed')->count(),
             ];
         }

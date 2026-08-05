@@ -102,7 +102,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function getStats(): array
     {
-        $invoices = $this->scopeToClient(DB::table('invoices'));
+        $invoices = $this->scopeToClient(DB::table('invoices')->whereNull('deleted_at'));
         $totalRevenue = (clone $invoices)->sum('amount');
         $paid = (clone $invoices)->where('status', 'paid')->sum('amount');
         $pending = (clone $invoices)->where('status', 'pending')->sum('amount');
@@ -112,7 +112,7 @@ new #[Layout('components.layouts.app')] class extends Component
         // Agency-level metric — never exposed to clients.
         $expenses = $this->isClientPortal()
             ? 0
-            : DB::table('expenses')->where('category', '!=', 'salary')->sum('amount');
+            : DB::table('expenses')->whereNull('deleted_at')->where('category', '!=', 'salary')->sum('amount');
         $discounts = (clone $invoices)->sum('discount_amount');
         $installmentDue = (clone $invoices)->where('payment_status', 'installment')->sum('amount');
 
@@ -130,7 +130,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function getInvoices()
     {
-        $q = DB::table('invoices')->leftJoin('clients', 'invoices.client_id', '=', 'clients.id');
+        $q = DB::table('invoices')->leftJoin('clients', 'invoices.client_id', '=', 'clients.id')->whereNull('invoices.deleted_at');
         $this->scopeToClient($q);
 
         if ($this->search) {
@@ -176,7 +176,7 @@ new #[Layout('components.layouts.app')] class extends Component
     {
         // Ownership gate: a client may only see payments for their own invoices.
         // invoice_payments has no client_id, so we scope transitively via invoices.
-        $owned = $this->scopeToClient(DB::table('invoices'))
+        $owned = $this->scopeToClient(DB::table('invoices')->whereNull('deleted_at'))
             ->where('id', $invoiceId)
             ->exists();
         if (! $owned) {
@@ -193,7 +193,7 @@ new #[Layout('components.layouts.app')] class extends Component
     {
         abort_if($this->isClientPortal(), 403);
         if ($id) {
-            $inv = DB::table('invoices')->where('id', $id)->first();
+            $inv = DB::table('invoices')->whereNull('deleted_at')->where('id', $id)->first();
             if ($inv) {
                 $this->editingId = $id;
                 $this->formClientId = $inv->client_id;
@@ -313,7 +313,7 @@ new #[Layout('components.layouts.app')] class extends Component
     {
         abort_if($this->isClientPortal(), 403);
         $this->paymentInvoiceId = $invoiceId;
-        $inv = DB::table('invoices')->where('id', $invoiceId)->first();
+        $inv = DB::table('invoices')->whereNull('deleted_at')->where('id', $invoiceId)->first();
         if ($inv) {
             $this->payAmount = '';
             $this->payDate = now()->format('Y-m-d');
@@ -325,12 +325,12 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function getPaymentInvoice()
     {
-        return DB::table('invoices')->where('id', $this->paymentInvoiceId)->first();
+        return DB::table('invoices')->whereNull('deleted_at')->where('id', $this->paymentInvoiceId)->first();
     }
 
     public function getPaymentContext(): array
     {
-        $inv = DB::table('invoices')->where('id', $this->paymentInvoiceId)->first();
+        $inv = DB::table('invoices')->whereNull('deleted_at')->where('id', $this->paymentInvoiceId)->first();
         if (! $inv) {
             return ['remaining' => 0, 'is_installment' => false];
         }
@@ -583,7 +583,8 @@ new #[Layout('components.layouts.app')] class extends Component
     {
         // Client-scoped: a client requesting another tenant's invoice id returns null.
         $q = DB::table('invoices')
-            ->leftJoin('clients', 'invoices.client_id', '=', 'clients.id');
+            ->leftJoin('clients', 'invoices.client_id', '=', 'clients.id')
+            ->whereNull('invoices.deleted_at');
         $this->scopeToClient($q);
 
         return $q->where('invoices.id', $this->detailId)
@@ -702,6 +703,7 @@ new #[Layout('components.layouts.app')] class extends Component
     public function getMonthlyExpenseSummary()
     {
         return DB::table('expenses')
+            ->whereNull('deleted_at')
             ->select('category', DB::raw('SUM(amount) as total'), DB::raw('COUNT(*) as count'))
             ->where('category', '!=', 'salary')
             ->whereMonth('date', now()->month)
@@ -756,7 +758,7 @@ new #[Layout('components.layouts.app')] class extends Component
             return null;
         }
 
-        $owned = $this->scopeToClient(DB::table('invoices'))
+        $owned = $this->scopeToClient(DB::table('invoices')->whereNull('deleted_at'))
             ->where('id', $payment->invoice_id)
             ->exists();
         if (! $owned) {
@@ -781,7 +783,7 @@ new #[Layout('components.layouts.app')] class extends Component
     #[Computed]
     public function clients()
     {
-        return DB::table('clients')->where('status', 'active')->orderBy('name')->get();
+        return DB::table('clients')->whereNull('deleted_at')->where('status', 'active')->orderBy('name')->get();
     }
 
     #[Computed]
@@ -816,7 +818,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function getOutstandingSummary(): array
     {
-        $invoices = DB::table('invoices')->where('status', '!=', 'paid');
+        $invoices = DB::table('invoices')->whereNull('deleted_at')->where('status', '!=', 'paid');
         $this->scopeToClient($invoices);
 
         $all = $invoices->get();

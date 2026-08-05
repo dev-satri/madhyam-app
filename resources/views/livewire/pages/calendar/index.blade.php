@@ -378,6 +378,7 @@ new #[Layout('components.layouts.app')] class extends Component
             ->keyBy('content_id');
 
         $approvals = DB::table('approvals')
+            ->whereNull('deleted_at')
             ->whereIn('content_id', $ids)
             ->select('id', 'content_id', 'status')
             ->get()

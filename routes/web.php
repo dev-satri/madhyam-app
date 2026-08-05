@@ -128,7 +128,7 @@ Route::middleware('auth:web')->group(function () {
         Route::get('overtime/export', function () {
             $userId = Auth::id();
             $isMgr = in_array(Auth::user()->role, ['super-admin', 'admin', 'manager']);
-            $q = DB::table('overtime_logs')->join('users', 'overtime_logs.member_id', '=', 'users.id');
+            $q = DB::table('overtime_logs')->join('users', 'overtime_logs.member_id', '=', 'users.id')->whereNull('overtime_logs.deleted_at');
             if (! $isMgr) {
                 $q->where('overtime_logs.member_id', $userId);
             }

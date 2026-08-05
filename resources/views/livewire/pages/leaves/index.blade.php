@@ -64,22 +64,23 @@ new #[Layout('components.layouts.app')] class extends Component
     {
         $userId = Auth::id();
         $isMgr = $this->isManager();
-        $q = DB::table('leaves');
+        $q = DB::table('leaves')->whereNull('deleted_at');
         if (! $isMgr) {
             $q->where('member_id', $userId);
         }
 
         return [
             'my_leaves' => (clone $q)->where('member_id', $userId)->count(),
-            'pending' => DB::table('leaves')->where('status', 'pending')->count(),
-            'approved' => DB::table('leaves')->where('status', 'approved')->count(),
-            'rejected' => DB::table('leaves')->where('status', 'rejected')->count(),
+            'pending' => DB::table('leaves')->whereNull('deleted_at')->where('status', 'pending')->count(),
+            'approved' => DB::table('leaves')->whereNull('deleted_at')->where('status', 'approved')->count(),
+            'rejected' => DB::table('leaves')->whereNull('deleted_at')->where('status', 'rejected')->count(),
         ];
     }
 
     public function getLeaves()
     {
         $q = DB::table('leaves')
+            ->whereNull('leaves.deleted_at')
             ->join('users', 'leaves.member_id', '=', 'users.id')
             ->leftJoin('users as approver', 'leaves.approved_by', '=', 'approver.id');
 
@@ -115,7 +116,7 @@ new #[Layout('components.layouts.app')] class extends Component
     public function openForm(?int $id = null): void
     {
         if ($id) {
-            $leave = DB::table('leaves')->where('id', $id)->first();
+            $leave = DB::table('leaves')->whereNull('deleted_at')->where('id', $id)->first();
             if ($leave) {
                 $this->editingId = $id;
                 $this->formType = $leave->type;
@@ -271,6 +272,7 @@ new #[Layout('components.layouts.app')] class extends Component
         $yearEnd = Carbon::createFromDate($year, 12, 31);
 
         $yearLeaves = DB::table('leaves')
+            ->whereNull('deleted_at')
             ->where('member_id', $userId)
             ->where('status', 'approved')
             ->whereDate('start_date', '<=', $yearEnd)
@@ -296,6 +298,7 @@ new #[Layout('components.layouts.app')] class extends Component
     public function detailLeave()
     {
         return DB::table('leaves')
+            ->whereNull('leaves.deleted_at')
             ->join('users', 'leaves.member_id', '=', 'users.id')
             ->leftJoin('users as approver', 'leaves.approved_by', '=', 'approver.id')
             ->select('leaves.*', 'users.name as member_name', 'users.email as member_email', 'approver.name as approver_name')

@@ -140,7 +140,7 @@ new #[Layout('components.layouts.app')] class extends Component
     #[Computed]
     public function clients()
     {
-        return DB::table('clients')->where('status', 'active')->orderBy('name')->get();
+        return DB::table('clients')->whereNull('deleted_at')->where('status', 'active')->orderBy('name')->get();
     }
 
     #[Computed]
@@ -193,7 +193,8 @@ new #[Layout('components.layouts.app')] class extends Component
         // Approvals table (per plan §26 spec) has no content_id — title lives on the row.
         $q = DB::table('approvals')
             ->leftJoin('clients', 'approvals.client_id', '=', 'clients.id')
-            ->leftJoin('users', 'approvals.submitted_by', '=', 'users.id');
+            ->leftJoin('users', 'approvals.submitted_by', '=', 'users.id')
+            ->whereNull('approvals.deleted_at');
 
         if ($this->statusFilter) {
             $q->where('approvals.status', $this->statusFilter);
@@ -233,7 +234,7 @@ new #[Layout('components.layouts.app')] class extends Component
         // clients only see counts for their own client_id; non-manager staff
         // only see their own submissions. Previously this leaked global
         // agency-wide totals into the client portal.
-        $q = DB::table('approvals');
+        $q = DB::table('approvals')->whereNull('deleted_at');
 
         if ($account = Auth::guard('client')->user()) {
             $q->where('client_id', $account->client_id);
@@ -257,7 +258,7 @@ new #[Layout('components.layouts.app')] class extends Component
         $actor = Auth::user() ?? Auth::guard('client')->user();
         $isClient = $actor && ($actor->role ?? 'client') === 'client';
 
-        $approval = DB::table('approvals')->where('id', $id)->first();
+        $approval = DB::table('approvals')->where('id', $id)->whereNull('deleted_at')->first();
         if (! $approval) {
             return;
         }
@@ -333,7 +334,7 @@ new #[Layout('components.layouts.app')] class extends Component
         $actor = Auth::user() ?? Auth::guard('client')->user();
         $isClient = $actor && ($actor->role ?? 'client') === 'client';
 
-        $approval = DB::table('approvals')->where('id', $id)->first();
+        $approval = DB::table('approvals')->where('id', $id)->whereNull('deleted_at')->first();
         if (! $approval) {
             return false;
         }
@@ -551,7 +552,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
             return;
         }
-        $pending = DB::table('approvals')->where('status', 'pending')->pluck('id')->toArray();
+        $pending = DB::table('approvals')->where('status', 'pending')->whereNull('deleted_at')->pluck('id')->toArray();
         $targets = array_values(array_intersect($this->selectedItems, $pending));
         $count = 0;
         foreach ($targets as $id) {
@@ -584,7 +585,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function selectAll(): void
     {
-        $pending = DB::table('approvals')->where('status', 'pending')->pluck('id')->toArray();
+        $pending = DB::table('approvals')->where('status', 'pending')->whereNull('deleted_at')->pluck('id')->toArray();
         $this->selectedItems = $pending;
     }
 
@@ -629,7 +630,7 @@ new #[Layout('components.layouts.app')] class extends Component
         if (! $this->isManager) {
             return;
         }
-        $row = DB::table('approvals')->where('id', $id)->first();
+        $row = DB::table('approvals')->where('id', $id)->whereNull('deleted_at')->first();
         if (! $row) {
             return;
         }
@@ -724,7 +725,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
             return;
         }
-        $pending = DB::table('approvals')->where('status', 'pending')->pluck('id')->toArray();
+        $pending = DB::table('approvals')->where('status', 'pending')->whereNull('deleted_at')->pluck('id')->toArray();
         $this->reasonTargets = array_values(array_intersect($this->selectedItems, $pending));
         if (empty($this->reasonTargets)) {
             $this->dispatch('toast', message: 'No pending items selected', type: 'warning');
@@ -775,6 +776,7 @@ new #[Layout('components.layouts.app')] class extends Component
             ->leftJoin('clients', 'approvals.client_id', '=', 'clients.id')
             ->leftJoin('users', 'approvals.submitted_by', '=', 'users.id')
             ->select('approvals.*', 'clients.name as client_name', 'users.name as submitter_name')
+            ->whereNull('approvals.deleted_at')
             ->where('approvals.id', $this->detailId)->first();
     }
 
@@ -826,7 +828,7 @@ new #[Layout('components.layouts.app')] class extends Component
         if (!$this->detailId) return [];
         $atts = [];
 
-        $approval = DB::table('approvals')->where('id', $this->detailId)->first();
+        $approval = DB::table('approvals')->where('id', $this->detailId)->whereNull('deleted_at')->first();
         if (!$approval) return [];
 
         if (!empty($approval->attachments)) {
@@ -863,7 +865,7 @@ new #[Layout('components.layouts.app')] class extends Component
     {
         if (!$this->detailId) return null;
 
-        $appr = DB::table('approvals')->where('id', $this->detailId)->first();
+        $appr = DB::table('approvals')->where('id', $this->detailId)->whereNull('deleted_at')->first();
         if (!$appr || empty($appr->content_id)) return null;
 
         return DB::table('contents')
@@ -890,7 +892,7 @@ new #[Layout('components.layouts.app')] class extends Component
         $actor = Auth::user() ?? Auth::guard('client')->user();
 
         if ($hasFiles && !$hasText) {
-            $existingRaw = DB::table('approvals')->where('id', $this->detailId)->value('attachments');
+            $existingRaw = DB::table('approvals')->where('id', $this->detailId)->whereNull('deleted_at')->value('attachments');
             $existing = $existingRaw ? (json_decode($existingRaw, true) ?: []) : [];
             $merged = array_values(array_merge($existing, $attachments));
 

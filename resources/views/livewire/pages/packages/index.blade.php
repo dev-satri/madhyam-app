@@ -218,7 +218,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function deletePkg(int $id): void
     {
-        $clientCount = DB::table('clients')->where('package', DB::table('packages')->where('id', $id)->value('slug'))->count();
+        $clientCount = DB::table('clients')->whereNull('deleted_at')->where('package', DB::table('packages')->where('id', $id)->value('slug'))->count();
         if ($clientCount > 0) {
             $this->dispatch('toast', message: 'Cannot delete: ' . $clientCount . ' client(s) using this package', type: 'error');
             return;
@@ -261,6 +261,7 @@ new #[Layout('components.layouts.app')] class extends Component
         ];
 
         $clients = DB::table('clients')
+            ->whereNull('deleted_at')
             ->where('package', $pkg->slug)
             ->where('status', 'active')
             ->get();
@@ -411,7 +412,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function openClientDetail(int $clientId): void
     {
-        $client = DB::table('clients')->where('id', $clientId)->first();
+        $client = DB::table('clients')->whereNull('deleted_at')->where('id', $clientId)->first();
         if (!$client) return;
 
         $pkg = DB::table('packages')->where('slug', $client->package)->first();

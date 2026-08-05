@@ -21,7 +21,7 @@ class PackageService
             ->first();
 
         if (! $usage) {
-            $client = DB::table('clients')->where('id', $clientId)->first();
+            $client = DB::table('clients')->whereNull('deleted_at')->where('id', $clientId)->first();
             $pkg = $client ? DB::table('packages')->where('slug', $client->package)->first() : null;
 
             $usage = (object) [
@@ -97,7 +97,7 @@ class PackageService
 
     public static function getLimits(int $clientId): array
     {
-        $client = DB::table('clients')->where('id', $clientId)->first();
+        $client = DB::table('clients')->whereNull('deleted_at')->where('id', $clientId)->first();
         if (! $client) {
             return [];
         }
@@ -218,7 +218,7 @@ class PackageService
 
     public static function getUpgradeOptions(int $clientId): array
     {
-        $client = DB::table('clients')->where('id', $clientId)->first();
+        $client = DB::table('clients')->whereNull('deleted_at')->where('id', $clientId)->first();
         if (! $client) {
             return [];
         }
@@ -255,7 +255,7 @@ class PackageService
 
     public static function upgradePackage(int $clientId, string $newPackageSlug): bool
     {
-        $client = DB::table('clients')->where('id', $clientId)->first();
+        $client = DB::table('clients')->whereNull('deleted_at')->where('id', $clientId)->first();
         if (! $client) {
             return false;
         }
@@ -286,6 +286,7 @@ class PackageService
     public static function getAllClientsUsage(): array
     {
         $clients = DB::table('clients')
+            ->whereNull('deleted_at')
             ->where('status', 'active')
             ->get();
 
@@ -608,8 +609,9 @@ class PackageService
         $stats = [];
 
         foreach ($packages as $pkg) {
-            $clientCount = DB::table('clients')->where('package', $pkg->slug)->where('status', 'active')->count();
+            $clientCount = DB::table('clients')->whereNull('deleted_at')->where('package', $pkg->slug)->where('status', 'active')->count();
             $totalRevenue = DB::table('clients')
+                ->whereNull('deleted_at')
                 ->where('package', $pkg->slug)
                 ->where('status', 'active')
                 ->sum('amount');

@@ -65,7 +65,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function getStats(): array
     {
-        $q = DB::table('complaints');
+        $q = DB::table('complaints')->whereNull('deleted_at');
         if ($this->isClient()) {
             // Auth::guard('client')->id() returns the client_accounts.id PK,
             // NOT the clients.id FK stored on complaints.client_id. Use ->user()->client_id.
@@ -83,6 +83,7 @@ new #[Layout('components.layouts.app')] class extends Component
     public function getComplaints()
     {
         $q = DB::table('complaints')
+            ->whereNull('complaints.deleted_at')
             ->join('clients', 'complaints.client_id', '=', 'clients.id')
             ->leftJoin('users', 'complaints.assigned_to', '=', 'users.id');
 
@@ -113,7 +114,7 @@ new #[Layout('components.layouts.app')] class extends Component
     #[Computed]
     public function clients()
     {
-        return DB::table('clients')->orderBy('name')->get();
+        return DB::table('clients')->whereNull('deleted_at')->orderBy('name')->get();
     }
 
     #[Computed]
@@ -138,6 +139,7 @@ new #[Layout('components.layouts.app')] class extends Component
     public function openDetail(int $id): void
     {
         $row = DB::table('complaints')
+            ->whereNull('complaints.deleted_at')
             ->join('clients', 'complaints.client_id', '=', 'clients.id')
             ->leftJoin('users', 'complaints.assigned_to', '=', 'users.id')
             ->where('complaints.id', $id)
@@ -173,7 +175,7 @@ new #[Layout('components.layouts.app')] class extends Component
     public function openForm(?int $id = null): void
     {
         if ($id) {
-            $c = DB::table('complaints')->where('id', $id)->first();
+            $c = DB::table('complaints')->where('id', $id)->whereNull('deleted_at')->first();
             if ($c) {
                 $this->editingId = $id;
                 $this->formTitle = $c->title;
@@ -240,7 +242,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function confirmMarkInProgress(): void
     {
-        $c = DB::table('complaints')->where('id', $this->currentActionId)->first();
+        $c = DB::table('complaints')->where('id', $this->currentActionId)->whereNull('deleted_at')->first();
         if (!$c || $c->status !== 'open') {
             $this->dispatch('toast', message: 'Complaint is not in open status', type: 'error');
             return;
@@ -271,7 +273,7 @@ new #[Layout('components.layouts.app')] class extends Component
     {
         $this->validate(['resolveNotes' => 'required|string|min:5']);
 
-        $c = DB::table('complaints')->where('id', $this->currentActionId)->first();
+        $c = DB::table('complaints')->where('id', $this->currentActionId)->whereNull('deleted_at')->first();
         if (!$c || $c->status !== 'in-progress') {
             $this->dispatch('toast', message: 'Complaint must be in-progress to resolve', type: 'error');
             return;
@@ -296,7 +298,7 @@ new #[Layout('components.layouts.app')] class extends Component
     {
         if (!$this->isManager()) return;
 
-        $c = DB::table('complaints')->where('id', $id)->first();
+        $c = DB::table('complaints')->where('id', $id)->whereNull('deleted_at')->first();
         if (!$c || $c->status !== 'resolved') return;
 
         DB::table('complaints')->where('id', $id)->update([
