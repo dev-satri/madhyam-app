@@ -6,6 +6,7 @@ use App\Models\File;
 use App\Services\ActivityLogger;
 use App\Services\NotificationService;
 use App\Services\PackageService;
+use Anuzpandey\LaravelNepaliDate\Exceptions\InvalidDateException;
 use Anuzpandey\LaravelNepaliDate\LaravelNepaliDate;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Auth;
@@ -89,9 +90,14 @@ new #[Layout('components.layouts.app')] class extends Component
     public function mount(): void
     {
         if (\App\Support\NepaliDate::isBs()) {
-            $bsDate = LaravelNepaliDate::from(now()->format('Y-m-d'))->toNepaliDateArray();
-            $this->currentMonth = (int) $bsDate->month;
-            $this->currentYear = (int) $bsDate->year;
+            try {
+                $bsDate = LaravelNepaliDate::from(now()->format('Y-m-d'))->toNepaliDateArray();
+                $this->currentMonth = (int) $bsDate->month;
+                $this->currentYear = (int) $bsDate->year;
+            } catch (InvalidDateException) {
+                $this->currentMonth = (int) now()->month;
+                $this->currentYear = (int) now()->year;
+            }
         } else {
             $this->currentMonth = (int) now()->month;
             $this->currentYear = (int) now()->year;
@@ -150,9 +156,14 @@ new #[Layout('components.layouts.app')] class extends Component
     public function goToday(): void
     {
         if (\App\Support\NepaliDate::isBs()) {
-            $bsDate = LaravelNepaliDate::from(now()->format('Y-m-d'))->toNepaliDateArray();
-            $this->currentMonth = (int) $bsDate->month;
-            $this->currentYear = (int) $bsDate->year;
+            try {
+                $bsDate = LaravelNepaliDate::from(now()->format('Y-m-d'))->toNepaliDateArray();
+                $this->currentMonth = (int) $bsDate->month;
+                $this->currentYear = (int) $bsDate->year;
+            } catch (InvalidDateException) {
+                $this->currentMonth = (int) now()->month;
+                $this->currentYear = (int) now()->year;
+            }
         } else {
             $this->currentMonth = (int) now()->month;
             $this->currentYear = (int) now()->year;
@@ -163,11 +174,16 @@ new #[Layout('components.layouts.app')] class extends Component
     public function loadMonthContent(): void
     {
         if (\App\Support\NepaliDate::isBs()) {
-            $startBs = sprintf('%04d-%02d-01', $this->currentYear, $this->currentMonth);
-            $startAd = LaravelNepaliDate::from($startBs, 'Y-m-d', 'np')->toEnglishDate('Y-m-d');
-            $startCarbon = Carbon::parse($startAd);
+            try {
+                $startBs = sprintf('%04d-%02d-01', $this->currentYear, $this->currentMonth);
+                $startAd = LaravelNepaliDate::from($startBs, 'Y-m-d', 'np')->toEnglishDate('Y-m-d');
+                $startCarbon = Carbon::parse($startAd);
 
-            $totalDays = LaravelNepaliDate::daysInMonth($this->currentMonth, $this->currentYear);
+                $totalDays = LaravelNepaliDate::daysInMonth($this->currentMonth, $this->currentYear);
+            } catch (InvalidDateException|\RuntimeException $e) {
+                $startCarbon = Carbon::createFromDate($this->currentYear, $this->currentMonth, 1);
+                $totalDays = $startCarbon->daysInMonth;
+            }
             $start = $startCarbon->copy()->startOfWeek(Carbon::SUNDAY);
             $end = $startCarbon->copy()->addDays($totalDays - 1)->endOfWeek(Carbon::SATURDAY);
         } else {
@@ -264,11 +280,16 @@ new #[Layout('components.layouts.app')] class extends Component
     public function getCalendarDays(): array
     {
         if (\App\Support\NepaliDate::isBs()) {
-            $startBs = sprintf('%04d-%02d-01', $this->currentYear, $this->currentMonth);
-            $startAd = LaravelNepaliDate::from($startBs, 'Y-m-d', 'np')->toEnglishDate('Y-m-d');
-            $firstDayCarbon = Carbon::parse($startAd);
+            try {
+                $startBs = sprintf('%04d-%02d-01', $this->currentYear, $this->currentMonth);
+                $startAd = LaravelNepaliDate::from($startBs, 'Y-m-d', 'np')->toEnglishDate('Y-m-d');
+                $firstDayCarbon = Carbon::parse($startAd);
 
-            $totalDays = LaravelNepaliDate::daysInMonth($this->currentMonth, $this->currentYear);
+                $totalDays = LaravelNepaliDate::daysInMonth($this->currentMonth, $this->currentYear);
+            } catch (InvalidDateException|\RuntimeException $e) {
+                $firstDayCarbon = Carbon::createFromDate($this->currentYear, $this->currentMonth, 1);
+                $totalDays = $firstDayCarbon->daysInMonth;
+            }
 
             $gridStart = $firstDayCarbon->copy()->startOfWeek(Carbon::SUNDAY);
             $gridEnd = $firstDayCarbon->copy()->addDays($totalDays - 1)->endOfWeek(Carbon::SATURDAY);

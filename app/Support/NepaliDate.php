@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use Anuzpandey\LaravelNepaliDate\Exceptions\InvalidDateException;
 use Anuzpandey\LaravelNepaliDate\LaravelNepaliDate;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -48,8 +49,12 @@ class NepaliDate
         $date = $date instanceof Carbon ? $date : Carbon::parse($date);
 
         if (self::isBs()) {
-            return LaravelNepaliDate::from($date->format('Y-m-d'))
-                ->toNepaliDate('D, j F Y', 'en');
+            try {
+                return LaravelNepaliDate::from($date->format('Y-m-d'))
+                    ->toNepaliDate('D, j F Y', 'en');
+            } catch (InvalidDateException) {
+                return $date->format('M d, Y');
+            }
         }
 
         return $date->format('M d, Y');
@@ -64,8 +69,12 @@ class NepaliDate
         $date = $date instanceof Carbon ? $date : Carbon::parse($date);
 
         if (self::isBs()) {
-            return LaravelNepaliDate::from($date->format('Y-m-d'))
-                ->toNepaliDate('j F Y', 'en');
+            try {
+                return LaravelNepaliDate::from($date->format('Y-m-d'))
+                    ->toNepaliDate('j F Y', 'en');
+            } catch (InvalidDateException) {
+                return $date->format('M d, Y');
+            }
         }
 
         return $date->format('M d, Y');
@@ -80,8 +89,12 @@ class NepaliDate
         $date = $date instanceof Carbon ? $date : Carbon::parse($date);
 
         if (self::isBs()) {
-            return LaravelNepaliDate::from($date->format('Y-m-d'))
-                ->toNepaliDate('j M', 'en');
+            try {
+                return LaravelNepaliDate::from($date->format('Y-m-d'))
+                    ->toNepaliDate('j M', 'en');
+            } catch (InvalidDateException) {
+                return $date->format('M j');
+            }
         }
 
         return $date->format('M j');
@@ -96,9 +109,13 @@ class NepaliDate
         $datetime = $datetime instanceof Carbon ? $datetime : Carbon::parse($datetime);
 
         if (self::isBs()) {
-            return LaravelNepaliDate::from($datetime->format('Y-m-d'))
-                ->toNepaliDate('D, j F Y', 'en')
-                . ' ' . $datetime->format('g:i A');
+            try {
+                return LaravelNepaliDate::from($datetime->format('Y-m-d'))
+                    ->toNepaliDate('D, j F Y', 'en')
+                    . ' ' . $datetime->format('g:i A');
+            } catch (InvalidDateException) {
+                return $datetime->format('M d, Y g:i A');
+            }
         }
 
         return $datetime->format('M d, Y g:i A');
@@ -113,8 +130,12 @@ class NepaliDate
         $date = $date instanceof Carbon ? $date : Carbon::parse($date);
 
         if (self::isBs()) {
-            return LaravelNepaliDate::from($date->format('Y-m-d'))
-                ->toNepaliDate('F Y', 'en');
+            try {
+                return LaravelNepaliDate::from($date->format('Y-m-d'))
+                    ->toNepaliDate('F Y', 'en');
+            } catch (InvalidDateException) {
+                return $date->format('F Y');
+            }
         }
 
         return $date->format('F Y');
@@ -129,8 +150,12 @@ class NepaliDate
         $date = $date instanceof Carbon ? $date : Carbon::parse($date);
 
         if (self::isBs()) {
-            return LaravelNepaliDate::from($date->format('Y-m-d'))
-                ->toNepaliDate('Y-m-d', 'en');
+            try {
+                return LaravelNepaliDate::from($date->format('Y-m-d'))
+                    ->toNepaliDate('Y-m-d', 'en');
+            } catch (InvalidDateException) {
+                return $date->format('Y-m-d');
+            }
         }
 
         return $date->format('Y-m-d');
@@ -138,8 +163,12 @@ class NepaliDate
 
     public static function toAd(string $bsDate): string
     {
-        return LaravelNepaliDate::from($bsDate, 'Y-m-d', 'np')
-            ->toEnglishDate('Y-m-d');
+        try {
+            return LaravelNepaliDate::from($bsDate, 'Y-m-d', 'np')
+                ->toEnglishDate('Y-m-d');
+        } catch (InvalidDateException) {
+            return $bsDate;
+        }
     }
 
     public static function bsMonthName(int $month): string
@@ -192,15 +221,27 @@ class NepaliDate
 
     public static function adToBsArray(string $adDate): array
     {
-        $dto = LaravelNepaliDate::from($adDate)->toNepaliDateArray();
+        try {
+            $dto = LaravelNepaliDate::from($adDate)->toNepaliDateArray();
 
-        return [
-            'year' => (int) $dto->year,
-            'month' => (int) $dto->month,
-            'day' => (int) $dto->day,
-            'month_name' => $dto->monthName,
-            'day_name' => $dto->dayName,
-        ];
+            return [
+                'year' => (int) $dto->year,
+                'month' => (int) $dto->month,
+                'day' => (int) $dto->day,
+                'month_name' => $dto->monthName,
+                'day_name' => $dto->dayName,
+            ];
+        } catch (InvalidDateException) {
+            $date = Carbon::parse($adDate);
+
+            return [
+                'year' => $date->year,
+                'month' => $date->month,
+                'day' => $date->day,
+                'month_name' => $date->format('F'),
+                'day_name' => $date->format('l'),
+            ];
+        }
     }
 
     public static function getCurrentBsDate(): array
