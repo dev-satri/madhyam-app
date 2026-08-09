@@ -18,6 +18,9 @@
         open: false,
         search: '',
         files: [],
+        folders: [],
+        breadcrumbs: [],
+        currentFolderId: 0,
         selected: [],
         attached: @js($initialAttached),
         driveUrl: '',
@@ -31,14 +34,34 @@
             var el = document.getElementById(this.inputId);
             if (el) el.value = JSON.stringify(this.attached);
         },
+        async loadFolders() {
+            try {
+                var clientId = @js($wireClientId) ? $wire.get(@js($wireClientId)) : {{ json_encode($clientId) }};
+                var res = await $wire.getPickableFolders(this.currentFolderId, clientId);
+                this.folders = res.folders || [];
+                this.breadcrumbs = res.breadcrumbs || [];
+            } catch(e) { console.error(e); }
+        },
         async loadFiles() {
             this.loading = true;
             try {
                 var clientId = @js($wireClientId) ? $wire.get(@js($wireClientId)) : {{ json_encode($clientId) }};
-                var res = await $wire.getPickableFiles(this.search, clientId);
+                var res = await $wire.getPickableFiles(this.search, clientId, this.currentFolderId);
                 this.files = res;
             } catch(e) { console.error(e); }
             this.loading = false;
+        },
+        async enterFolder(folderId) {
+            this.currentFolderId = folderId;
+            this.search = '';
+            await this.loadFolders();
+            await this.loadFiles();
+        },
+        async goToRoot() {
+            this.currentFolderId = 0;
+            this.search = '';
+            await this.loadFolders();
+            await this.loadFiles();
         },
         toggleFile(file) {
             var idx = this.selected.findIndex(function(f) { return f.id === file.id; });
@@ -99,7 +122,9 @@
             this.driveUrl = '';
             this.driveName = '';
             this.showDriveBrowser = false;
+            this.currentFolderId = 0;
             this.open = true;
+            this.loadFolders();
             this.loadFiles();
         },
     }"
@@ -237,6 +262,8 @@
                                 if ($event.detail.id === 'newFileUpload') {
                                     uploadProgress = 100;
                                     uploading = false;
+                                    loadFolders();
+                                    loadFiles();
                                 }
                             "
                             x-on:upload:cancelled.window="
@@ -325,29 +352,87 @@
                             </button>
                         </div>
 
+                        {{-- Breadcrumbs --}}
+                        <div class="px-4 py-2 border-b shrink-0" x-show="breadcrumbs.length > 0">
+                            <nav class="flex items-center gap-1 text-xs overflow-x-auto">
+                                <button
+                                    @click="goToRoot()"
+                                    class="flex-shrink-0 hover:text-[var(--brand)] transition-colors"
+                                    :class="currentFolderId === 0 ? 'font-bold text-[var(--brand)]' : 'text-gray-500'"
+                                >
+                                    <i class="fas fa-home text-[10px] mr-0.5"></i> All
+                                </button>
+                                <template x-for="(crumb, i) in breadcrumbs" :key="crumb.id">
+                                    <div class="flex items-center gap-1 flex-shrink-0">
+                                        <i class="fas fa-chevron-right text-[8px] text-gray-300"></i>
+                                        <button
+                                            @click="enterFolder(crumb.id)"
+                                            class="hover:text-[var(--brand)] transition-colors truncate max-w-[100px]"
+                                            :class="i === breadcrumbs.length - 1
+                                                ? 'font-bold text-[var(--brand)]'
+                                                : 'text-gray-500'"
+                                            x-text="crumb.name"
+                                        ></button>
+                                    </div>
+                                </template>
+                            </nav>
+                        </div>
+
                         {{-- Search --}}
                         <div class="px-4 py-2 border-b shrink-0">
                             <x-search-input
                                 x-model.debounce.300ms="search"
                                 @input.debounce.300ms="loadFiles()"
-                                placeholder="Search files from Media library..."
+                                placeholder="Search files..."
                                 class="px-4 py-2"
                             />
                         </div>
 
-                        {{-- File List --}}
+                        {{-- File & Folder List --}}
                         <div class="flex-1 overflow-y-auto p-4 space-y-1 min-h-0">
                             <template x-if="loading">
                                 <div class="text-center py-8 text-gray-400 text-sm">
                                     <i class="fas fa-spinner fa-spin mr-1"></i> Loading...
                                 </div>
                             </template>
-                            <template x-if="!loading && files.length === 0">
+                            <template x-if="!loading && folders.length === 0 && files.length === 0">
                                 <div class="text-center py-8 text-gray-400 text-sm">
                                     <i class="fas fa-folder-open text-2xl text-gray-200 mb-2 block"></i>
-                                    No files found
+                                    No files or folders found
                                 </div>
                             </template>
+
+                            {{-- Folders --}}
+                            <template x-for="folder in folders" :key="'f-' + folder.id">
+                                <button
+                                    type="button"
+                                    @click="enterFolder(folder.id)"
+                                    class="w-full flex items-center gap-3 p-2 rounded-lg hover:bg-amber-50 transition-colors text-left group"
+                                >
+                                    <div
+                                        class="flex-shrink-0 w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center"
+                                    >
+                                        <i class="fas fa-folder text-amber-400 text-sm"></i>
+                                    </div>
+                                    <div class="flex-1 min-w-0">
+                                        <p class="text-sm font-medium text-gray-800 truncate" x-text="folder.name"></p>
+                                        <p
+                                            class="text-[11px] text-gray-400"
+                                            x-text="folder.file_count + ' file' + (folder.file_count !== 1 ? 's' : '')"
+                                        ></p>
+                                    </div>
+                                    <i
+                                        class="fas fa-chevron-right text-xs text-gray-300 group-hover:text-amber-400 transition-colors"
+                                    ></i>
+                                </button>
+                            </template>
+
+                            {{-- Divider between folders and files --}}
+                            <template x-if="folders.length > 0 && files.length > 0">
+                                <div class="border-b border-gray-100 my-1"></div>
+                            </template>
+
+                            {{-- Files --}}
                             <template x-for="file in files" :key="file.id">
                                 <label
                                     class="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors"

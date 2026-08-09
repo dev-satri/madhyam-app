@@ -532,13 +532,18 @@ new #[Layout('components.layouts.app')] class extends Component
         $this->dispatch('toast', message: 'Comment added', type: 'success');
     }
 
-    public function getPickableFiles(?string $search = null, ?int $clientId = null): array
+    public function getPickableFiles(?string $search = null, ?int $clientId = null, ?int $folderId = null): array
     {
         $q = File::select('id', 'name', 'type', 'size')
             ->orderBy('name');
 
         if ($clientId) {
             $q->where('client_id', $clientId);
+        }
+        if ($folderId) {
+            $q->where('folder_id', $folderId);
+        } elseif ($folderId === 0) {
+            $q->whereNull('folder_id');
         }
         if ($search) {
             $q->where('name', 'like', "%{$search}%");
@@ -551,6 +556,44 @@ new #[Layout('components.layouts.app')] class extends Component
             'type' => $f->type,
             'size_label' => $f->size_readable,
         ])->toArray();
+    }
+
+    public function getPickableFolders(int $parentId = 0, ?int $clientId = null): array
+    {
+        $q = \App\Models\Folder::select('id', 'name')
+            ->orderBy('name');
+
+        if ($clientId) {
+            $q->where('client_id', $clientId);
+        }
+        if ($parentId > 0) {
+            $q->where('parent_id', $parentId);
+        } else {
+            $q->whereNull('parent_id');
+        }
+
+        $folders = $q->get()->map(function ($folder) {
+            $fileCount = File::where('folder_id', $folder->id)->count();
+            return [
+                'id' => $folder->id,
+                'name' => $folder->name,
+                'file_count' => $fileCount,
+            ];
+        })->toArray();
+
+        $breadcrumbs = [];
+        $current = $parentId;
+        while ($current > 0) {
+            $folder = \App\Models\Folder::select('id', 'name', 'parent_id')->find($current);
+            if ($folder) {
+                array_unshift($breadcrumbs, ['id' => $folder->id, 'name' => $folder->name]);
+                $current = $folder->parent_id ?? 0;
+            } else {
+                break;
+            }
+        }
+
+        return ['folders' => $folders, 'breadcrumbs' => $breadcrumbs];
     }
 
     public function updatedNewFileUpload(): void
