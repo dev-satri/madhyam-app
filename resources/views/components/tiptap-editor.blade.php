@@ -5,6 +5,128 @@
     'wire' => null,
 ])
 
+@once
+<script>
+(function() {
+    if (window.tiptapEditor) return;
+
+    window.tiptapEditor = function(target) {
+        var editorInstance = null;
+        var initializing = false;
+        var syncing = false;
+
+        function alive() {
+            return editorInstance && editorInstance.view && editorInstance.view.dom && editorInstance.view.dom.isConnected;
+        }
+
+        function safe(fn) {
+            if (!alive()) return;
+            try { return fn(); } catch(e) { return; }
+        }
+
+        var data = {
+            _hasEditor: false,
+            _destroyed: false,
+            _tick: 0,
+
+            init() {
+                if (editorInstance || initializing) return;
+                initializing = true;
+                this._destroyed = false;
+
+                var self = this;
+                Promise.all([
+                    import('@tiptap/core'),
+                    import('@tiptap/starter-kit'),
+                    import('@tiptap/extension-placeholder')
+                ]).then(function(mods) {
+                    if (self._destroyed) return;
+                    var EditorClass = mods[0].Editor;
+                    var StarterKitMod = mods[1].default;
+                    var PlaceholderMod = mods[2].default;
+                    try {
+                        editorInstance = new EditorClass({
+                            element: self.$refs.editorContainer,
+                            extensions: [
+                                StarterKitMod.configure({
+                                    heading: { levels: [2, 3] },
+                                    link: { openOnClick: false, HTMLAttributes: { class: 'text-blue-600 underline' } }
+                                }),
+                                PlaceholderMod.configure({ placeholder: 'Write something...' })
+                            ],
+                            content: target ? target.value : '',
+                            onUpdate: function(params) {
+                                if (self._destroyed || syncing) return;
+                                var html = params.editor.getHTML();
+                                if (target) {
+                                    target.value = html;
+                                    target.dispatchEvent(new window.Event('input', { bubbles: true }));
+                                }
+                                self.$dispatch('tiptap-change', { html: html });
+                                self._hasEditor = true;
+                                self._tick = (self._tick || 0) + 1;
+                            }
+                        });
+                        self._hasEditor = true;
+                        self._tick = 0;
+                    } catch(err) {
+                        editorInstance = null;
+                        console.error('Failed to init editor:', err);
+                    }
+                }).catch(function(err) {
+                    console.error('Failed to load tiptap:', err);
+                }).finally(function() {
+                    initializing = false;
+                });
+            },
+
+            destroy() {
+                this._destroyed = true;
+                this._hasEditor = false;
+                if (editorInstance) {
+                    try { editorInstance.destroy(); } catch(_) {}
+                    editorInstance = null;
+                }
+            },
+
+            setContentSafe(html) {
+                if (!alive() || this._destroyed) return;
+                var incoming = html || '';
+                var current;
+                try { current = editorInstance.getHTML(); } catch(_) { return; }
+                var norm = function(h) { return h === '<p></p>' ? '' : h; };
+                if (norm(current) === norm(incoming)) return;
+                try {
+                    syncing = true;
+                    editorInstance.commands.setContent(incoming, false);
+                    if (target) target.value = incoming;
+                    this._tick = (this._tick || 0) + 1;
+                } catch(_) {} finally { syncing = false; }
+            },
+
+            toggleBold() { safe(function() { editorInstance.chain().focus().toggleBold().run(); }); data._tick++; },
+            toggleItalic() { safe(function() { editorInstance.chain().focus().toggleItalic().run(); }); data._tick++; },
+            toggleHeading(l) { safe(function() { editorInstance.chain().focus().toggleHeading({ level: l }).run(); }); data._tick++; },
+            toggleBulletList() { safe(function() { editorInstance.chain().focus().toggleBulletList().run(); }); data._tick++; },
+            toggleOrderedList() { safe(function() { editorInstance.chain().focus().toggleOrderedList().run(); }); data._tick++; },
+            toggleBlockquote() { safe(function() { editorInstance.chain().focus().toggleBlockquote().run(); }); data._tick++; },
+            unsetLink() { safe(function() { editorInstance.chain().focus().unsetLink().run(); }); data._tick++; },
+            undo() { safe(function() { editorInstance.chain().focus().undo().run(); }); data._tick++; },
+            redo() { safe(function() { editorInstance.chain().focus().redo().run(); }); data._tick++; },
+
+            isActive(name, attrs) {
+                void data._tick;
+                if (!alive() || this._destroyed) return false;
+                try { return editorInstance.isActive(name, attrs); } catch(_) { return false; }
+            }
+        };
+
+        return data;
+    };
+})();
+</script>
+@endonce
+
 <div
     wire:ignore
     wire:key="tiptap-{{ $name }}"
@@ -70,20 +192,8 @@
             <i class="fas fa-quote-right text-xs"></i>
         </button>
         <div class="w-px h-4 bg-gray-200 mx-0.5"></div>
-        <button
-            type="button"
-            @click="setLink()"
-            class="tiptap-btn"
-            :class="isActive('link') && 'tiptap-btn-active'"
-            title="Add Link"
-        >
-            <i class="fas fa-link text-xs"></i>
-        </button>
         <button type="button" @click="unsetLink()" class="tiptap-btn" title="Remove Link" x-show="isActive('link')">
             <i class="fas fa-link-slash text-xs"></i>
-        </button>
-        <button type="button" @click="addImage()" class="tiptap-btn" title="Add Image">
-            <i class="fas fa-image text-xs"></i>
         </button>
         <div class="w-px h-4 bg-gray-200 mx-0.5"></div>
         <button type="button" @click="undo()" class="tiptap-btn" title="Undo">
@@ -106,98 +216,4 @@
     @else
         <textarea x-ref="{{ $name }}Input" name="{{ $name }}" class="hidden">{{ $value }}</textarea>
     @endif
-
-    {{-- Media Picker Modal --}}
-    <template x-if="_showMediaPicker">
-        <div
-            class="fixed inset-0 z-[90] flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm p-0 sm:p-4"
-            @click.self="_showMediaPicker = false"
-            x-on:keydown.escape.window="_showMediaPicker = false"
-        >
-            <div
-                class="bg-white rounded-t-2xl sm:rounded-2xl w-full sm:max-w-lg max-h-[80vh] flex flex-col overflow-hidden"
-            >
-                <div class="flex items-center justify-between px-4 py-3 border-b shrink-0">
-                    <h3
-                        class="font-bold text-gray-900"
-                        x-text="_pickMode === 'image' ? 'Insert Image' : 'Insert Link'"
-                    ></h3>
-                    <button
-                        @click="_showMediaPicker = false"
-                        class="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-400"
-                    >
-                        <i class="fas fa-times"></i>
-                    </button>
-                </div>
-
-                <div class="px-4 py-3 border-b bg-gray-50 shrink-0">
-                    <p class="text-[11px] font-semibold text-gray-500 uppercase mb-2">Paste a URL</p>
-                    <div class="flex gap-2">
-                        <input
-                            type="url"
-                            x-model="_manualUrl"
-                            :placeholder="_pickMode === 'image'
-                                ? 'https://example.com/image.jpg'
-                                : 'https://example.com'"
-                            class="form-input text-sm flex-1"
-                            x-on:keydown.enter.prevent="_submitManualUrl()"
-                        />
-                        <button
-                            @click="_submitManualUrl()"
-                            class="btn btn-primary btn-sm px-3 shrink-0"
-                            :disabled="!_manualUrl"
-                        >
-                            <i class="fas fa-check text-xs"></i>
-                        </button>
-                    </div>
-                </div>
-
-                <div class="px-4 py-2 border-b shrink-0">
-                    <p class="text-[11px] font-semibold text-gray-500 uppercase">Or pick from library</p>
-                </div>
-
-                <div class="flex-1 overflow-y-auto p-4 space-y-1 min-h-0">
-                    <template x-if="_mediaLoading">
-                        <div class="text-center py-8 text-gray-400 text-sm">
-                            <i class="fas fa-spinner fa-spin mr-1"></i> Loading...
-                        </div>
-                    </template>
-                    <template x-if="!_mediaLoading && _mediaFiles.length === 0">
-                        <div class="text-center py-8 text-gray-400 text-sm">
-                            <i class="fas fa-folder-open text-2xl text-gray-200 mb-2 block"></i>
-                            No files found
-                        </div>
-                    </template>
-                    <template x-for="file in _mediaFiles" :key="file.id">
-                        <button
-                            @click="_selectMediaFile(file)"
-                            class="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors w-full text-left"
-                        >
-                            <div
-                                class="flex-shrink-0 w-8 h-8 rounded flex items-center justify-center"
-                                :class="file.type === 'image'
-                                    ? 'bg-blue-50'
-                                    : file.type === 'video'
-                                      ? 'bg-purple-50'
-                                      : 'bg-gray-50'"
-                            >
-                                <i
-                                    class="fas text-xs"
-                                    :class="file.type === 'image'
-                                        ? 'fa-image text-blue-500'
-                                        : file.type === 'video'
-                                          ? 'fa-video text-purple-500'
-                                          : 'fa-file text-gray-500'"
-                                ></i>
-                            </div>
-                            <div class="flex-1 min-w-0">
-                                <p class="text-sm font-medium text-gray-800 truncate" x-text="file.name"></p>
-                                <p class="text-[11px] text-gray-400" x-text="file.size_label"></p>
-                            </div>
-                        </button>
-                    </template>
-                </div>
-            </div>
-        </div>
-    </template>
 </div>

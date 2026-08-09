@@ -1,259 +1,147 @@
-/* globals $wire */
-import { Editor } from '@tiptap/core';
-import StarterKit from '@tiptap/starter-kit';
-import Image from '@tiptap/extension-image';
-import Placeholder from '@tiptap/extension-placeholder';
+// Tipty editor — Alpine data component is defined in a synchronous <script>
+// inside the Blade component. This module provides the upgraded version
+// with static imports and re-initializes stub elements after loading.
 
-document.addEventListener('alpine:init', () => {
-    Alpine.data('tiptapEditor', (target) => {
-        // NOTE: keep `editor` in the closure, NOT on `this`.
-        // Alpine's x-data deep-proxies anything on `this`. ProseMirror's
-        // EditorView uses referential identity checks internally (state.doc,
-        // view.state, etc). When those pass through Alpine's Proxy, identity
-        // drifts and every `view.dispatch(tr)` throws
-        //   "RangeError: Applying a mismatched transaction".
-        let editorInstance = null;
-        let initializing = false;
-        let syncing = false;
+const tiptapEditorFactory = (target) => {
+    let editorInstance = null;
+    let initializing = false;
+    let syncing = false;
 
-        const alive = () => {
-            return (
-                editorInstance && editorInstance.view && editorInstance.view.dom && editorInstance.view.dom.isConnected
-            );
-        };
+    const alive = () =>
+        editorInstance && editorInstance.view && editorInstance.view.dom && editorInstance.view.dom.isConnected;
 
-        const safe = (fn) => {
-            if (!alive()) return;
+    const safe = (fn) => {
+        if (!alive()) return;
+        try { return fn(); } catch { return; }
+    };
+
+    return {
+        _hasEditor: false,
+        _destroyed: false,
+        _tick: 0,
+
+        init() {
+            if (editorInstance || initializing) return;
+            initializing = true;
+            this._destroyed = false;
+
             try {
-                return fn();
-            } catch {
-                return;
-            }
-        };
+                const Editor = window.__tiptapEditor_Constructor;
+                const StarterKit = window.__tiptapEditor_StarterKit;
+                const Placeholder = window.__tiptapEditor_Placeholder;
 
-        return {
-            _hasEditor: false,
-            _destroyed: false,
-            _showMediaPicker: false,
-            _pickMode: 'image',
-            _mediaFiles: [],
-            _mediaSearch: '',
-            _mediaLoading: false,
-            _manualUrl: '',
-
-            init() {
-                if (editorInstance || initializing) return;
-                initializing = true;
-                this._destroyed = false;
-
-                try {
-                    editorInstance = new Editor({
-                        element: this.$refs.editorContainer,
-                        extensions: [
-                            StarterKit.configure({
-                                heading: { levels: [2, 3] },
-                                link: {
-                                    openOnClick: false,
-                                    HTMLAttributes: { class: 'text-blue-600 underline' }
-                                }
-                            }),
-                            Image.configure({
-                                HTMLAttributes: { class: 'rounded-lg max-h-48 my-2' }
-                            }),
-                            Placeholder.configure({
-                                placeholder: 'Write something...'
-                            })
-                        ],
-                        content: target?.value || '',
-                        onUpdate: ({ editor: e }) => {
-                            if (this._destroyed || syncing) return;
-                            const html = e.getHTML();
-                            if (target) {
-                                target.value = html;
-                                target.dispatchEvent(new window.Event('input', { bubbles: true }));
-                            }
-                            this.$dispatch('tiptap-change', { html });
-                            // Bump reactive flag so toolbar :class bindings
-                            // re-evaluate isActive() after content changes.
-                            this._hasEditor = true;
-                            this._tick = (this._tick || 0) + 1;
-                        }
+                if (Editor) {
+                    this._createEditor(Editor, StarterKit, Placeholder, target);
+                } else {
+                    Promise.all([
+                        import('@tiptap/core'),
+                        import('@tiptap/starter-kit'),
+                        import('@tiptap/extension-placeholder')
+                    ]).then(([core, sk, ph]) => {
+                        this._createEditor(core.Editor, sk.default, ph.default, target);
+                    }).catch((err) => {
+                        console.error('Failed to load tiptap:', err);
+                    }).finally(() => {
+                        initializing = false;
                     });
-                    this._hasEditor = true;
-                    this._tick = 0;
-                } catch {
-                    editorInstance = null;
-                } finally {
-                    initializing = false;
-                }
-            },
-
-            destroy() {
-                this._destroyed = true;
-                this._hasEditor = false;
-                if (editorInstance) {
-                    try {
-                        editorInstance.destroy();
-                    } catch {
-                        // ignore destroy errors
-                    }
-                    editorInstance = null;
-                }
-            },
-
-            setContentSafe(html) {
-                if (!alive() || this._destroyed) return;
-                const incoming = html || '';
-                let current;
-                try {
-                    current = editorInstance.getHTML();
-                } catch {
                     return;
                 }
-                const norm = (h) => (h === '<p></p>' ? '' : h);
-                if (norm(current) === norm(incoming)) return;
-                try {
-                    syncing = true;
-                    editorInstance.commands.setContent(incoming, false);
-                    if (target) target.value = incoming;
-                    this._tick = (this._tick || 0) + 1;
-                } catch {
-                    // stale transaction — swallow
-                } finally {
-                    syncing = false;
-                }
-            },
-
-            // Reactive tick — read this in :class bindings so Alpine re-runs
-            // them after every editor mutation.
-            _tick: 0,
-
-            toggleBold() {
-                safe(() => editorInstance.chain().focus().toggleBold().run());
-                this._tick++;
-            },
-            toggleItalic() {
-                safe(() => editorInstance.chain().focus().toggleItalic().run());
-                this._tick++;
-            },
-            toggleHeading(l) {
-                safe(() => editorInstance.chain().focus().toggleHeading({ level: l }).run());
-                this._tick++;
-            },
-            toggleBulletList() {
-                safe(() => editorInstance.chain().focus().toggleBulletList().run());
-                this._tick++;
-            },
-            toggleOrderedList() {
-                safe(() => editorInstance.chain().focus().toggleOrderedList().run());
-                this._tick++;
-            },
-            toggleBlockquote() {
-                safe(() => editorInstance.chain().focus().toggleBlockquote().run());
-                this._tick++;
-            },
-            setLink() {
-                this._pickMode = 'link';
-                this._showMediaPicker = true;
-                this._loadMediaFiles();
-            },
-            unsetLink() {
-                safe(() => editorInstance.chain().focus().unsetLink().run());
-                this._tick++;
-            },
-            addImage() {
-                this._pickMode = 'image';
-                this._showMediaPicker = true;
-                this._loadMediaFiles();
-            },
-            undo() {
-                safe(() => editorInstance.chain().focus().undo().run());
-                this._tick++;
-            },
-            redo() {
-                safe(() => editorInstance.chain().focus().redo().run());
-                this._tick++;
-            },
-
-            async _loadMediaFiles() {
-                this._mediaLoading = true;
-                this._mediaSearch = '';
-                try {
-                    const wire = this.$wire || (typeof $wire !== 'undefined' ? $wire : null);
-                    if (!wire) {
-                        // eslint-disable-next-line no-console
-                        console.error('Livewire $wire not available');
-                        this._mediaFiles = [];
-                        this._mediaLoading = false;
-                        return;
-                    }
-                    const res = await wire.getPickableFiles('', null);
-                    this._mediaFiles = res || [];
-                } catch (e) {
-                    // eslint-disable-next-line no-console
-                    console.error('Failed to load media files:', e);
-                    this._mediaFiles = [];
-                }
-                this._mediaLoading = false;
-            },
-            _selectMediaFile(file) {
-                const url = file.url;
-                if (!url) return;
-                const mode = this._pickMode;
-                this._showMediaPicker = false;
-                this._tick++;
-                this.$nextTick(() => {
-                    if (!alive()) {
-                        editorInstance?.commands.focus();
-                    }
-                    try {
-                        if (mode === 'image') {
-                            editorInstance.chain().focus().setImage({ src: url }).run();
-                        } else {
-                            editorInstance.chain().focus().setLink({ href: url }).run();
-                        }
-                    } catch (e) {
-                        // eslint-disable-next-line no-console
-                        console.error('Failed to insert media:', e);
-                    }
-                    this._tick++;
-                });
-            },
-            _submitManualUrl() {
-                const url = this._manualUrl;
-                if (!url) return;
-                const mode = this._pickMode;
-                this._manualUrl = '';
-                this._showMediaPicker = false;
-                this._tick++;
-                this.$nextTick(() => {
-                    if (!alive()) {
-                        editorInstance?.commands.focus();
-                    }
-                    try {
-                        if (mode === 'image') {
-                            editorInstance.chain().focus().setImage({ src: url }).run();
-                        } else {
-                            editorInstance.chain().focus().setLink({ href: url }).run();
-                        }
-                    } catch (e) {
-                        // eslint-disable-next-line no-console
-                        console.error('Failed to insert media URL:', e);
-                    }
-                    this._tick++;
-                });
-            },
-
-            isActive(name, attrs) {
-                // touch _tick so this getter re-runs when we bump it
-                void this._tick;
-                if (!alive() || this._destroyed) return false;
-                try {
-                    return editorInstance.isActive(name, attrs);
-                } catch {
-                    return false;
-                }
+            } catch (err) {
+                console.error('Editor init failed:', err);
+                editorInstance = null;
+            } finally {
+                initializing = false;
             }
-        };
+        },
+
+        _createEditor(EditorClass, StarterKitMod, PlaceholderMod, tgt) {
+            if (editorInstance || this._destroyed) return;
+            try {
+                editorInstance = new EditorClass({
+                    element: this.$refs.editorContainer,
+                    extensions: [
+                        StarterKitMod.configure({
+                            heading: { levels: [2, 3] },
+                            link: { openOnClick: false, HTMLAttributes: { class: 'text-blue-600 underline' } }
+                        }),
+                        PlaceholderMod.configure({ placeholder: 'Write something...' })
+                    ],
+                    content: tgt?.value || '',
+                    onUpdate: ({ editor: e }) => {
+                        if (this._destroyed || syncing) return;
+                        const html = e.getHTML();
+                        if (tgt) {
+                            tgt.value = html;
+                            tgt.dispatchEvent(new window.Event('input', { bubbles: true }));
+                        }
+                        this.$dispatch('tiptap-change', { html });
+                        this._hasEditor = true;
+                        this._tick = (this._tick || 0) + 1;
+                    }
+                });
+                this._hasEditor = true;
+                this._tick = 0;
+            } catch {
+                editorInstance = null;
+            }
+        },
+
+        destroy() {
+            this._destroyed = true;
+            this._hasEditor = false;
+            if (editorInstance) {
+                try { editorInstance.destroy(); } catch {}
+                editorInstance = null;
+            }
+        },
+
+        setContentSafe(html) {
+            if (!alive() || this._destroyed) return;
+            const incoming = html || '';
+            let current;
+            try { current = editorInstance.getHTML(); } catch { return; }
+            const norm = (h) => (h === '<p></p>' ? '' : h);
+            if (norm(current) === norm(incoming)) return;
+            try {
+                syncing = true;
+                editorInstance.commands.setContent(incoming, false);
+                if (target) target.value = incoming;
+                this._tick = (this._tick || 0) + 1;
+            } catch {} finally { syncing = false; }
+        },
+
+        toggleBold() { safe(() => editorInstance.chain().focus().toggleBold().run()); this._tick++; },
+        toggleItalic() { safe(() => editorInstance.chain().focus().toggleItalic().run()); this._tick++; },
+        toggleHeading(l) { safe(() => editorInstance.chain().focus().toggleHeading({ level: l }).run()); this._tick++; },
+        toggleBulletList() { safe(() => editorInstance.chain().focus().toggleBulletList().run()); this._tick++; },
+        toggleOrderedList() { safe(() => editorInstance.chain().focus().toggleOrderedList().run()); this._tick++; },
+        toggleBlockquote() { safe(() => editorInstance.chain().focus().toggleBlockquote().run()); this._tick++; },
+        unsetLink() { safe(() => editorInstance.chain().focus().unsetLink().run()); this._tick++; },
+        undo() { safe(() => editorInstance.chain().focus().undo().run()); this._tick++; },
+        redo() { safe(() => editorInstance.chain().focus().redo().run()); this._tick++; },
+
+        isActive(name, attrs) {
+            void this._tick;
+            if (!alive() || this._destroyed) return false;
+            try { return editorInstance.isActive(name, attrs); } catch { return false; }
+        }
+    };
+};
+
+// Replace the synchronous stub and upgrade in-flight elements
+if (window.Alpine) {
+    window.tiptapEditor = tiptapEditorFactory;
+
+    requestAnimationFrame(() => {
+        document.querySelectorAll('[x-data]').forEach((el) => {
+            const attr = el.getAttribute('x-data');
+            if (!attr || !attr.startsWith('tiptapEditor(')) return;
+            const stack = el._x_dataStack;
+            if (stack && stack[0] && !stack[0]._hasEditor) {
+                if (typeof stack[0].destroy === 'function') stack[0].destroy();
+                el._x_dataStack = null;
+                try { Alpine.initTree(el); } catch {}
+            }
+        });
     });
-});
+}
