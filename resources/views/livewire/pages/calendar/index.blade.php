@@ -194,6 +194,7 @@ new #[Layout('components.layouts.app')] class extends Component
         // ── Content items ──
         $query = DB::table('contents')
             ->leftJoin('clients', 'contents.client_id', '=', 'clients.id')
+            ->whereNull('contents.deleted_at')
             ->whereBetween('contents.date', [$start->format('Y-m-d'), $end->format('Y-m-d')])
             ->select('contents.*', 'clients.name as client_name');
 
@@ -563,7 +564,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function getStats(): array
     {
-        $query = DB::table('contents');
+        $query = DB::table('contents')->whereNull('deleted_at');
 
         // Tenant isolation — clients see stats for their own content only.
         if ($account = Auth::guard('client')->user()) {
@@ -596,6 +597,7 @@ new #[Layout('components.layouts.app')] class extends Component
     {
         $query = DB::table('contents')
             ->leftJoin('clients', 'contents.client_id', '=', 'clients.id')
+            ->whereNull('contents.deleted_at')
             ->select('contents.*', 'clients.name as client_name')
             ->orderBy('contents.date', 'desc');
 
@@ -638,7 +640,7 @@ new #[Layout('components.layouts.app')] class extends Component
      */
     private function tallyContentColumn(string $kind): array
     {
-        $rows = DB::table('contents')->pluck($kind);
+        $rows = DB::table('contents')->whereNull('deleted_at')->pluck($kind);
         $counts = [];
         foreach ($rows as $raw) {
             $expanded = \App\Support\ContentTags::expand(
