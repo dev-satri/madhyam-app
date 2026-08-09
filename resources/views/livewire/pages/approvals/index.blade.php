@@ -1666,7 +1666,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                     $ddPlatforms = is_string($content->platform) ? json_decode($content->platform, true) : $content->platform;
                                     $ddPlatformLabel = is_array($ddPlatforms) ? implode(', ', array_map(fn($p) => ucfirst($p), $ddPlatforms)) : ucfirst($content->platform ?? '');
                                 @endphp
-                                <option value="{{ $content->id }}">{{ $content->title }} — {{ \Carbon\Carbon::parse($content->date)->format('M j') }} ({{ $ddPlatformLabel }})</option>
+                                <option value="{{ $content->id }}">{{ $content->title }} — {{ \App\Support\NepaliDate::displayShort($content->date) }} ({{ $ddPlatformLabel }})</option>
                             @endforeach</select></div>
                         @endif
                         <div><label class="form-label">Notes</label><textarea wire:model="formNotes" class="form-textarea" rows="3" placeholder="Notes..."></textarea></div>

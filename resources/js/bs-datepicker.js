@@ -206,6 +206,15 @@
                     this.bsDisplayValue = this.bsValue;
                     this.currentBsYear = bs.y;
                     this.currentBsMonth = bs.m;
+
+                    // Sync initial value back to Livewire
+                    if (this.wireModel && typeof Livewire !== 'undefined') {
+                        try {
+                            this.$wire.set(this.wireModel, this.adValue);
+                        } catch {
+                            /* ignore */
+                        }
+                    }
                 } else {
                     const now = new Date();
                     const bs = adToBs(now.getUTCFullYear(), now.getUTCMonth() + 1, now.getUTCDate());

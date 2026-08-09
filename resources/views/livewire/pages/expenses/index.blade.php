@@ -488,8 +488,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                 @endphp
                                 <tr x-data="{ open: false }" class="group hover:bg-gray-50/50 transition">
                                     <td class="px-5 py-4 whitespace-nowrap align-top">
-                                        <div class="text-sm font-medium text-gray-900">{{ \Illuminate\Support\Carbon::parse($e->date)->format('d M') }}</div>
-                                        <div class="text-[11px] text-gray-400">{{ \Illuminate\Support\Carbon::parse($e->date)->format('Y') }}</div>
+                                        <div class="text-sm font-medium text-gray-900">{{ \App\Support\NepaliDate::displayShort($e->date) }}</div>
                                     </td>
                                     <td class="px-5 py-4">
                                         <div class="flex items-start gap-3">

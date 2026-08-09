@@ -164,7 +164,7 @@
             </div>
         </div>
         <div class="footer">
-            <p>Generated on {{ now()->format('M d, Y g:i A') }}</p>
+            <p>Generated on {{ \App\Support\NepaliDate::displayDateTime(now()) }}</p>
             <p>This is a computer-generated document.</p>
         </div>
     </div>

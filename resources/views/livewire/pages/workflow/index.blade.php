@@ -588,11 +588,15 @@ new #[Layout('components.layouts.app')] class extends Component
         // Sync assignee and deadline to linked content
         if (!empty($data['content_id']) && !static::$syncingContent) {
             static::$syncingContent = true;
-            DB::table('contents')->where('id', $data['content_id'])->update([
+            $syncData = [
                 'assignee' => $data['assignee'] ?? null,
-                'date' => $data['deadline'] ?? null,
                 'updated_at' => now(),
-            ]);
+            ];
+            // Only sync date if deadline is set (date column is NOT NULL)
+            if (!empty($data['deadline'])) {
+                $syncData['date'] = $data['deadline'];
+            }
+            DB::table('contents')->where('id', $data['content_id'])->update($syncData);
             static::$syncingContent = false;
         }
 
@@ -1283,7 +1287,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                     @if ($item->content->date)
                                         <span class="flex items-center gap-1">
                                             <i class="fas fa-calendar text-gray-400"></i>
-                                            {{ \Carbon\Carbon::parse($item->content->date)->format('M j') }}
+                                            {{ \App\Support\NepaliDate::displayShort($item->content->date) }}
                                         </span>
                                     @endif
                                     @if ($item->content->platform)
@@ -1341,7 +1345,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                             <i
                                                 class="fas fa-calendar-alt text-[10px] {{ $isOverdue ? 'text-red-500' : 'text-gray-400' }}"
                                             ></i>
-                                            {{ $item->deadline->format('M d') }}
+                                            {{ \App\Support\NepaliDate::displayShort($item->deadline) }}
                                         </span>
                                     @endif
                                     <button
@@ -1523,7 +1527,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                         <div class="text-gray-800 text-xs space-y-1">
                                             <p class="flex items-center gap-1.5"><i class="fas fa-link text-gray-400"></i> {{ $linkedContent->title }}</p>
                                             @if ($linkedContent->date)
-                                                <p class="flex items-center gap-1.5"><i class="fas fa-calendar text-gray-400"></i> Posting: {{ \Carbon\Carbon::parse($linkedContent->date)->format('M j, Y') }}</p>
+                                                <p class="flex items-center gap-1.5"><i class="fas fa-calendar text-gray-400"></i> Posting: {{ \App\Support\NepaliDate::display($linkedContent->date) }}</p>
                                             @endif
                                             @if ($linkedContent->platform)
                                                 @php
@@ -1759,7 +1763,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                                 $platformLabel = is_array($contentPlatforms) ? implode(', ', array_map(fn($p) => ucfirst($p), $contentPlatforms)) : ucfirst($content->platform ?? '');
                                             @endphp
                                             <option value="{{ $content->id }}">
-                                                {{ $content->title }} — {{ \Carbon\Carbon::parse($content->date)->format('M j') }} ({{ $platformLabel }})
+                                                {{ $content->title }} — {{ \App\Support\NepaliDate::displayShort($content->date) }} ({{ $platformLabel }})
                                             </option>
                                         @endforeach
                                     </select>

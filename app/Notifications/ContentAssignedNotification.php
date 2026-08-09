@@ -6,6 +6,7 @@ use App\Models\Content;
 use App\Models\User;
 use App\Notifications\Channels\InAppDatabaseChannel;
 use App\Notifications\Concerns\SkipsSelfActor;
+use Carbon\Carbon;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -41,7 +42,7 @@ class ContentAssignedNotification extends Notification implements ShouldQueue
     {
         return [
             'text' => 'You were assigned content "' . $this->content->title . '"'
-                . ($this->content->date ? ' — due ' . \Carbon\Carbon::parse($this->content->date)->format('M d') : ''),
+                . ($this->content->date ? ' — due ' . Carbon::parse($this->content->date)->format('M d') : ''),
             'type' => 'info',
             'link' => route('content-planner', absolute: false) . '#content-' . $this->content->id,
         ];

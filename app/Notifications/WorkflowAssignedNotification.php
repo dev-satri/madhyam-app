@@ -6,6 +6,7 @@ use App\Models\User;
 use App\Models\Workflow;
 use App\Notifications\Channels\InAppDatabaseChannel;
 use App\Notifications\Concerns\SkipsSelfActor;
+use Carbon\Carbon;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -41,7 +42,7 @@ class WorkflowAssignedNotification extends Notification implements ShouldQueue
     {
         return [
             'text' => 'You were assigned workflow "' . $this->workflow->title . '"'
-                . ($this->workflow->deadline ? ' — due ' . \Carbon\Carbon::parse($this->workflow->deadline)->format('M d') : ''),
+                . ($this->workflow->deadline ? ' — due ' . Carbon::parse($this->workflow->deadline)->format('M d') : ''),
             'type' => 'info',
             'link' => route('workflow', absolute: false) . '#wf-' . $this->workflow->id,
         ];

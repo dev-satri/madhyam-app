@@ -218,7 +218,7 @@ new #[Layout('components.layouts.app')] class extends Component {
                         </div>
                         <div class="flex-1 min-w-0">
                             <p class="text-sm font-medium text-gray-900 truncate">{{ $c->title }}</p>
-                            <p class="text-xs text-gray-500">{{ \App\Support\ContentTags::label($cPlatforms, 'platform') }} · {{ \App\Support\ContentTags::label($cTypes, 'type') }} · {{ $c->date?->format('M d') }}</p>
+                            <p class="text-xs text-gray-500">{{ \App\Support\ContentTags::label($cPlatforms, 'platform') }} · {{ \App\Support\ContentTags::label($cTypes, 'type') }} · {{ \App\Support\NepaliDate::displayShort($c->date) }}</p>
                         </div>
                         <span
                             class="text-[10px] font-semibold px-2 py-0.5 rounded {{ $statusBadge }}"

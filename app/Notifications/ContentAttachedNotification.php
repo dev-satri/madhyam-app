@@ -16,9 +16,8 @@ class ContentAttachedNotification extends Notification implements ShouldQueue
     use Queueable, SkipsSelfActor;
 
     /**
-     * @param Content $content
-     * @param array   $attachments  The newly attached files
-     * @param User|null $actor      Who attached them
+     * @param  array  $attachments  The newly attached files
+     * @param  User|null  $actor  Who attached them
      */
     public function __construct(
         public Content $content,
