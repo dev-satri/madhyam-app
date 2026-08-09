@@ -1282,6 +1282,10 @@ new #[Layout('components.layouts.app')] class extends Component
                             @if($cc > 0)<span class="badge badge-pending ml-1">{{ $cc }}</span>@endif
                         </button>
 
+                        @if($this->isManager && $a->status !== 'pending')
+                            <button type="button" wire:click="$dispatch('open-confirm', { title: 'Delete Approval?', message: 'This approval and its comments will be moved to trash.', type: 'danger', action: 'deleteApproval', params: [{{ $a->id }}] })" class="btn btn-ghost btn-sm btn-icon text-red-500 hover:text-red-600 flex-shrink-0" title="Delete approval"><i class="fas fa-trash text-xs"></i></button>
+                        @endif
+
                         @if($canRevision || $canReject)
                         <div class="relative">
                             <button type="button" x-on:click="open = !open" class="btn btn-ghost btn-icon btn-sm" aria-label="More actions" title="More">
