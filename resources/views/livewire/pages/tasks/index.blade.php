@@ -498,8 +498,10 @@ new #[Layout('components.layouts.app')] class extends Component
             return;
         }
 
+        $task = Task::with('assigneeUser')->find($this->detailId);
+        if (!$task) return;
+
         if ($hasFiles && !$hasText) {
-            $task = Task::findOrFail($this->detailId);
             $existing = $task->attachments ?: [];
             if (is_string($existing)) {
                 $existing = json_decode($existing, true) ?: [];
@@ -510,13 +512,19 @@ new #[Layout('components.layouts.app')] class extends Component
                 'attachments' => $merged,
             ]);
 
+            // Notify assigned user + admins (not self)
+            $this->notifyTaskRecipients(
+                $task,
+                new \App\Notifications\TaskAttachedNotification($task, $attachments, Auth::user())
+            );
+
             $this->commentAttachments = '[]';
             $this->resetPage();
             $this->dispatch('toast', message: 'Files attached', type: 'success');
             return;
         }
 
-        Comment::create([
+        $comment = Comment::create([
             'commentable_type' => Task::class,
             'commentable_id' => $this->detailId,
             'user_id' => Auth::id(),
@@ -526,10 +534,40 @@ new #[Layout('components.layouts.app')] class extends Component
 
         app(ActivityLogger::class)->record(Auth::user(), "Commented on task #{$this->detailId}");
 
+        // Notify assigned user + admins (not self) via discussion comment notification
+        $this->notifyTaskRecipients(
+            $task,
+            new \App\Notifications\TaskCommentNotification($comment, Auth::user())
+        );
+
         $this->commentText = '';
         $this->commentAttachments = '[]';
         $this->dispatch('tiptap-set-content', name: 'taskComment', html: '');
         $this->dispatch('toast', message: 'Comment added', type: 'success');
+    }
+
+    private function notifyTaskRecipients($task, $notification): void
+    {
+        $actorId = Auth::id();
+        $recipientIds = collect();
+
+        if ($task->assignee) {
+            $recipientIds->push($task->assignee);
+        }
+
+        // Admins/managers only (NOT super-admin)
+        $adminIds = \App\Models\User::whereIn('role', ['admin', 'manager'])
+            ->where('status', 'active')
+            ->pluck('id');
+        $recipientIds = $recipientIds->merge($adminIds);
+        $recipientIds = $recipientIds->filter(fn($id) => (int) $id !== (int) $actorId)->unique();
+
+        if ($recipientIds->isEmpty()) return;
+
+        $recipients = \App\Models\User::whereIn('id', $recipientIds)->where('status', 'active')->get();
+        foreach ($recipients as $recipient) {
+            $recipient->notify($notification);
+        }
     }
 
     public function getPickableFiles(?string $search = null, ?int $clientId = null, ?int $folderId = null): array

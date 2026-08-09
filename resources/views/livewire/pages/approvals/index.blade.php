@@ -980,6 +980,8 @@ new #[Layout('components.layouts.app')] class extends Component
         }
 
         $actor = Auth::user() ?? Auth::guard('client')->user();
+        $approval = DB::table('approvals')->where('id', $this->detailId)->whereNull('deleted_at')->first();
+        if (!$approval) return;
 
         if ($hasFiles && !$hasText) {
             $existingRaw = DB::table('approvals')->where('id', $this->detailId)->whereNull('deleted_at')->value('attachments');
@@ -991,13 +993,16 @@ new #[Layout('components.layouts.app')] class extends Component
                 'updated_at' => now(),
             ]);
 
+            // Notify linked workflow assignee + admins (not self)
+            $this->notifyApprovalRecipients($approval, $attachments, null, $actor);
+
             $this->commentAttachments = '[]';
             $this->resetPage();
             $this->dispatch('toast', message: 'Files attached', type: 'success');
             return;
         }
 
-        Comment::create([
+        $comment = Comment::create([
             'commentable_type' => Approval::class,
             'commentable_id' => $this->detailId,
             'user_id' => $actor?->id,
@@ -1007,10 +1012,49 @@ new #[Layout('components.layouts.app')] class extends Component
 
         app(ActivityLogger::class)->record($actor, "Commented on approval #{$this->detailId}");
 
+        // Notify linked workflow assignee + admins (not self)
+        $this->notifyApprovalRecipients($approval, $attachments, $comment, $actor);
+
         $this->commentText = '';
         $this->commentAttachments = '[]';
         $this->dispatch('tiptap-set-content', name: 'apprComment', html: '');
         $this->dispatch('toast', message: 'Comment added', type: 'success');
+    }
+
+    private function notifyApprovalRecipients(object $approval, array $attachments, ?Comment $comment, $actor): void
+    {
+        $actorId = $actor?->id;
+        $recipientIds = collect();
+
+        // Find linked workflow assignee
+        if (!empty($approval->content_id)) {
+            $wf = DB::table('workflows')->where('content_id', $approval->content_id)->whereNull('deleted_at')->first();
+            if ($wf && $wf->assignee) {
+                $recipientIds->push($wf->assignee);
+            }
+        }
+
+        // Admins/managers only (NOT super-admin)
+        $adminIds = \App\Models\User::whereIn('role', ['admin', 'manager'])
+            ->where('status', 'active')
+            ->pluck('id');
+        $recipientIds = $recipientIds->merge($adminIds);
+        $recipientIds = $recipientIds->filter(fn($id) => (int) $id !== (int) $actorId)->unique();
+
+        if ($recipientIds->isEmpty()) return;
+
+        $recipients = \App\Models\User::whereIn('id', $recipientIds)->where('status', 'active')->get();
+
+        $approvalModel = \App\Models\Approval::find($approval->id);
+        if (!$approvalModel) return;
+
+        foreach ($recipients as $recipient) {
+            if ($comment) {
+                $recipient->notify(new \App\Notifications\ApprovalCommentNotification($comment, $approvalModel, $actor));
+            } elseif (!empty($attachments)) {
+                $recipient->notify(new \App\Notifications\ApprovalAttachedNotification($approvalModel, $attachments, $actor));
+            }
+        }
     }
 
     public function getPickableFiles(?string $search = null, ?int $clientId = null, ?int $folderId = null): array

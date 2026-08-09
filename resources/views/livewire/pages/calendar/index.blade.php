@@ -511,6 +511,11 @@ new #[Layout('components.layouts.app')] class extends Component
             }
 
             if ($this->editingId) {
+                // Check if assignee is changing
+                $oldContent = DB::table('contents')->where('id', $this->editingId)->first();
+                $oldAssignee = $oldContent->assignee ?? null;
+                $newAssignee = $this->formAssignee ?: null;
+
                 DB::table('contents')->where('id', $this->editingId)->update([
                     'title' => $this->title,
                     'client_id' => $this->formClientId,
@@ -519,13 +524,22 @@ new #[Layout('components.layouts.app')] class extends Component
                     'platform' => json_encode($platforms),
                     'type' => json_encode($types),
                     'status' => $this->formStatus,
-                    'assignee' => $this->formAssignee ?? null,
+                    'assignee' => $newAssignee,
                     'caption' => $this->caption,
                     'hashtags' => $this->hashtags,
                     'reference_file' => $this->referenceFile,
                     'attachments' => $this->formAttachments ? array_values($this->formAttachments) : null,
                     'updated_at' => now(),
                 ]);
+
+                // Notify new assignee if changed
+                if ($newAssignee && $newAssignee != $oldAssignee) {
+                    $contentModel = \App\Models\Content::find($this->editingId);
+                    $assignee = \App\Models\User::find($newAssignee);
+                    if ($contentModel && $assignee) {
+                        $assignee->notify(new \App\Notifications\ContentAssignedNotification($contentModel, Auth::user()));
+                    }
+                }
 
                 // Sync assignee and date to linked workflows
                 if (!static::$syncingWorkflow) {
@@ -560,6 +574,16 @@ new #[Layout('components.layouts.app')] class extends Component
                     'created_at' => now(),
                     'updated_at' => now(),
                 ]);
+
+                // Notify new assignee if set on create
+                if ($this->formAssignee) {
+                    $newId = DB::table('contents')->orderByDesc('id')->value('id');
+                    $contentModel = \App\Models\Content::find($newId);
+                    $assignee = \App\Models\User::find($this->formAssignee);
+                    if ($contentModel && $assignee) {
+                        $assignee->notify(new \App\Notifications\ContentAssignedNotification($contentModel, Auth::user()));
+                    }
+                }
 
                 // Package usage counter still bumps per selected type (expand "all" sentinel)
                 if ($this->formClientId) {
@@ -888,6 +912,9 @@ new #[Layout('components.layouts.app')] class extends Component
             return;
         }
 
+        $content = DB::table('contents')->where('id', $this->selectedContentId)->first();
+        if (!$content) return;
+
         if ($hasFiles && !$hasText) {
             $existingRaw = DB::table('contents')->where('id', $this->selectedContentId)->value('attachments');
             $existing = $existingRaw ? (json_decode($existingRaw, true) ?: []) : [];
@@ -898,6 +925,15 @@ new #[Layout('components.layouts.app')] class extends Component
                 'updated_at' => now(),
             ]);
 
+            // Notify assigned user + admins (not self)
+            $contentModel = \App\Models\Content::find($this->selectedContentId);
+            if ($contentModel) {
+                $this->notifyContentRecipients(
+                    $contentModel,
+                    new \App\Notifications\ContentAttachedNotification($contentModel, $attachments, Auth::user())
+                );
+            }
+
             $this->commentAttachments = '[]';
             $this->loadMonthContent();
             $this->dispatch('contentUpdated');
@@ -905,7 +941,7 @@ new #[Layout('components.layouts.app')] class extends Component
             return;
         }
 
-        Comment::create([
+        $comment = Comment::create([
             'commentable_type' => Content::class,
             'commentable_id' => $this->selectedContentId,
             'user_id' => Auth::id(),
@@ -918,10 +954,43 @@ new #[Layout('components.layouts.app')] class extends Component
             "Commented on content #{$this->selectedContentId}"
         );
 
+        // Notify assigned user + admins (not self)
+        $contentModel = \App\Models\Content::find($this->selectedContentId);
+        if ($contentModel) {
+            $this->notifyContentRecipients(
+                $contentModel,
+                new \App\Notifications\ContentCommentNotification($comment, $contentModel, Auth::user())
+            );
+        }
+
         $this->commentText = '';
         $this->commentAttachments = '[]';
         $this->dispatch('tiptap-set-content', name: 'calComment', html: '');
         $this->dispatch('toast', message: 'Comment added', type: 'success');
+    }
+
+    private function notifyContentRecipients($content, $notification): void
+    {
+        $actorId = Auth::id();
+        $recipientIds = collect();
+
+        if ($content->assignee) {
+            $recipientIds->push($content->assignee);
+        }
+
+        // Admins/managers only (NOT super-admin)
+        $adminIds = \App\Models\User::whereIn('role', ['admin', 'manager'])
+            ->where('status', 'active')
+            ->pluck('id');
+        $recipientIds = $recipientIds->merge($adminIds);
+        $recipientIds = $recipientIds->filter(fn($id) => (int) $id !== (int) $actorId)->unique();
+
+        if ($recipientIds->isEmpty()) return;
+
+        $recipients = \App\Models\User::whereIn('id', $recipientIds)->where('status', 'active')->get();
+        foreach ($recipients as $recipient) {
+            $recipient->notify($notification);
+        }
     }
 
     public function getPickableFiles(?string $search = null, ?int $clientId = null, ?int $folderId = null): array
@@ -1277,7 +1346,9 @@ new #[Layout('components.layouts.app')] class extends Component
                                     >
                                         {{ Str::limit($item->title, 14) }}
                                         @if ($workflowStage)
-                                            <span class="absolute -top-1 -right-1 w-2 h-2 rounded-full {{ $workflowStage === 'published' ? 'bg-green-500' : ($workflowStage === 'review' ? 'bg-yellow-500' : 'bg-blue-500') }}"></span>
+                                            <span
+                                                class="absolute -top-1 -right-1 w-2 h-2 rounded-full {{ $workflowStage === 'published' ? 'bg-green-500' : ($workflowStage === 'review' ? 'bg-yellow-500' : 'bg-blue-500') }}"
+                                            ></span>
                                         @endif
                                     </div>
                                 @endif
@@ -1387,7 +1458,9 @@ new #[Layout('components.layouts.app')] class extends Component
                                     @if ($item->_workflows && $item->_workflows->count() > 0)
                                         @php $wf = $item->_workflows->first(); @endphp
                                         <span class="inline-flex items-center gap-1 text-xs">
-                                            <span class="w-2 h-2 rounded-full {{ $wf->stage === 'published' ? 'bg-green-500' : ($wf->stage === 'review' ? 'bg-yellow-500' : 'bg-blue-500') }}"></span>
+                                            <span
+                                                class="w-2 h-2 rounded-full {{ $wf->stage === 'published' ? 'bg-green-500' : ($wf->stage === 'review' ? 'bg-yellow-500' : 'bg-blue-500') }}"
+                                            ></span>
                                             {{ ucfirst(str_replace('-', ' ', $wf->stage)) }}
                                         </span>
                                     @else
@@ -1397,7 +1470,9 @@ new #[Layout('components.layouts.app')] class extends Component
                                 <td>
                                     @if ($item->_approvals && $item->_approvals->count() > 0)
                                         @php $appr = $item->_approvals->sortByDesc('created_at')->first(); @endphp
-                                        <span class="badge badge-{{ $appr->status === 'approved' ? 'success' : ($appr->status === 'rejected' ? 'danger' : 'warning') }}">
+                                        <span
+                                            class="badge badge-{{ $appr->status === 'approved' ? 'success' : ($appr->status === 'rejected' ? 'danger' : 'warning') }}"
+                                        >
                                             {{ ucfirst($appr->status) }}
                                         </span>
                                     @else

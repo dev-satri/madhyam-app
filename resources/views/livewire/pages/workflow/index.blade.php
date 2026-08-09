@@ -596,16 +596,14 @@ new #[Layout('components.layouts.app')] class extends Component
             static::$syncingContent = false;
         }
 
-        // Notify assignee when set or changed.
+        // Notify assignee when set or changed — in-app + email
         if ($this->formAssignee && $this->formAssignee != $priorAssignee) {
             $assigneeUser = User::find($this->formAssignee);
             if ($assigneeUser) {
-                app(NotificationService::class)->sendNotification(
-                    text: "You were assigned workflow item '{$this->formTitle}'",
-                    type: 'info',
-                    link: route('workflow', absolute: false),
-                    forRole: $assigneeUser->role,
-                );
+                $workflowModel = Workflow::find($workflowId);
+                if ($workflowModel) {
+                    $assigneeUser->notify(new \App\Notifications\WorkflowAssignedNotification($workflowModel, Auth::user()));
+                }
             }
         }
 
@@ -846,6 +844,9 @@ new #[Layout('components.layouts.app')] class extends Component
 
         if (!$this->detailId) return;
 
+        $workflow = \App\Models\Workflow::with('assigneeUser')->find($this->detailId);
+        if (!$workflow) return;
+
         if ($hasFiles && !$hasText) {
             $existingRaw = DB::table('workflows')->whereNull('deleted_at')->where('id', $this->detailId)->value('attachments');
             $existing = $existingRaw ? (json_decode($existingRaw, true) ?: []) : [];
@@ -856,13 +857,20 @@ new #[Layout('components.layouts.app')] class extends Component
                 'updated_at' => now(),
             ]);
 
+            // Notify assigned user + admins (not self)
+            $this->notifyRecipients(
+                $workflow,
+                new \App\Notifications\WorkflowAttachedNotification($workflow, $attachments, Auth::user()),
+                'workflow'
+            );
+
             $this->commentAttachments = '[]';
             $this->dispatch('workflowUpdated');
             $this->dispatch('toast', message: 'Files attached', type: 'success');
             return;
         }
 
-        \App\Models\Comment::create([
+        $comment = \App\Models\Comment::create([
             'commentable_type' => Workflow::class,
             'commentable_id' => $this->detailId,
             'user_id' => Auth::id(),
@@ -875,10 +883,48 @@ new #[Layout('components.layouts.app')] class extends Component
             "Commented on workflow #{$this->detailId}"
         );
 
+        // Notify assigned user + admins (not self)
+        $this->notifyRecipients(
+            $workflow,
+            new \App\Notifications\WorkflowCommentNotification($comment, $workflow, Auth::user()),
+            'workflow'
+        );
+
         $this->commentText = '';
         $this->commentAttachments = '[]';
         $this->dispatch('tiptap-set-content', name: 'wfComment', html: '');
         $this->dispatch('toast', message: 'Comment added', type: 'success');
+    }
+
+    /**
+     * Send a notification to all relevant recipients except the actor.
+     */
+    private function notifyRecipients($entity, $notification, string $type): void
+    {
+        $actorId = Auth::id();
+        $recipientIds = collect();
+
+        // Add assigned user
+        $assigneeId = $entity->assignee ?? null;
+        if ($assigneeId) {
+            $recipientIds->push($assigneeId);
+        }
+
+        // Add admins/managers (NOT super-admin — they control the system)
+        $adminIds = \App\Models\User::whereIn('role', ['admin', 'manager'])
+            ->where('status', 'active')
+            ->pluck('id');
+        $recipientIds = $recipientIds->merge($adminIds);
+
+        // Remove self
+        $recipientIds = $recipientIds->filter(fn($id) => (int) $id !== (int) $actorId)->unique();
+
+        if ($recipientIds->isEmpty()) return;
+
+        $recipients = \App\Models\User::whereIn('id', $recipientIds)->where('status', 'active')->get();
+        foreach ($recipients as $recipient) {
+            $recipient->notify($notification);
+        }
     }
 
     public function getPickableFiles(?string $search = null, ?int $clientId = null, ?int $folderId = null): array

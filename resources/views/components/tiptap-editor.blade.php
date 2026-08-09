@@ -6,125 +6,197 @@
 ])
 
 @once
-<script>
-(function() {
-    if (window.tiptapEditor) return;
+    <script>
+        (function () {
+            if (window.tiptapEditor) return;
 
-    window.tiptapEditor = function(target) {
-        var editorInstance = null;
-        var initializing = false;
-        var syncing = false;
+            window.tiptapEditor = function (target) {
+                var editorInstance = null;
+                var initializing = false;
+                var syncing = false;
 
-        function alive() {
-            return editorInstance && editorInstance.view && editorInstance.view.dom && editorInstance.view.dom.isConnected;
-        }
-
-        function safe(fn) {
-            if (!alive()) return;
-            try { return fn(); } catch(e) { return; }
-        }
-
-        var data = {
-            _hasEditor: false,
-            _destroyed: false,
-            _tick: 0,
-
-            init() {
-                if (editorInstance || initializing) return;
-                initializing = true;
-                this._destroyed = false;
-
-                var self = this;
-                Promise.all([
-                    import('@tiptap/core'),
-                    import('@tiptap/starter-kit'),
-                    import('@tiptap/extension-placeholder')
-                ]).then(function(mods) {
-                    if (self._destroyed) return;
-                    var EditorClass = mods[0].Editor;
-                    var StarterKitMod = mods[1].default;
-                    var PlaceholderMod = mods[2].default;
-                    try {
-                        editorInstance = new EditorClass({
-                            element: self.$refs.editorContainer,
-                            extensions: [
-                                StarterKitMod.configure({
-                                    heading: { levels: [2, 3] },
-                                    link: { openOnClick: false, HTMLAttributes: { class: 'text-blue-600 underline' } }
-                                }),
-                                PlaceholderMod.configure({ placeholder: 'Write something...' })
-                            ],
-                            content: target ? target.value : '',
-                            onUpdate: function(params) {
-                                if (self._destroyed || syncing) return;
-                                var html = params.editor.getHTML();
-                                if (target) {
-                                    target.value = html;
-                                    target.dispatchEvent(new window.Event('input', { bubbles: true }));
-                                }
-                                self.$dispatch('tiptap-change', { html: html });
-                                self._hasEditor = true;
-                                self._tick = (self._tick || 0) + 1;
-                            }
-                        });
-                        self._hasEditor = true;
-                        self._tick = 0;
-                    } catch(err) {
-                        editorInstance = null;
-                        console.error('Failed to init editor:', err);
-                    }
-                }).catch(function(err) {
-                    console.error('Failed to load tiptap:', err);
-                }).finally(function() {
-                    initializing = false;
-                });
-            },
-
-            destroy() {
-                this._destroyed = true;
-                this._hasEditor = false;
-                if (editorInstance) {
-                    try { editorInstance.destroy(); } catch(_) {}
-                    editorInstance = null;
+                function alive() {
+                    return (
+                        editorInstance && editorInstance.view && editorInstance.view.dom && editorInstance.view.dom.isConnected
+                    );
                 }
-            },
 
-            setContentSafe(html) {
-                if (!alive() || this._destroyed) return;
-                var incoming = html || '';
-                var current;
-                try { current = editorInstance.getHTML(); } catch(_) { return; }
-                var norm = function(h) { return h === '<p></p>' ? '' : h; };
-                if (norm(current) === norm(incoming)) return;
-                try {
-                    syncing = true;
-                    editorInstance.commands.setContent(incoming, false);
-                    if (target) target.value = incoming;
-                    this._tick = (this._tick || 0) + 1;
-                } catch(_) {} finally { syncing = false; }
-            },
+                function safe(fn) {
+                    if (!alive()) return;
+                    try {
+                        return fn();
+                    } catch (e) {
+                        return;
+                    }
+                }
 
-            toggleBold() { safe(function() { editorInstance.chain().focus().toggleBold().run(); }); data._tick++; },
-            toggleItalic() { safe(function() { editorInstance.chain().focus().toggleItalic().run(); }); data._tick++; },
-            toggleHeading(l) { safe(function() { editorInstance.chain().focus().toggleHeading({ level: l }).run(); }); data._tick++; },
-            toggleBulletList() { safe(function() { editorInstance.chain().focus().toggleBulletList().run(); }); data._tick++; },
-            toggleOrderedList() { safe(function() { editorInstance.chain().focus().toggleOrderedList().run(); }); data._tick++; },
-            toggleBlockquote() { safe(function() { editorInstance.chain().focus().toggleBlockquote().run(); }); data._tick++; },
-            unsetLink() { safe(function() { editorInstance.chain().focus().unsetLink().run(); }); data._tick++; },
-            undo() { safe(function() { editorInstance.chain().focus().undo().run(); }); data._tick++; },
-            redo() { safe(function() { editorInstance.chain().focus().redo().run(); }); data._tick++; },
+                var data = {
+                    _hasEditor: false,
+                    _destroyed: false,
+                    _tick: 0,
 
-            isActive(name, attrs) {
-                void data._tick;
-                if (!alive() || this._destroyed) return false;
-                try { return editorInstance.isActive(name, attrs); } catch(_) { return false; }
-            }
-        };
+                    init() {
+                        if (editorInstance || initializing) return;
+                        initializing = true;
+                        this._destroyed = false;
 
-        return data;
-    };
-})();
-</script>
+                        var self = this;
+                        Promise.all([
+                            import('@tiptap/core'),
+                            import('@tiptap/starter-kit'),
+                            import('@tiptap/extension-placeholder')
+                        ])
+                            .then(function (mods) {
+                                if (self._destroyed) return;
+                                var EditorClass = mods[0].Editor;
+                                var StarterKitMod = mods[1].default;
+                                var PlaceholderMod = mods[2].default;
+                                try {
+                                    editorInstance = new EditorClass({
+                                        element: self.$refs.editorContainer,
+                                        extensions: [
+                                            StarterKitMod.configure({
+                                                heading: { levels: [2, 3] },
+                                                link: {
+                                                    openOnClick: false,
+                                                    HTMLAttributes: { class: 'text-blue-600 underline' }
+                                                }
+                                            }),
+                                            PlaceholderMod.configure({ placeholder: 'Write something...' })
+                                        ],
+                                        content: target ? target.value : '',
+                                        onUpdate: function (params) {
+                                            if (self._destroyed || syncing) return;
+                                            var html = params.editor.getHTML();
+                                            if (target) {
+                                                target.value = html;
+                                                target.dispatchEvent(new window.Event('input', { bubbles: true }));
+                                            }
+                                            self.$dispatch('tiptap-change', { html: html });
+                                            self._hasEditor = true;
+                                            self._tick = (self._tick || 0) + 1;
+                                        }
+                                    });
+                                    self._hasEditor = true;
+                                    self._tick = 0;
+                                } catch (err) {
+                                    editorInstance = null;
+                                    console.error('Failed to init editor:', err);
+                                }
+                            })
+                            .catch(function (err) {
+                                console.error('Failed to load tiptap:', err);
+                            })
+                            .finally(function () {
+                                initializing = false;
+                            });
+                    },
+
+                    destroy() {
+                        this._destroyed = true;
+                        this._hasEditor = false;
+                        if (editorInstance) {
+                            try {
+                                editorInstance.destroy();
+                            } catch (_) {}
+                            editorInstance = null;
+                        }
+                    },
+
+                    setContentSafe(html) {
+                        if (!alive() || this._destroyed) return;
+                        var incoming = html || '';
+                        var current;
+                        try {
+                            current = editorInstance.getHTML();
+                        } catch (_) {
+                            return;
+                        }
+                        var norm = function (h) {
+                            return h === '<p></p>' ? '' : h;
+                        };
+                        if (norm(current) === norm(incoming)) return;
+                        try {
+                            syncing = true;
+                            editorInstance.commands.setContent(incoming, false);
+                            if (target) target.value = incoming;
+                            this._tick = (this._tick || 0) + 1;
+                        } catch (_) {
+                        } finally {
+                            syncing = false;
+                        }
+                    },
+
+                    toggleBold() {
+                        safe(function () {
+                            editorInstance.chain().focus().toggleBold().run();
+                        });
+                        data._tick++;
+                    },
+                    toggleItalic() {
+                        safe(function () {
+                            editorInstance.chain().focus().toggleItalic().run();
+                        });
+                        data._tick++;
+                    },
+                    toggleHeading(l) {
+                        safe(function () {
+                            editorInstance.chain().focus().toggleHeading({ level: l }).run();
+                        });
+                        data._tick++;
+                    },
+                    toggleBulletList() {
+                        safe(function () {
+                            editorInstance.chain().focus().toggleBulletList().run();
+                        });
+                        data._tick++;
+                    },
+                    toggleOrderedList() {
+                        safe(function () {
+                            editorInstance.chain().focus().toggleOrderedList().run();
+                        });
+                        data._tick++;
+                    },
+                    toggleBlockquote() {
+                        safe(function () {
+                            editorInstance.chain().focus().toggleBlockquote().run();
+                        });
+                        data._tick++;
+                    },
+                    unsetLink() {
+                        safe(function () {
+                            editorInstance.chain().focus().unsetLink().run();
+                        });
+                        data._tick++;
+                    },
+                    undo() {
+                        safe(function () {
+                            editorInstance.chain().focus().undo().run();
+                        });
+                        data._tick++;
+                    },
+                    redo() {
+                        safe(function () {
+                            editorInstance.chain().focus().redo().run();
+                        });
+                        data._tick++;
+                    },
+
+                    isActive(name, attrs) {
+                        void data._tick;
+                        if (!alive() || this._destroyed) return false;
+                        try {
+                            return editorInstance.isActive(name, attrs);
+                        } catch (_) {
+                            return false;
+                        }
+                    }
+                };
+
+                return data;
+            };
+        })();
+    </script>
 @endonce
 
 <div
