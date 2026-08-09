@@ -998,9 +998,6 @@ new #[Layout('components.layouts.app')] class extends Component
         $q = File::select('id', 'name', 'type', 'size')
             ->orderBy('name');
 
-        if ($clientId) {
-            $q->where('client_id', $clientId);
-        }
         if ($folderId) {
             $q->where('folder_id', $folderId);
         } elseif ($folderId === 0) {
@@ -1024,9 +1021,6 @@ new #[Layout('components.layouts.app')] class extends Component
         $q = \App\Models\Folder::select('id', 'name')
             ->orderBy('name');
 
-        if ($clientId) {
-            $q->where('client_id', $clientId);
-        }
         if ($parentId > 0) {
             $q->where('parent_id', $parentId);
         } else {

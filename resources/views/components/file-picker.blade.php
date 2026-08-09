@@ -27,6 +27,7 @@
         driveUrl: '',
         driveName: '',
         loading: false,
+        fallbackClientId: @js($clientId),
         getJson() {
             return JSON.stringify(this.attached);
         },
@@ -34,9 +35,19 @@
             var el = document.getElementById(this.inputId);
             if (el) el.value = JSON.stringify(this.attached);
         },
+        async resolveClientId() {
+            var wireProp = @js($wireClientId);
+            if (wireProp) {
+                try {
+                    var val = $wire.get(wireProp);
+                    if (val !== undefined && val !== null) return val;
+                } catch(e) { /* fall through */ }
+            }
+            return this.fallbackClientId;
+        },
         async loadFolders() {
             try {
-                var clientId = @js($wireClientId) ? $wire.get(@js($wireClientId)) : {{ json_encode($clientId) }};
+                var clientId = await this.resolveClientId();
                 var res = await $wire.getPickableFolders(this.currentFolderId, clientId);
                 this.folders = res.folders || [];
                 this.breadcrumbs = res.breadcrumbs || [];
@@ -45,7 +56,7 @@
         async loadFiles() {
             this.loading = true;
             try {
-                var clientId = @js($wireClientId) ? $wire.get(@js($wireClientId)) : {{ json_encode($clientId) }};
+                var clientId = await this.resolveClientId();
                 var res = await $wire.getPickableFiles(this.search, clientId, this.currentFolderId);
                 this.files = res;
             } catch(e) { console.error(e); }
