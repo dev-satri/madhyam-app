@@ -208,8 +208,39 @@
                 <template x-if="!showDriveBrowser">
                     <div class="flex flex-col flex-1 min-h-0">
                         {{-- Upload from computer --}}
-                        <div class="px-4 py-3 border-b bg-blue-50/50 shrink-0">
+                        <div class="px-4 py-3 border-b bg-blue-50/50 shrink-0"
+                             x-data="{
+                                 uploadProgress: 0,
+                                 uploading: false,
+                                 formatBytes(bytes) {
+                                     if (bytes === 0) return '0 B';
+                                     const k = 1024;
+                                     const sizes = ['B', 'KB', 'MB', 'GB'];
+                                     const i = Math.floor(Math.log(bytes) / Math.log(k));
+                                     return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+                                 }
+                             }"
+                             x-on:upload:started.window="if ($event.detail.id === 'newFileUpload') { uploading = true; uploadProgress = 0; }"
+                             x-on:upload:progress.window="if ($event.detail.id === 'newFileUpload') { uploadProgress = Math.round($event.detail.progress); uploading = true; }"
+                             x-on:upload:finished.window="if ($event.detail.id === 'newFileUpload') { uploadProgress = 100; uploading = false; }"
+                             x-on:upload:cancelled.window="if ($event.detail.id === 'newFileUpload') { uploading = false; uploadProgress = 0; }"
+                        >
                             <p class="text-[11px] font-semibold text-blue-600 uppercase mb-2"><i class="fas fa-upload mr-1"></i> Upload from computer</p>
+
+                            {{-- Upload Progress --}}
+                            <div x-show="uploading" x-transition class="mb-2 bg-white border border-blue-200 rounded-xl p-3">
+                                <div class="flex items-center justify-between mb-1.5">
+                                    <div class="flex items-center gap-1.5">
+                                        <i class="fas fa-cloud-upload-alt text-blue-500 text-sm upload-icon-spin"></i>
+                                        <span class="text-xs font-semibold text-gray-700">Uploading...</span>
+                                    </div>
+                                    <span class="text-xs font-bold text-blue-600 tabular-nums" x-text="uploadProgress + '%'"></span>
+                                </div>
+                                <div class="w-full bg-gray-200 rounded-full h-1.5 overflow-hidden">
+                                    <div class="h-full rounded-full bg-blue-500 transition-all duration-300 ease-out" :style="'width:' + uploadProgress + '%'"></div>
+                                </div>
+                            </div>
+
                             <input
                                 type="file"
                                 wire:model="newFileUpload"
@@ -220,6 +251,7 @@
                             <button
                                 type="button"
                                 @click="$refs.fileInput.click()"
+                                x-show="!uploading"
                                 class="w-full flex items-center justify-center gap-2 px-3 py-2.5 border-2 border-dashed border-blue-300 rounded-xl text-sm text-blue-600 hover:bg-blue-100 hover:border-blue-400 transition-colors"
                             >
                                 <i class="fas fa-cloud-upload-alt text-base"></i>
