@@ -1185,9 +1185,13 @@ new #[Layout('components.layouts.app')] class extends Component
                                             <tr>
                                                 <td class="font-medium text-gray-900">{{ $c->title }}</td>
                                                 <td>
+                                                    @php
+                                                        $cPlatforms = is_string($c->platform) ? json_decode($c->platform, true) : $c->platform;
+                                                        $cPlatformLabel = is_array($cPlatforms) ? implode(', ', array_map(fn($p) => ucfirst($p), $cPlatforms)) : ucfirst($c->platform ?? '-');
+                                                    @endphp
                                                     <span
-                                                        class="badge badge-{{ $c->platform }}"
-                                                        >{{ ucfirst($c->platform) }}</span
+                                                        class="badge badge-{{ is_array($cPlatforms) ? ($cPlatforms[0] ?? 'gray') : $c->platform }}"
+                                                        >{{ $cPlatformLabel }}</span
                                                     >
                                                 </td>
                                                 <td class="text-gray-600">{{ $c->type ?? '-' }}</td>

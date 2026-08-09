@@ -22,6 +22,8 @@ new #[Layout('components.layouts.app')] class extends Component
 {
     use WithFileUploads;
 
+    protected static bool $syncingContent = false;
+
     public string $search = '';
     public string $clientFilter = '';
     public string $typeFilter = '';
@@ -131,7 +133,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function getFilteredItems()
     {
-        $query = Workflow::with(['client', 'stageInfo', 'assigneeUser']);
+        $query = Workflow::with(['client', 'stageInfo', 'assigneeUser', 'content']);
 
         $user = Auth::user();
         $rbac = app(RbacService::class);
@@ -296,6 +298,33 @@ new #[Layout('components.layouts.app')] class extends Component
                 ->first();
 
             if (!$existingPending) {
+                // Merge ALL attachments: workflow + content (same as what user sees in workflow detail)
+                $allAttachments = [];
+                $seenKeys = [];
+
+                $decodeAndAdd = function ($raw) use (&$allAttachments, &$seenKeys) {
+                    if (empty($raw)) return;
+                    if (is_string($raw)) $raw = json_decode($raw, true);
+                    if (!is_array($raw)) return;
+                    foreach ($raw as $a) {
+                        if (!is_array($a)) continue;
+                        $key = ($a['id'] ?? null) ? ('id:' . $a['id']) : ('url:' . md5($a['url'] ?? ''));
+                        if (!in_array($key, $seenKeys)) {
+                            $seenKeys[] = $key;
+                            $allAttachments[] = $a;
+                        }
+                    }
+                };
+
+                // 1. Workflow's own attachments
+                $decodeAndAdd($workflow->attachments);
+
+                // 2. Content attachments (same as getDetailAttachments shows)
+                if (!empty($workflow->content_id)) {
+                    $contentAtts = DB::table('contents')->where('id', $workflow->content_id)->value('attachments');
+                    $decodeAndAdd($contentAtts);
+                }
+
                 DB::table('approvals')->insert([
                     'title' => $workflow->title,
                     'client_id' => $workflow->client_id,
@@ -304,6 +333,7 @@ new #[Layout('components.layouts.app')] class extends Component
                     'status' => 'pending',
                     'approval_stage' => 'admin-pending',
                     'submitted_by' => auth()->id(),
+                    'attachments' => !empty($allAttachments) ? json_encode($allAttachments) : null,
                     'created_at' => now(),
                     'updated_at' => now(),
                 ]);
@@ -405,7 +435,31 @@ new #[Layout('components.layouts.app')] class extends Component
                 'updated_at' => now(),
             ]);
         } else {
-            // Create new approval if none exists
+            // Create new approval — merge ALL attachments (workflow + content)
+            $allAttachments = [];
+            $seenKeys = [];
+
+            $decodeAndAdd = function ($raw) use (&$allAttachments, &$seenKeys) {
+                if (empty($raw)) return;
+                if (is_string($raw)) $raw = json_decode($raw, true);
+                if (!is_array($raw)) return;
+                foreach ($raw as $a) {
+                    if (!is_array($a)) continue;
+                    $key = ($a['id'] ?? null) ? ('id:' . $a['id']) : ('url:' . md5($a['url'] ?? ''));
+                    if (!in_array($key, $seenKeys)) {
+                        $seenKeys[] = $key;
+                        $allAttachments[] = $a;
+                    }
+                }
+            };
+
+            $decodeAndAdd($workflow->attachments);
+
+            if (!empty($workflow->content_id)) {
+                $contentAtts = DB::table('contents')->where('id', $workflow->content_id)->value('attachments');
+                $decodeAndAdd($contentAtts);
+            }
+
             DB::table('approvals')->insert([
                 'title' => $workflow->title,
                 'client_id' => $workflow->client_id,
@@ -414,6 +468,7 @@ new #[Layout('components.layouts.app')] class extends Component
                 'status' => 'pending',
                 'approval_stage' => 'admin-pending',
                 'submitted_by' => auth()->id(),
+                'attachments' => !empty($allAttachments) ? json_encode($allAttachments) : null,
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
@@ -529,6 +584,17 @@ new #[Layout('components.layouts.app')] class extends Component
         }
 
         app(ActivityLogger::class)->record(Auth::user(), "Workflow '{$this->formTitle}' {$verb}");
+
+        // Sync assignee and deadline to linked content
+        if (!empty($data['content_id']) && !static::$syncingContent) {
+            static::$syncingContent = true;
+            DB::table('contents')->where('id', $data['content_id'])->update([
+                'assignee' => $data['assignee'] ?? null,
+                'date' => $data['deadline'] ?? null,
+                'updated_at' => now(),
+            ]);
+            static::$syncingContent = false;
+        }
 
         // Notify assignee when set or changed.
         if ($this->formAssignee && $this->formAssignee != $priorAssignee) {
@@ -1165,6 +1231,29 @@ new #[Layout('components.layouts.app')] class extends Component
                                 {{ $item->client->name ?? '—' }}
                             </p>
 
+                            {{-- Linked Content Info --}}
+                            @if ($item->content)
+                                <div class="text-[11px] text-gray-500 mb-2 flex items-center gap-2">
+                                    @if ($item->content->date)
+                                        <span class="flex items-center gap-1">
+                                            <i class="fas fa-calendar text-gray-400"></i>
+                                            {{ \Carbon\Carbon::parse($item->content->date)->format('M j') }}
+                                        </span>
+                                    @endif
+                                    @if ($item->content->platform)
+                                        @php
+                                            $platforms = is_string($item->content->platform) ? json_decode($item->content->platform, true) : $item->content->platform;
+                                        @endphp
+                                        @if (is_array($platforms) && count($platforms) > 0)
+                                            <span class="flex items-center gap-1">
+                                                <i class="fas fa-share-alt text-gray-400"></i>
+                                                {{ implode(', ', array_slice($platforms, 0, 2)) }}{{ count($platforms) > 2 ? ' +' . (count($platforms) - 2) : '' }}
+                                            </span>
+                                        @endif
+                                    @endif
+                                </div>
+                            @endif
+
                             {{-- Attachment indicator --}}
                             @php
                                 $hasAttachments = false;
@@ -1381,10 +1470,31 @@ new #[Layout('components.layouts.app')] class extends Component
                                 <p class="text-gray-800 text-xs flex items-center gap-1.5"><i class="fas fa-clock text-gray-400"></i> {{ $detail->created_at ? \App\Support\NepaliDate::display($detail->created_at) : '—' }}</p>
                             </div>
                             @if ($detail->content_id)
-                                <div>
-                                    <p class="text-[11px] uppercase tracking-wide font-semibold text-gray-400 mb-1">Linked Content</p>
-                                    <p class="text-gray-800 text-xs flex items-center gap-1.5"><i class="fas fa-link text-gray-400"></i> Content #{{ $detail->content_id }}</p>
-                                </div>
+                                @php $linkedContent = \App\Models\Content::find($detail->content_id); @endphp
+                                @if ($linkedContent)
+                                    <div>
+                                        <p class="text-[11px] uppercase tracking-wide font-semibold text-gray-400 mb-1">Linked Content</p>
+                                        <div class="text-gray-800 text-xs space-y-1">
+                                            <p class="flex items-center gap-1.5"><i class="fas fa-link text-gray-400"></i> {{ $linkedContent->title }}</p>
+                                            @if ($linkedContent->date)
+                                                <p class="flex items-center gap-1.5"><i class="fas fa-calendar text-gray-400"></i> Posting: {{ \Carbon\Carbon::parse($linkedContent->date)->format('M j, Y') }}</p>
+                                            @endif
+                                            @if ($linkedContent->platform)
+                                                @php
+                                                    $platforms = is_string($linkedContent->platform) ? json_decode($linkedContent->platform, true) : $linkedContent->platform;
+                                                @endphp
+                                                @if (is_array($platforms) && count($platforms) > 0)
+                                                    <p class="flex items-center gap-1.5"><i class="fas fa-share-alt text-gray-400"></i> {{ implode(', ', $platforms) }}</p>
+                                                @endif
+                                            @endif
+                                        </div>
+                                    </div>
+                                @else
+                                    <div>
+                                        <p class="text-[11px] uppercase tracking-wide font-semibold text-gray-400 mb-1">Linked Content</p>
+                                        <p class="text-gray-800 text-xs flex items-center gap-1.5"><i class="fas fa-link text-gray-400"></i> Content #{{ $detail->content_id }}</p>
+                                    </div>
+                                @endif
                             @endif
                         </div>
 
@@ -1598,8 +1708,12 @@ new #[Layout('components.layouts.app')] class extends Component
                                     <select wire:model="formContentId" class="form-select">
                                         <option value="">No linked content</option>
                                         @foreach ($this->getAvailableContent() as $content)
+                                            @php
+                                                $contentPlatforms = is_string($content->platform) ? json_decode($content->platform, true) : $content->platform;
+                                                $platformLabel = is_array($contentPlatforms) ? implode(', ', array_map(fn($p) => ucfirst($p), $contentPlatforms)) : ucfirst($content->platform ?? '');
+                                            @endphp
                                             <option value="{{ $content->id }}">
-                                                {{ $content->title }} — {{ \Carbon\Carbon::parse($content->date)->format('M j') }} ({{ ucfirst($content->platform) }})
+                                                {{ $content->title }} — {{ \Carbon\Carbon::parse($content->date)->format('M j') }} ({{ $platformLabel }})
                                             </option>
                                         @endforeach
                                     </select>

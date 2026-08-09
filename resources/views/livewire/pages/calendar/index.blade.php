@@ -3,9 +3,11 @@
 use App\Models\Comment;
 use App\Models\Content;
 use App\Models\File;
+use App\Models\User;
 use App\Services\ActivityLogger;
 use App\Services\NotificationService;
 use App\Services\PackageService;
+use App\Support\UserVisibility;
 use Anuzpandey\LaravelNepaliDate\Exceptions\InvalidDateException;
 use Anuzpandey\LaravelNepaliDate\LaravelNepaliDate;
 use Carbon\Carbon;
@@ -19,6 +21,9 @@ use Livewire\WithFileUploads;
 new #[Layout('components.layouts.app')] class extends Component
 {
     use WithFileUploads;
+
+    protected static bool $syncingWorkflow = false;
+
     public string $viewMode = 'month';
 
     public int $currentMonth;
@@ -54,6 +59,8 @@ new #[Layout('components.layouts.app')] class extends Component
     public array $formTypes = [];
 
     public string $formStatus = 'draft';
+
+    public ?int $formAssignee = null;
 
     public string $caption = '';
 
@@ -129,6 +136,11 @@ new #[Layout('components.layouts.app')] class extends Component
         $this->clients = Auth::guard('client')->check()
             ? []
             : DB::table('clients')->whereNull('deleted_at')->orderBy('name')->get()->toArray();
+    }
+
+    public function getUserList()
+    {
+        return UserVisibility::apply(User::query())->orderBy('name')->get();
     }
 
     public function prevMonth(): void
@@ -224,9 +236,24 @@ new #[Layout('components.layouts.app')] class extends Component
 
         $allContent = $query->orderBy('contents.date')->get();
 
+        // Load linked workflows and approvals for each content
+        $contentIds = $allContent->pluck('id')->toArray();
+        $workflowsByContent = DB::table('workflows')
+            ->whereNull('deleted_at')
+            ->whereIn('content_id', $contentIds)
+            ->get()
+            ->groupBy('content_id');
+        $approvalsByContent = DB::table('approvals')
+            ->whereNull('deleted_at')
+            ->whereIn('content_id', $contentIds)
+            ->get()
+            ->groupBy('content_id');
+
         $this->contentByDate = [];
         foreach ($allContent as $item) {
             $item->_type = 'content';
+            $item->_workflows = $workflowsByContent->get($item->id, collect());
+            $item->_approvals = $approvalsByContent->get($item->id, collect());
             $this->contentByDate[$item->date][] = $item;
         }
 
@@ -436,12 +463,6 @@ new #[Layout('components.layouts.app')] class extends Component
             return;
         }
 
-        if ($content->status === 'published') {
-            $this->dispatch('toast', message: 'Published content cannot be edited', type: 'error');
-
-            return;
-        }
-
         $this->editingId = $id;
         $this->title = $content->title;
         $this->formClientId = $content->client_id ? (int) $content->client_id : null;
@@ -450,6 +471,7 @@ new #[Layout('components.layouts.app')] class extends Component
         $this->formPlatforms = \App\Support\ContentTags::normalize($content->platform, 'platform');
         $this->formTypes = \App\Support\ContentTags::normalize($content->type, 'type');
         $this->formStatus = $content->status;
+        $this->formAssignee = $content->assignee ? (int) $content->assignee : null;
         $this->caption = $content->caption ?? '';
         $this->hashtags = $content->hashtags ?? '';
         $this->referenceFile = $content->reference_file ?? '';
@@ -497,12 +519,28 @@ new #[Layout('components.layouts.app')] class extends Component
                     'platform' => json_encode($platforms),
                     'type' => json_encode($types),
                     'status' => $this->formStatus,
+                    'assignee' => $this->formAssignee ?? null,
                     'caption' => $this->caption,
                     'hashtags' => $this->hashtags,
                     'reference_file' => $this->referenceFile,
                     'attachments' => $this->formAttachments ? array_values($this->formAttachments) : null,
                     'updated_at' => now(),
                 ]);
+
+                // Sync assignee and date to linked workflows
+                if (!static::$syncingWorkflow) {
+                    static::$syncingWorkflow = true;
+                    DB::table('workflows')
+                        ->where('content_id', $this->editingId)
+                        ->whereNull('deleted_at')
+                        ->update([
+                            'assignee' => $this->formAssignee ?? null,
+                            'deadline' => $this->formDate,
+                            'updated_at' => now(),
+                        ]);
+                    static::$syncingWorkflow = false;
+                }
+
                 $this->dispatch('toast', message: 'Content updated successfully', type: 'success');
             } else {
                 DB::table('contents')->insert([
@@ -513,6 +551,7 @@ new #[Layout('components.layouts.app')] class extends Component
                     'platform' => json_encode($platforms),
                     'type' => json_encode($types),
                     'status' => $this->formStatus,
+                    'assignee' => $this->formAssignee ?? null,
                     'caption' => $this->caption,
                     'hashtags' => $this->hashtags,
                     'reference_file' => $this->referenceFile,
@@ -621,7 +660,27 @@ new #[Layout('components.layouts.app')] class extends Component
             $query->where('contents.client_id', $this->clientFilter);
         }
 
-        return $query->get()->toArray();
+        $results = $query->get();
+
+        // Load linked workflows and approvals for each content
+        $contentIds = $results->pluck('id')->toArray();
+        $workflowsByContent = DB::table('workflows')
+            ->whereNull('deleted_at')
+            ->whereIn('content_id', $contentIds)
+            ->get()
+            ->groupBy('content_id');
+        $approvalsByContent = DB::table('approvals')
+            ->whereNull('deleted_at')
+            ->whereIn('content_id', $contentIds)
+            ->get()
+            ->groupBy('content_id');
+
+        foreach ($results as $item) {
+            $item->_workflows = $workflowsByContent->get($item->id, collect());
+            $item->_approvals = $approvalsByContent->get($item->id, collect());
+        }
+
+        return $results->toArray();
     }
 
     public function getPlatformData(): array
@@ -738,19 +797,54 @@ new #[Layout('components.layouts.app')] class extends Component
     {
         if (!$this->selectedContentId) return [];
         $atts = [];
+        $seenIds = [];
 
+        // Helper to add attachment if not already seen
+        $addAtt = function ($a) use (&$atts, &$seenIds) {
+            if (!is_array($a)) return;
+            $key = $a['id'] ?? ($a['url'] ?? md5(json_encode($a)));
+            if (!in_array($key, $seenIds)) {
+                $seenIds[] = $key;
+                $atts[] = $a;
+            }
+        };
+
+        // 1. Content's own attachments
         $raw = DB::table('contents')->where('id', $this->selectedContentId)->value('attachments');
         if (!is_null($raw)) {
             if (is_string($raw)) $raw = json_decode($raw, true);
-            if (is_array($raw)) $atts = array_values(array_filter($raw, fn($a) => is_array($a)));
+            if (is_array($raw)) {
+                foreach (array_filter($raw, fn($a) => is_array($a)) as $a) {
+                    $addAtt($a);
+                }
+            }
         }
 
+        // 2. Workflow attachments linked to this content
         $wfAtts = DB::table('workflows')->where('content_id', $this->selectedContentId)->whereNotNull('attachments')->get();
         foreach ($wfAtts as $wf) {
             if (empty($wf->attachments)) continue;
             $decoded = is_string($wf->attachments) ? json_decode($wf->attachments, true) : $wf->attachments;
             if (is_array($decoded)) {
-                $atts = array_merge($atts, array_values(array_filter($decoded, fn($a) => is_array($a))));
+                foreach (array_filter($decoded, fn($a) => is_array($a)) as $a) {
+                    $addAtt($a);
+                }
+            }
+        }
+
+        // 3. Task attachments (tasks linked to workflows linked to this content)
+        $taskAtts = DB::table('tasks')
+            ->join('workflows', 'tasks.workflow_id', '=', 'workflows.id')
+            ->whereNull('tasks.deleted_at')
+            ->where('workflows.content_id', $this->selectedContentId)
+            ->whereNotNull('tasks.attachments')
+            ->pluck('tasks.attachments');
+        foreach ($taskAtts as $rawTaskAtts) {
+            if (is_string($rawTaskAtts)) $rawTaskAtts = json_decode($rawTaskAtts, true);
+            if (is_array($rawTaskAtts)) {
+                foreach (array_filter($rawTaskAtts, fn($a) => is_array($a)) as $a) {
+                    $addAtt($a);
+                }
             }
         }
 
@@ -965,6 +1059,7 @@ new #[Layout('components.layouts.app')] class extends Component
         $this->formPlatforms = [];
         $this->formTypes = [];
         $this->formStatus = 'draft';
+        $this->formAssignee = null;
         $this->caption = '';
         $this->hashtags = '';
         $this->referenceFile = '';
@@ -1164,12 +1259,26 @@ new #[Layout('components.layouts.app')] class extends Component
                                         $_platforms = \App\Support\ContentTags::normalize($item->platform, 'platform');
                                         $_primary = \App\Support\ContentTags::primary($_platforms, 'platform');
                                     @endphp
+                                    @php
+                                        $workflowStage = null;
+                                        $approvalStatus = null;
+                                        if ($item->_workflows && $item->_workflows->count() > 0) {
+                                            $workflowStage = $item->_workflows->first()->stage;
+                                        }
+                                        if ($item->_approvals && $item->_approvals->count() > 0) {
+                                            $latestApproval = $item->_approvals->sortByDesc('created_at')->first();
+                                            $approvalStatus = $latestApproval->status;
+                                        }
+                                    @endphp
                                     <div
-                                        class="cal-event {{ $_primary }}"
+                                        class="cal-event {{ $_primary }} relative"
                                         wire:click.stop="editContent({{ $item->id }})"
-                                        title="{{ $item->title }} ({{ \App\Support\ContentTags::label($_platforms, 'platform') }})"
+                                        title="{{ $item->title }} ({{ \App\Support\ContentTags::label($_platforms, 'platform') }}){{ $workflowStage ? ' | Stage: ' . $workflowStage : '' }}{{ $approvalStatus ? ' | Approval: ' . $approvalStatus : '' }}"
                                     >
                                         {{ Str::limit($item->title, 14) }}
+                                        @if ($workflowStage)
+                                            <span class="absolute -top-1 -right-1 w-2 h-2 rounded-full {{ $workflowStage === 'published' ? 'bg-green-500' : ($workflowStage === 'review' ? 'bg-yellow-500' : 'bg-blue-500') }}"></span>
+                                        @endif
                                     </div>
                                 @endif
                             @endforeach
@@ -1199,6 +1308,8 @@ new #[Layout('components.layouts.app')] class extends Component
                             <th>Platform</th>
                             <th>Type</th>
                             <th>Status</th>
+                            <th>Workflow</th>
+                            <th>Approval</th>
                             <th class="text-right">Actions</th>
                         </tr>
                     </thead>
@@ -1271,6 +1382,27 @@ new #[Layout('components.layouts.app')] class extends Component
                                         class="badge badge-{{ $item->status }}"
                                         >{{ str_replace('-', ' ', ucfirst($item->status)) }}</span
                                     >
+                                </td>
+                                <td>
+                                    @if ($item->_workflows && $item->_workflows->count() > 0)
+                                        @php $wf = $item->_workflows->first(); @endphp
+                                        <span class="inline-flex items-center gap-1 text-xs">
+                                            <span class="w-2 h-2 rounded-full {{ $wf->stage === 'published' ? 'bg-green-500' : ($wf->stage === 'review' ? 'bg-yellow-500' : 'bg-blue-500') }}"></span>
+                                            {{ ucfirst(str_replace('-', ' ', $wf->stage)) }}
+                                        </span>
+                                    @else
+                                        <span class="text-xs text-gray-400">—</span>
+                                    @endif
+                                </td>
+                                <td>
+                                    @if ($item->_approvals && $item->_approvals->count() > 0)
+                                        @php $appr = $item->_approvals->sortByDesc('created_at')->first(); @endphp
+                                        <span class="badge badge-{{ $appr->status === 'approved' ? 'success' : ($appr->status === 'rejected' ? 'danger' : 'warning') }}">
+                                            {{ ucfirst($appr->status) }}
+                                        </span>
+                                    @else
+                                        <span class="text-xs text-gray-400">—</span>
+                                    @endif
                                 </td>
                                 <td>
                                     <div class="flex items-center justify-end gap-1">
@@ -1472,6 +1604,19 @@ new #[Layout('components.layouts.app')] class extends Component
                                 @endif
                             </div>
 
+                            {{-- All Linked Attachments (workflow + tasks) --}}
+                            @if ($this->editingId)
+                                @php $allLinkedAtts = $this->getDiscussionAttachments(); @endphp
+                                @if (count($allLinkedAtts) > 0)
+                                    <div class="md:col-span-2 bg-gray-50 border border-gray-200 rounded-xl p-4">
+                                        <p class="text-[11px] uppercase tracking-wide font-semibold text-gray-400 mb-2">
+                                            <i class="fas fa-link text-gray-400 mr-1"></i> All Linked Attachments
+                                        </p>
+                                        @include ('livewire.partials.attachment-display', ['attachments' => $allLinkedAtts, 'label' => ''])
+                                    </div>
+                                @endif
+                            @endif
+
                             <div>
                                 <label class="form-label">Client</label>
                                 <select wire:model="formClientId" class="form-select">
@@ -1505,6 +1650,16 @@ new #[Layout('components.layouts.app')] class extends Component
                                 <select wire:model="formStatus" class="form-select">
                                     @foreach (self::STATUSES as $s)
                                         <option value="{{ $s }}">{{ str_replace('-', ' ', ucfirst($s)) }}</option>
+                                    @endforeach
+                                </select>
+                            </div>
+
+                            <div>
+                                <label class="form-label">Assignee</label>
+                                <select wire:model="formAssignee" class="form-select">
+                                    <option value="">Unassigned</option>
+                                    @foreach ($this->getUserList() as $user)
+                                        <option value="{{ $user->id }}">{{ $user->name }}</option>
                                     @endforeach
                                 </select>
                             </div>
@@ -1815,8 +1970,8 @@ new #[Layout('components.layouts.app')] class extends Component
                                     $_ddTypeLabel = \App\Support\ContentTags::label(\App\Support\ContentTags::normalize($item->type, 'type'), 'type');
                                 @endphp
                                     <div
-                                        class="flex items-start gap-3 px-6 py-3.5 {{ $item->status !== 'published' ? 'hover:bg-gray-50/50 cursor-pointer' : '' }} transition-colors"
-                                        @if ($item->status !== 'published') wire:click="editContent({{ $item->id }})" @endif
+                                        class="flex items-start gap-3 px-6 py-3.5 hover:bg-gray-50/50 cursor-pointer transition-colors"
+                                        wire:click="editContent({{ $item->id }})"
                                     >
                                         <div
                                             class="w-8 h-8 rounded-lg bg-{{ $_ddPrimary }}-500/10 flex items-center justify-center flex-shrink-0 mt-0.5"
@@ -1852,15 +2007,13 @@ new #[Layout('components.layouts.app')] class extends Component
                                             </div>
                                         </div>
                                         <div class="flex-shrink-0 ml-2 flex items-center gap-1.5">
-                                            @if ($item->status !== 'published')
-                                                <button
-                                                    wire:click.stop="openDiscussion({{ $item->id }})"
-                                                    class="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition"
-                                                    title="Discussion"
-                                                >
-                                                    <i class="fas fa-comments text-[11px]"></i>
-                                                </button>
-                                            @endif
+                                            <button
+                                                wire:click.stop="openDiscussion({{ $item->id }})"
+                                                class="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition"
+                                                title="Discussion"
+                                            >
+                                                <i class="fas fa-comments text-[11px]"></i>
+                                            </button>
                                             @if (in_array($item->status, ['draft', 'scripting', 'revision']))
                                                 @php
                                                 $ddBtnIcon = match($item->status) { 'draft' => 'fa-arrow-right', 'scripting' => 'fa-paper-plane', 'revision' => 'fa-redo', default => 'fa-arrow-right' };

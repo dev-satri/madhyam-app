@@ -367,17 +367,39 @@ new #[Layout('components.layouts.app')] class extends Component
             // FIRST APPROVAL: Content submitted from planner
             if ($status === 'approved') {
                 // Content stays as 'in-review' (it's now in the workflow pipeline)
-                // Create workflow item in first stage
+                // Create workflow item in first stage — copy assignee + attachments from content
                 $content = DB::table('contents')->where('id', $approval->content_id)->first();
                 if ($content) {
                     $firstStage = DB::table('workflow_stages')->orderBy('order')->first();
+
+                    // Merge content attachments + approval attachments (deduplicated)
+                    $allAttachments = [];
+                    $seenKeys = [];
+                    $decodeAndAdd = function ($raw) use (&$allAttachments, &$seenKeys) {
+                        if (empty($raw)) return;
+                        if (is_string($raw)) $raw = json_decode($raw, true);
+                        if (!is_array($raw)) return;
+                        foreach ($raw as $a) {
+                            if (!is_array($a)) continue;
+                            $key = ($a['id'] ?? null) ? ('id:' . $a['id']) : ('url:' . md5($a['url'] ?? ''));
+                            if (!in_array($key, $seenKeys)) {
+                                $seenKeys[] = $key;
+                                $allAttachments[] = $a;
+                            }
+                        }
+                    };
+                    $decodeAndAdd($content->attachments);
+                    $decodeAndAdd($approval->attachments);
+
                     DB::table('workflows')->insert([
                         'title' => $approval->title,
                         'client_id' => $approval->client_id,
                         'content_id' => $approval->content_id,
                         'type' => $approval->type,
                         'stage' => $firstStage->key ?? 'todo',
+                        'assignee' => $content->assignee ?? null,
                         'deadline' => $content->due_date,
+                        'attachments' => !empty($allAttachments) ? json_encode($allAttachments) : null,
                         'submitted_by' => $actor?->id,
                         'created_at' => now(),
                         'updated_at' => now(),
@@ -827,27 +849,94 @@ new #[Layout('components.layouts.app')] class extends Component
     {
         if (!$this->detailId) return [];
         $atts = [];
+        $seenKeys = [];
 
         $approval = DB::table('approvals')->where('id', $this->detailId)->whereNull('deleted_at')->first();
         if (!$approval) return [];
 
-        if (!empty($approval->attachments)) {
-            $raw = $approval->attachments;
+        // Helper to normalize an attachment item
+        $normalize = function ($a) {
+            if (!is_array($a)) return null;
+            // Ensure minimum fields exist
+            $item = [
+                'id'   => $a['id'] ?? null,
+                'name' => $a['name'] ?? 'File',
+                'url'  => $a['url'] ?? '',
+                'type' => $a['type'] ?? 'document',
+            ];
+            if (isset($a['size_label'])) $item['size_label'] = $a['size_label'];
+            return $item;
+        };
+
+        // Helper to add attachment if not already seen
+        $addAtt = function ($a) use (&$atts, &$seenKeys, $normalize) {
+            $normalized = $normalize($a);
+            if (!$normalized) return;
+            // Deduplicate by id (if exists) or by url
+            $key = $normalized['id'] ? ('id:' . $normalized['id']) : ('url:' . md5($normalized['url']));
+            if (!in_array($key, $seenKeys)) {
+                $seenKeys[] = $key;
+                $atts[] = $normalized;
+            }
+        };
+
+        // Helper to decode attachments from various formats
+        $decodeAtts = function ($raw) {
+            if (empty($raw)) return [];
             if (is_string($raw)) $raw = json_decode($raw, true);
-            if (is_array($raw)) $atts = array_values(array_filter($raw, fn($a) => is_array($a)));
+            if (!is_array($raw)) return [];
+            return array_values(array_filter($raw, fn($a) => is_array($a)));
+        };
+
+        // 1. Approval's own attachments (highest priority)
+        $approvalAtts = $decodeAtts($approval->attachments);
+        foreach ($approvalAtts as $a) {
+            $addAtt($a);
         }
 
+        // 2. Workflow attachments (linked via content_id or directly)
+        $workflowIds = [];
         if (!empty($approval->content_id)) {
-            $contentAtts = DB::table('contents')->where('id', $approval->content_id)->value('attachments');
-            if (!empty($contentAtts)) {
-                if (is_string($contentAtts)) $contentAtts = json_decode($contentAtts, true);
-                if (is_array($contentAtts)) {
-                    $validContentAtts = array_values(array_filter($contentAtts, fn($a) => is_array($a)));
-                    $atts = array_merge($atts, $validContentAtts);
+            $workflowIds = DB::table('workflows')
+                ->whereNull('deleted_at')
+                ->where('content_id', $approval->content_id)
+                ->pluck('id')
+                ->toArray();
+        }
+        // Also check if workflow_id is directly on approval
+        if (!empty($approval->workflow_id)) {
+            $workflowIds[] = $approval->workflow_id;
+        }
+        foreach ($workflowIds as $wfId) {
+            $wfAttsRaw = DB::table('workflows')->where('id', $wfId)->value('attachments');
+            foreach ($decodeAtts($wfAttsRaw) as $a) {
+                $addAtt($a);
+            }
+        }
+
+        // 3. Content attachments
+        if (!empty($approval->content_id)) {
+            $contentAttsRaw = DB::table('contents')->where('id', $approval->content_id)->value('attachments');
+            foreach ($decodeAtts($contentAttsRaw) as $a) {
+                $addAtt($a);
+            }
+        }
+
+        // 4. Task attachments (tasks linked to workflows linked to this content)
+        if (!empty($workflowIds)) {
+            $taskAttsRaw = DB::table('tasks')
+                ->whereIn('tasks.workflow_id', $workflowIds)
+                ->whereNull('tasks.deleted_at')
+                ->whereNotNull('tasks.attachments')
+                ->pluck('tasks.attachments');
+            foreach ($taskAttsRaw as $raw) {
+                foreach ($decodeAtts($raw) as $a) {
+                    $addAtt($a);
                 }
             }
         }
 
+        // Resolve any missing URLs from files table
         $atts = array_map(function ($a) {
             if (empty($a['url']) && !empty($a['id'])) {
                 $file = DB::table('files')->where('id', $a['id'])->first();
@@ -858,6 +947,7 @@ new #[Layout('components.layouts.app')] class extends Component
             return $a;
         }, $atts);
 
+        // Filter out items still without URL
         return array_values(array_filter($atts, fn($a) => !empty($a['url'])));
     }
 
@@ -1229,15 +1319,18 @@ new #[Layout('components.layouts.app')] class extends Component
                 <div class="modal-box max-w-3xl" x-on:click.stop>
 
                     {{-- Header --}}
-                    <div class="modal-header border-b border-gray-100 pb-3">
+                    <div class="modal-header border-b border-gray-100 pb-4">
                         <div class="flex-1 min-w-0 pr-2">
-                            <div class="flex flex-wrap items-center gap-1.5 mb-1.5">
-                                <span class="inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-semibold border {{ $apprStatusBadge }} whitespace-nowrap">{{ ucfirst($appr->status) }}</span>
+                            <div class="flex flex-wrap items-center gap-2 mb-2">
+                                <span class="inline-flex items-center rounded-full px-3 py-1 text-xs font-bold {{ $apprStatusBadge }} whitespace-nowrap">{{ ucfirst($appr->status) }}</span>
                                 @if ($appr->type)
-                                    <span class="inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-semibold border {{ $apprTypeBadge }} whitespace-nowrap">{{ ucfirst($appr->type) }}</span>
+                                    <span class="inline-flex items-center rounded-full px-3 py-1 text-xs font-bold {{ $apprTypeBadge }} whitespace-nowrap">{{ ucfirst($appr->type) }}</span>
+                                @endif
+                                @if ($appr->approval_stage)
+                                    <span class="inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold bg-gray-100 text-gray-600 whitespace-nowrap">{{ ucwords(str_replace('-', ' ', $appr->approval_stage)) }}</span>
                                 @endif
                             </div>
-                            <h3 class="text-base sm:text-lg font-bold text-gray-900 leading-snug break-words">{{ $appr->title ?? 'Approval Details' }}</h3>
+                            <h3 class="text-lg sm:text-xl font-extrabold text-gray-900 leading-snug break-words">{{ $appr->title ?? 'Approval Details' }}</h3>
                         </div>
                         <button wire:click="$set('showDetail', false)" class="btn btn-ghost btn-icon btn-sm shrink-0" aria-label="Close"><i class="fas fa-times"></i></button>
                     </div>
@@ -1248,81 +1341,104 @@ new #[Layout('components.layouts.app')] class extends Component
                         @php $aAtts = $this->getDetailAttachments(); @endphp
                         @if (count($aAtts) > 0)
                             <div>
-                                @include('livewire.partials.attachment-display', ['attachments' => $aAtts, 'label' => 'Approval Attachments'])
+                                @include('livewire.partials.attachment-display', ['attachments' => $aAtts, 'label' => 'Attachments'])
                             </div>
                         @endif
 
                         {{-- Notes --}}
                         @if($appr->notes)
-                            <div>
-                                <p class="text-[11px] uppercase tracking-wide font-semibold text-gray-400 mb-1">Notes</p>
-                                <p class="text-sm text-gray-700 whitespace-pre-line leading-relaxed">{{ $appr->notes }}</p>
+                            <div class="bg-blue-50 border border-blue-100 rounded-xl p-4">
+                                <p class="text-[11px] uppercase tracking-wide font-semibold text-blue-500 mb-1.5 flex items-center gap-1.5">
+                                    <i class="fas fa-sticky-note"></i> Notes
+                                </p>
+                                <p class="text-sm text-blue-800 whitespace-pre-line leading-relaxed">{{ $appr->notes }}</p>
                             </div>
                         @endif
 
                         {{-- Metadata --}}
-                        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 text-sm">
-                            <div>
-                                <p class="text-[11px] uppercase tracking-wide font-semibold text-gray-400 mb-1">Client</p>
-                                <p class="text-gray-800 text-xs flex items-center gap-1.5"><i class="fas fa-building text-gray-400"></i> {{ $appr->client_name ?? '—' }}</p>
-                            </div>
-                            <div>
-                                <p class="text-[11px] uppercase tracking-wide font-semibold text-gray-400 mb-1">Submitted By</p>
-                                <p class="text-gray-800 text-xs flex items-center gap-1.5"><i class="fas fa-user text-gray-400"></i> {{ $appr->submitter_name ?? '—' }}</p>
-                            </div>
-                            <div>
-                                <p class="text-[11px] uppercase tracking-wide font-semibold text-gray-400 mb-1">Date</p>
-                                <p class="text-gray-800 text-xs flex items-center gap-1.5"><i class="fas fa-calendar-alt text-gray-400"></i> {{ $appr->created_at ? \App\Support\NepaliDate::display($appr->created_at) : '—' }}</p>
+                        <div class="bg-gray-50 border border-gray-100 rounded-xl p-4">
+                            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                                <div>
+                                    <p class="text-[10px] uppercase tracking-wider font-bold text-gray-400 mb-1">Client</p>
+                                    <p class="text-sm font-medium text-gray-800 flex items-center gap-2">
+                                        <span class="w-7 h-7 rounded-lg bg-gray-200 flex items-center justify-center"><i class="fas fa-building text-gray-500 text-xs"></i></span>
+                                        {{ $appr->client_name ?? 'Internal' }}
+                                    </p>
+                                </div>
+                                <div>
+                                    <p class="text-[10px] uppercase tracking-wider font-bold text-gray-400 mb-1">Submitted By</p>
+                                    <p class="text-sm font-medium text-gray-800 flex items-center gap-2">
+                                        <span class="w-7 h-7 rounded-lg bg-[rgba(var(--brand-rgb),0.1)] flex items-center justify-center text-[10px] font-bold text-[var(--brand)]">{{ strtoupper(substr($appr->submitter_name ?? '?', 0, 1)) }}</span>
+                                        {{ $appr->submitter_name ?? '—' }}
+                                    </p>
+                                </div>
+                                <div>
+                                    <p class="text-[10px] uppercase tracking-wider font-bold text-gray-400 mb-1">Date</p>
+                                    <p class="text-sm font-medium text-gray-800 flex items-center gap-2">
+                                        <span class="w-7 h-7 rounded-lg bg-gray-200 flex items-center justify-center"><i class="fas fa-calendar-alt text-gray-500 text-xs"></i></span>
+                                        {{ $appr->created_at ? \App\Support\NepaliDate::display($appr->created_at) : '—' }}
+                                    </p>
+                                </div>
                             </div>
                         </div>
 
                         {{-- Linked Content --}}
                         @if($linkedContent)
-                            <div class="bg-gray-50 border border-gray-200 rounded-xl p-3 sm:p-4">
-                                <p class="text-[11px] uppercase tracking-wide font-semibold text-gray-400 mb-3 flex items-center gap-1.5">
-                                    <i class="fas fa-link text-gray-400"></i> Linked Content
-                                </p>
-                                <div class="space-y-3">
+                            <div class="border border-gray-200 rounded-xl overflow-hidden">
+                                <div class="bg-gradient-to-r from-gray-50 to-white px-4 py-3 border-b border-gray-100">
+                                    <p class="text-[10px] uppercase tracking-wider font-bold text-gray-400 flex items-center gap-1.5">
+                                        <i class="fas fa-link text-gray-400"></i> Linked Content
+                                    </p>
+                                </div>
+                                <div class="p-4 space-y-3">
                                     <div>
-                                        <p class="text-sm font-semibold text-gray-900 break-words">{{ $linkedContent->title }}</p>
-                                        <div class="flex flex-wrap items-center gap-1.5 mt-1.5">
+                                        <p class="text-sm font-bold text-gray-900 break-words">{{ $linkedContent->title }}</p>
+                                        <div class="flex flex-wrap items-center gap-1.5 mt-2">
                                             @if($linkedContent->platform)
-                                                <span class="inline-flex items-center rounded-md bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 text-[11px] font-semibold whitespace-nowrap">{{ ucfirst($linkedContent->platform) }}</span>
+                                                @php
+                                                    $lcPlatforms = is_string($linkedContent->platform) ? json_decode($linkedContent->platform, true) : $linkedContent->platform;
+                                                    $lcPlatformLabel = is_array($lcPlatforms) ? implode(', ', array_map(fn($p) => ucfirst($p), $lcPlatforms)) : ucfirst($linkedContent->platform);
+                                                @endphp
+                                                <span class="inline-flex items-center rounded-full bg-blue-50 text-blue-700 border border-blue-200 px-2.5 py-0.5 text-[11px] font-semibold whitespace-nowrap">{{ $lcPlatformLabel }}</span>
                                             @endif
                                             @if($linkedContent->type)
-                                                <span class="inline-flex items-center rounded-md bg-purple-50 text-purple-700 border border-purple-200 px-2 py-0.5 text-[11px] font-semibold whitespace-nowrap">{{ ucfirst($linkedContent->type) }}</span>
+                                                @php
+                                                    $lcTypes = is_string($linkedContent->type) ? json_decode($linkedContent->type, true) : $linkedContent->type;
+                                                    $lcTypeLabel = is_array($lcTypes) ? implode(', ', array_map(fn($t) => ucfirst($t), $lcTypes)) : ucfirst($linkedContent->type);
+                                                @endphp
+                                                <span class="inline-flex items-center rounded-full bg-purple-50 text-purple-700 border border-purple-200 px-2.5 py-0.5 text-[11px] font-semibold whitespace-nowrap">{{ $lcTypeLabel }}</span>
                                             @endif
                                             @if($linkedContent->status)
-                                                <span class="inline-flex items-center rounded-md bg-gray-100 text-gray-600 border border-gray-200 px-2 py-0.5 text-[11px] font-semibold whitespace-nowrap">{{ ucwords(str_replace('-', ' ', $linkedContent->status)) }}</span>
+                                                <span class="inline-flex items-center rounded-full bg-gray-100 text-gray-600 border border-gray-200 px-2.5 py-0.5 text-[11px] font-semibold whitespace-nowrap">{{ ucwords(str_replace('-', ' ', $linkedContent->status)) }}</span>
                                             @endif
                                         </div>
                                     </div>
                                     @if($linkedContent->caption)
-                                        <div>
-                                            <p class="text-[11px] uppercase tracking-wide font-semibold text-gray-400 mb-0.5">Caption</p>
+                                        <div class="bg-gray-50 rounded-lg p-3">
+                                            <p class="text-[10px] uppercase tracking-wider font-bold text-gray-400 mb-1">Caption</p>
                                             <p class="text-sm text-gray-600 whitespace-pre-line break-words">{{ Str::limit($linkedContent->caption, 200) }}</p>
                                         </div>
                                     @endif
                                     @if($linkedContent->date)
-                                        <div class="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-4 text-xs text-gray-500">
-                                            <span><i class="fas fa-calendar-alt mr-1"></i>{{ \App\Support\NepaliDate::display($linkedContent->date) }}</span>
+                                        <div class="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 text-xs text-gray-500">
+                                            <span class="flex items-center gap-1.5"><i class="fas fa-calendar-alt text-gray-400"></i>{{ \App\Support\NepaliDate::display($linkedContent->date) }}</span>
                                             @if($linkedContent->due_date)
-                                                <span><i class="fas fa-clock mr-1"></i>Due {{ \App\Support\NepaliDate::display($linkedContent->due_date) }}</span>
+                                                <span class="flex items-center gap-1.5"><i class="fas fa-clock text-gray-400"></i>Due {{ \App\Support\NepaliDate::display($linkedContent->due_date) }}</span>
                                             @endif
                                         </div>
                                     @endif
                                     @if($linkedContent->hashtags && trim($linkedContent->hashtags) !== '')
-                                        <div class="flex flex-wrap gap-1">
+                                        <div class="flex flex-wrap gap-1.5">
                                             @foreach(explode(',', $linkedContent->hashtags) as $tag)
                                                 @php $tag = trim($tag); @endphp
                                                 @if($tag !== '')
-                                                    <span class="inline-flex items-center rounded-md bg-gray-100 text-gray-600 px-2 py-0.5 text-[11px] break-all">{{ $tag }}</span>
+                                                    <span class="inline-flex items-center rounded-full bg-gray-100 text-gray-600 px-2.5 py-0.5 text-[11px] break-all">#{{ $tag }}</span>
                                                 @endif
                                             @endforeach
                                         </div>
                                     @endif
                                     @if(count($contentAttachments) > 0)
-                                        <div class="border-t border-gray-200 pt-3">
+                                        <div class="border-t border-gray-100 pt-3">
                                             @include('livewire.partials.attachment-display', ['attachments' => $contentAttachments, 'label' => 'Content Attachments'])
                                         </div>
                                     @endif
@@ -1332,8 +1448,18 @@ new #[Layout('components.layouts.app')] class extends Component
 
                         {{-- Action Buttons --}}
                         @if(in_array($appr->status, ['approved','rejected']))
-                            <div class="bg-amber-50 border border-amber-200 rounded-lg px-4 py-2.5 text-sm text-amber-700 flex items-center gap-2">
-                                <i class="fas fa-lock"></i> Decision finalized — no further actions can be taken.
+                            <div class="flex items-center gap-3 {{ $appr->status === 'approved' ? 'bg-emerald-50 border border-emerald-200' : 'bg-red-50 border border-red-200' }} rounded-xl px-4 py-3">
+                                <div class="w-10 h-10 rounded-full {{ $appr->status === 'approved' ? 'bg-emerald-100 text-emerald-600' : 'bg-red-100 text-red-600' }} flex items-center justify-center flex-shrink-0">
+                                    <i class="fas {{ $appr->status === 'approved' ? 'fa-check' : 'fa-times' }} text-lg"></i>
+                                </div>
+                                <div>
+                                    <p class="text-sm font-bold {{ $appr->status === 'approved' ? 'text-emerald-800' : 'text-red-800' }}">
+                                        {{ $appr->status === 'approved' ? 'Approved' : 'Rejected' }}
+                                    </p>
+                                    <p class="text-xs {{ $appr->status === 'approved' ? 'text-emerald-600' : 'text-red-600' }}">
+                                        Decision finalized — no further actions can be taken.
+                                    </p>
+                                </div>
                             </div>
                         @endif
 
@@ -1347,35 +1473,54 @@ new #[Layout('components.layouts.app')] class extends Component
                                     default => 'This will mark the item as approved.',
                                 };
                             @endphp
-                            <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-                                <button type="button" wire:click="$dispatch('open-confirm', { title: 'Approve this item?', message: '{{ addslashes($detailApproveMsg) }}', type: 'info', action: 'updateStatus', params: [{{ $appr->id }}, 'approved'] })" class="btn btn-success btn-sm flex-1 sm:flex-initial"><i class="fas fa-check text-xs"></i> Approve</button>
-                                <button type="button" wire:click="openReasonModal({{ $appr->id }}, 'revision')" class="btn btn-secondary btn-sm flex-1 sm:flex-initial"><i class="fas fa-pen text-xs"></i> Request Revision</button>
-                                @if($this->isManager)
-                                    <button type="button" wire:click="openReasonModal({{ $appr->id }}, 'rejected')" class="btn btn-danger btn-sm flex-1 sm:flex-initial"><i class="fas fa-times text-xs"></i> Reject</button>
-                                @endif
+                            <div class="bg-gray-50 border border-gray-200 rounded-xl p-4">
+                                <p class="text-[10px] uppercase tracking-wider font-bold text-gray-400 mb-3">Actions</p>
+                                <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                                    <button type="button" wire:click="$dispatch('open-confirm', { title: 'Approve this item?', message: '{{ addslashes($detailApproveMsg) }}', type: 'info', action: 'updateStatus', params: [{{ $appr->id }}, 'approved'] })" class="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-bold text-white shadow-sm hover:bg-emerald-700 transition flex-1 sm:flex-initial">
+                                        <i class="fas fa-check text-xs"></i> Approve
+                                    </button>
+                                    <button type="button" wire:click="openReasonModal({{ $appr->id }}, 'revision')" class="inline-flex items-center justify-center gap-2 rounded-xl border border-gray-300 bg-white px-4 py-2.5 text-sm font-bold text-gray-700 shadow-sm hover:bg-gray-50 transition flex-1 sm:flex-initial">
+                                        <i class="fas fa-pen text-xs"></i> Request Revision
+                                    </button>
+                                    @if($this->isManager)
+                                        <button type="button" wire:click="openReasonModal({{ $appr->id }}, 'rejected')" class="inline-flex items-center justify-center gap-2 rounded-xl border border-red-300 bg-white px-4 py-2.5 text-sm font-bold text-red-700 shadow-sm hover:bg-red-50 transition flex-1 sm:flex-initial">
+                                            <i class="fas fa-times text-xs"></i> Reject
+                                        </button>
+                                    @endif
+                                </div>
                             </div>
                         @elseif($appr->status === 'revision')
-                            <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-                                <button type="button" wire:click="$dispatch('open-confirm', { title: 'Approve this item?', message: 'This will mark the item as approved.', type: 'info', action: 'updateStatus', params: [{{ $appr->id }}, 'approved'] })" class="btn btn-success btn-sm flex-1 sm:flex-initial"><i class="fas fa-check text-xs"></i> Approve</button>
-                                @if($this->isManager)
-                                    <button type="button" wire:click="openReasonModal({{ $appr->id }}, 'rejected')" class="btn btn-danger btn-sm flex-1 sm:flex-initial"><i class="fas fa-times text-xs"></i> Reject</button>
-                                @endif
+                            <div class="bg-amber-50 border border-amber-200 rounded-xl p-4">
+                                <p class="text-[10px] uppercase tracking-wider font-bold text-amber-500 mb-3 flex items-center gap-1.5">
+                                    <i class="fas fa-exclamation-circle"></i> Revision Requested
+                                </p>
+                                <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                                    <button type="button" wire:click="$dispatch('open-confirm', { title: 'Approve this item?', message: 'This will mark the item as approved.', type: 'info', action: 'updateStatus', params: [{{ $appr->id }}, 'approved'] })" class="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-bold text-white shadow-sm hover:bg-emerald-700 transition flex-1 sm:flex-initial">
+                                        <i class="fas fa-check text-xs"></i> Approve
+                                    </button>
+                                    @if($this->isManager)
+                                        <button type="button" wire:click="openReasonModal({{ $appr->id }}, 'rejected')" class="inline-flex items-center justify-center gap-2 rounded-xl border border-red-300 bg-white px-4 py-2.5 text-sm font-bold text-red-700 shadow-sm hover:bg-red-50 transition flex-1 sm:flex-initial">
+                                            <i class="fas fa-times text-xs"></i> Reject
+                                        </button>
+                                    @endif
+                                </div>
                             </div>
                         @endif
 
                         {{-- Discussion --}}
-                        <div class="border-t border-gray-100 pt-4">
-                            <h4 class="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
-                                <i class="fas fa-comments text-gray-400"></i> Discussion
+                        <div class="border-t border-gray-100 pt-5">
+                            <h4 class="text-sm font-bold text-gray-900 mb-4 flex items-center gap-2">
+                                <span class="w-7 h-7 rounded-lg bg-gray-100 flex items-center justify-center"><i class="fas fa-comments text-gray-500 text-xs"></i></span>
+                                Discussion
                             </h4>
 
                             {{-- Legacy comments --}}
                             @if($comments->count())
-                                <div class="space-y-2 max-h-40 overflow-y-auto mb-3">
+                                <div class="space-y-2 max-h-40 overflow-y-auto mb-4">
                                     @foreach($comments as $c)
-                                        <div class="{{ $c->is_system ? 'bg-blue-50 border border-blue-100' : 'bg-gray-50 border border-gray-100' }} rounded-lg px-3 py-2">
-                                            <p class="text-sm font-medium {{ $c->is_system ? 'text-blue-700' : 'text-gray-900' }}">{{ $c->user_name }} <span class="text-[10px] text-gray-400 font-normal">{{ \Carbon\Carbon::parse($c->created_at)->diffForHumans() }}</span></p>
-                                            <p class="text-sm {{ $c->is_system ? 'text-blue-600 italic' : 'text-gray-600' }}">{{ $c->text }}</p>
+                                        <div class="{{ $c->is_system ? 'bg-blue-50 border border-blue-100' : 'bg-gray-50 border border-gray-100' }} rounded-xl px-4 py-3">
+                                            <p class="text-sm font-semibold {{ $c->is_system ? 'text-blue-700' : 'text-gray-900' }}">{{ $c->user_name }} <span class="text-[10px] text-gray-400 font-normal ml-1">{{ \Carbon\Carbon::parse($c->created_at)->diffForHumans() }}</span></p>
+                                            <p class="text-sm {{ $c->is_system ? 'text-blue-600 italic' : 'text-gray-600' }} mt-1">{{ $c->text }}</p>
                                         </div>
                                     @endforeach
                                 </div>
@@ -1383,25 +1528,25 @@ new #[Layout('components.layouts.app')] class extends Component
 
                             {{-- New discussion --}}
                             @php $discussionComments = $this->getDiscussionComments(); @endphp
-                            <div class="space-y-3 max-h-48 overflow-y-auto mb-3">
+                            <div class="space-y-4 max-h-52 overflow-y-auto mb-4">
                                 @forelse($discussionComments as $comment)
-                                    <div class="flex gap-2.5">
-                                        <div class="flex-shrink-0 w-6 h-6 rounded-full bg-[rgba(var(--brand-rgb),0.1)] flex items-center justify-center text-[9px] font-bold text-[var(--brand)]">
+                                    <div class="flex gap-3">
+                                        <div class="flex-shrink-0 w-8 h-8 rounded-full bg-[rgba(var(--brand-rgb),0.1)] flex items-center justify-center text-[11px] font-bold text-[var(--brand)]">
                                             {{ strtoupper(substr($comment->user->name ?? '?', 0, 1)) }}
                                         </div>
                                         <div class="flex-1 min-w-0">
-                                            <div class="flex items-center gap-2 mb-0.5">
-                                                <span class="text-xs font-semibold text-gray-800">{{ $comment->user->name ?? 'Unknown' }}</span>
+                                            <div class="flex items-center gap-2 mb-1">
+                                                <span class="text-xs font-bold text-gray-800">{{ $comment->user->name ?? 'Unknown' }}</span>
                                                 <span class="text-[10px] text-gray-400">{{ $comment->created_at->diffForHumans() }}</span>
                                             </div>
-                                            <div class="comment-body text-sm text-gray-600">{!! $comment->body !!}</div>
+                                            <div class="comment-body text-sm text-gray-600 bg-gray-50 rounded-xl px-3 py-2 border border-gray-100">{!! $comment->body !!}</div>
                                             @if($comment->attachments)
-                                                <div class="flex flex-wrap gap-1 mt-1">
+                                                <div class="flex flex-wrap gap-1.5 mt-2">
                                                     @foreach($comment->attachments as $att)
                                                         @if(($att['type'] ?? '') === 'image')
-                                                            <a href="{{ $att['url'] }}" target="_blank" class="block"><img src="{{ $att['url'] }}" class="rounded-lg max-h-20 border border-gray-100"></a>
+                                                            <a href="{{ $att['url'] }}" target="_blank" class="block rounded-xl overflow-hidden border border-gray-100"><img src="{{ $att['url'] }}" class="max-h-24"></a>
                                                         @else
-                                                            <a href="{{ $att['url'] }}" target="_blank" class="inline-flex items-center gap-1 bg-gray-100 rounded-lg px-2 py-1 text-xs text-gray-600 hover:bg-gray-200">
+                                                            <a href="{{ $att['url'] }}" target="_blank" class="inline-flex items-center gap-1.5 bg-gray-100 rounded-xl px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-200 transition">
                                                                 <i class="fas {{ ($att['type'] ?? '') === 'drive' ? 'fa-google-drive text-blue-500' : 'fa-file text-gray-400' }}"></i>
                                                                 {{ $att['name'] ?? 'File' }}
                                                             </a>
@@ -1413,19 +1558,24 @@ new #[Layout('components.layouts.app')] class extends Component
                                     </div>
                                 @empty
                                     @if($comments->count() === 0)
-                                        <p class="text-xs text-gray-400 text-center py-2">No comments yet. Start the discussion.</p>
+                                        <div class="text-center py-6">
+                                            <div class="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-2">
+                                                <i class="fas fa-comments text-gray-300 text-lg"></i>
+                                            </div>
+                                            <p class="text-xs text-gray-400">No comments yet. Start the discussion.</p>
+                                        </div>
                                     @endif
                                 @endforelse
                             </div>
 
                             {{-- Comment form --}}
-                            <div class="border-t border-gray-100 pt-3">
-                                <x-tiptap-editor wire="commentText" name="apprComment" placeholder="Add a comment..." />
-                                <div class="flex items-center justify-between mt-2">
+                            <div class="bg-gray-50 border border-gray-200 rounded-xl p-4">
+                                <x-tiptap-editor wire="commentText" name="apprComment" placeholder="Write a comment..." />
+                                <div class="flex items-center justify-between mt-3">
                                     <x-file-picker :clientId="$appr->client_id ?? null" wire="commentAttachments" :initial="$commentAttachments" />
                                     <button @click="$wire.addDiscussionComment($wire.get('commentAttachments'))"
                                             wire:loading.attr="disabled"
-                                            class="btn btn-primary btn-sm"
+                                            class="inline-flex items-center gap-2 rounded-xl bg-[var(--brand)] px-4 py-2 text-xs font-bold text-white shadow-sm hover:opacity-90 transition"
                                             x-data>
                                         <i class="fas fa-paper-plane text-xs" wire:loading.remove wire:target="addDiscussionComment"></i>
                                         <i class="fas fa-spinner fa-spin text-xs" wire:loading wire:target="addDiscussionComment"></i>
@@ -1467,7 +1617,13 @@ new #[Layout('components.layouts.app')] class extends Component
                         <div><label class="form-label">Type</label><select wire:model="formType" class="form-select"><option value="post">Post</option><option value="reel">Reel</option><option value="story">Story</option><option value="video">Video</option><option value="carousel">Carousel</option><option value="blog">Blog</option></select></div>
                         <div><label class="form-label">Client</label><select wire:model="formClientId" class="form-select"><option value="0">Internal / Own Company</option>@foreach($this->clients as $c)<option value="{{ $c->id }}">{{ $c->name }}</option>@endforeach</select></div>
                         @if ($formClientId)
-                            <div><label class="form-label">Link to Content <span class="text-gray-400 text-xs">(optional)</span></label><select wire:model="formContentId" class="form-select"><option value="">No linked content</option>@foreach($this->getAvailableContent() as $content)<option value="{{ $content->id }}">{{ $content->title }} — {{ \Carbon\Carbon::parse($content->date)->format('M j') }} ({{ ucfirst($content->platform) }})</option>@endforeach</select></div>
+                            <div><label class="form-label">Link to Content <span class="text-gray-400 text-xs">(optional)</span></label><select wire:model="formContentId" class="form-select"><option value="">No linked content</option>@foreach($this->getAvailableContent() as $content)
+                                @php
+                                    $ddPlatforms = is_string($content->platform) ? json_decode($content->platform, true) : $content->platform;
+                                    $ddPlatformLabel = is_array($ddPlatforms) ? implode(', ', array_map(fn($p) => ucfirst($p), $ddPlatforms)) : ucfirst($content->platform ?? '');
+                                @endphp
+                                <option value="{{ $content->id }}">{{ $content->title }} — {{ \Carbon\Carbon::parse($content->date)->format('M j') }} ({{ $ddPlatformLabel }})</option>
+                            @endforeach</select></div>
                         @endif
                         <div><label class="form-label">Notes</label><textarea wire:model="formNotes" class="form-textarea" rows="3" placeholder="Notes..."></textarea></div>
                         <div><label class="form-label">Reference File</label><input type="text" wire:model="formReferenceFile" class="form-input" placeholder="Path or URL" /></div>

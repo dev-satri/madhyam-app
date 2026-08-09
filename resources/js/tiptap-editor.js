@@ -12,7 +12,11 @@ const tiptapEditorFactory = (target) => {
 
     const safe = (fn) => {
         if (!alive()) return;
-        try { return fn(); } catch { return; }
+        try {
+            return fn();
+        } catch {
+            return;
+        }
     };
 
     return {
@@ -37,17 +41,19 @@ const tiptapEditorFactory = (target) => {
                         import('@tiptap/core'),
                         import('@tiptap/starter-kit'),
                         import('@tiptap/extension-placeholder')
-                    ]).then(([core, sk, ph]) => {
-                        this._createEditor(core.Editor, sk.default, ph.default, target);
-                    }).catch((err) => {
-                        console.error('Failed to load tiptap:', err);
-                    }).finally(() => {
-                        initializing = false;
-                    });
+                    ])
+                        .then(([core, sk, ph]) => {
+                            this._createEditor(core.Editor, sk.default, ph.default, target);
+                        })
+                        .catch(() => {
+                            // tiptap load failed
+                        })
+                        .finally(() => {
+                            initializing = false;
+                        });
                     return;
                 }
-            } catch (err) {
-                console.error('Editor init failed:', err);
+            } catch {
                 editorInstance = null;
             } finally {
                 initializing = false;
@@ -90,7 +96,11 @@ const tiptapEditorFactory = (target) => {
             this._destroyed = true;
             this._hasEditor = false;
             if (editorInstance) {
-                try { editorInstance.destroy(); } catch {}
+                try {
+                    editorInstance.destroy();
+                } catch {
+                    /* ignore */
+                }
                 editorInstance = null;
             }
         },
@@ -99,7 +109,11 @@ const tiptapEditorFactory = (target) => {
             if (!alive() || this._destroyed) return;
             const incoming = html || '';
             let current;
-            try { current = editorInstance.getHTML(); } catch { return; }
+            try {
+                current = editorInstance.getHTML();
+            } catch {
+                return;
+            }
             const norm = (h) => (h === '<p></p>' ? '' : h);
             if (norm(current) === norm(incoming)) return;
             try {
@@ -107,23 +121,58 @@ const tiptapEditorFactory = (target) => {
                 editorInstance.commands.setContent(incoming, false);
                 if (target) target.value = incoming;
                 this._tick = (this._tick || 0) + 1;
-            } catch {} finally { syncing = false; }
+            } catch {
+                /* ignore */
+            } finally {
+                syncing = false;
+            }
         },
 
-        toggleBold() { safe(() => editorInstance.chain().focus().toggleBold().run()); this._tick++; },
-        toggleItalic() { safe(() => editorInstance.chain().focus().toggleItalic().run()); this._tick++; },
-        toggleHeading(l) { safe(() => editorInstance.chain().focus().toggleHeading({ level: l }).run()); this._tick++; },
-        toggleBulletList() { safe(() => editorInstance.chain().focus().toggleBulletList().run()); this._tick++; },
-        toggleOrderedList() { safe(() => editorInstance.chain().focus().toggleOrderedList().run()); this._tick++; },
-        toggleBlockquote() { safe(() => editorInstance.chain().focus().toggleBlockquote().run()); this._tick++; },
-        unsetLink() { safe(() => editorInstance.chain().focus().unsetLink().run()); this._tick++; },
-        undo() { safe(() => editorInstance.chain().focus().undo().run()); this._tick++; },
-        redo() { safe(() => editorInstance.chain().focus().redo().run()); this._tick++; },
+        toggleBold() {
+            safe(() => editorInstance.chain().focus().toggleBold().run());
+            this._tick++;
+        },
+        toggleItalic() {
+            safe(() => editorInstance.chain().focus().toggleItalic().run());
+            this._tick++;
+        },
+        toggleHeading(l) {
+            safe(() => editorInstance.chain().focus().toggleHeading({ level: l }).run());
+            this._tick++;
+        },
+        toggleBulletList() {
+            safe(() => editorInstance.chain().focus().toggleBulletList().run());
+            this._tick++;
+        },
+        toggleOrderedList() {
+            safe(() => editorInstance.chain().focus().toggleOrderedList().run());
+            this._tick++;
+        },
+        toggleBlockquote() {
+            safe(() => editorInstance.chain().focus().toggleBlockquote().run());
+            this._tick++;
+        },
+        unsetLink() {
+            safe(() => editorInstance.chain().focus().unsetLink().run());
+            this._tick++;
+        },
+        undo() {
+            safe(() => editorInstance.chain().focus().undo().run());
+            this._tick++;
+        },
+        redo() {
+            safe(() => editorInstance.chain().focus().redo().run());
+            this._tick++;
+        },
 
         isActive(name, attrs) {
             void this._tick;
             if (!alive() || this._destroyed) return false;
-            try { return editorInstance.isActive(name, attrs); } catch { return false; }
+            try {
+                return editorInstance.isActive(name, attrs);
+            } catch {
+                return false;
+            }
         }
     };
 };
@@ -132,7 +181,7 @@ const tiptapEditorFactory = (target) => {
 if (window.Alpine) {
     window.tiptapEditor = tiptapEditorFactory;
 
-    requestAnimationFrame(() => {
+    window.requestAnimationFrame(() => {
         document.querySelectorAll('[x-data]').forEach((el) => {
             const attr = el.getAttribute('x-data');
             if (!attr || !attr.startsWith('tiptapEditor(')) return;
@@ -140,7 +189,11 @@ if (window.Alpine) {
             if (stack && stack[0] && !stack[0]._hasEditor) {
                 if (typeof stack[0].destroy === 'function') stack[0].destroy();
                 el._x_dataStack = null;
-                try { Alpine.initTree(el); } catch {}
+                try {
+                    Alpine.initTree(el);
+                } catch {
+                    /* ignore */
+                }
             }
         });
     });
