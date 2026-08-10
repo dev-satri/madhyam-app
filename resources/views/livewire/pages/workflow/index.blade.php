@@ -160,7 +160,10 @@ new #[Layout('components.layouts.app')] class extends Component
             $query->where('priority', $this->priorityFilter);
         }
 
-        return $query->orderBy('created_at', 'desc')->get();
+        return $query->orderByRaw("FIELD(priority, 'urgent', 'high', 'medium', 'low')")
+            ->orderBy('sort_order')
+            ->orderBy('created_at', 'desc')
+            ->get();
     }
 
     public function getItemsForStage(string $stageKey)
@@ -227,6 +230,8 @@ new #[Layout('components.layouts.app')] class extends Component
         if (!$workflow) return;
 
         $oldStage = $workflow->stage;
+
+        if ($oldStage === $newStage) return;
 
         // Terminal states: cannot be moved (except ready-for-production → published)
         if ($oldStage === 'published') {
@@ -354,6 +359,11 @@ new #[Layout('components.layouts.app')] class extends Component
                 'updated_at' => now(),
             ]);
             app(NotificationService::class)->notifyContentPublished($workflow->title, $workflow->client_id);
+        }
+
+        if ($oldStage !== $newStage) {
+            $maxSort = Workflow::where('stage', $newStage)->max('sort_order') ?? 0;
+            $updateData['sort_order'] = $maxSort + 1;
         }
 
         $workflow->update($updateData);
@@ -575,6 +585,8 @@ new #[Layout('components.layouts.app')] class extends Component
             $verb = 'updated';
         } else {
             $priorAssignee = null;
+            $maxSort = Workflow::where('stage', $this->formStage)->max('sort_order') ?? 0;
+            $data['sort_order'] = $maxSort + 1;
             $workflowId = Workflow::create($data)->id;
             $verb = 'created';
             // Track package usage (only for client content, not internal)
@@ -1033,6 +1045,13 @@ new #[Layout('components.layouts.app')] class extends Component
         $this->loadStages();
     }
 
+    public function reorderCards(array $cardIds): void
+    {
+        foreach ($cardIds as $index => $cardId) {
+            Workflow::where('id', $cardId)->update(['sort_order' => $index]);
+        }
+    }
+
     public function resetForm(): void
     {
         $this->editingId = 0;
@@ -1139,42 +1158,7 @@ new #[Layout('components.layouts.app')] class extends Component
     <div
         class="flex gap-4 overflow-x-auto pb-6 kanban-board"
         x-data="{
-            draggedId: null,
             justDragged: false,
-            dragStart(e, id) {
-                this.draggedId = id;
-                this.justDragged = true;
-                e.dataTransfer.effectAllowed = 'move';
-                e.dataTransfer.setData('text/plain', id);
-                requestAnimationFrame(() => {
-                    e.target.closest('.kanban-card')?.classList.add('opacity-50');
-                });
-            },
-            dragEnd(e) {
-                e.target.closest('.kanban-card')?.classList.remove('opacity-50');
-                this.draggedId = null;
-                setTimeout(() => {
-                    this.justDragged = false;
-                }, 100);
-            },
-            dragOver(e) {
-                e.preventDefault();
-                e.dataTransfer.dropEffect = 'move';
-                e.currentTarget.classList.add('drag-over');
-            },
-            dragLeave(e) {
-                if (!e.currentTarget.contains(e.relatedTarget)) {
-                    e.currentTarget.classList.remove('drag-over');
-                }
-            },
-            drop(e, stageKey) {
-                e.preventDefault();
-                e.currentTarget.classList.remove('drag-over');
-                if (this.draggedId) {
-                    $wire.moveItem(parseInt(this.draggedId), stageKey);
-                    this.draggedId = null;
-                }
-            },
             openCard(id) {
                 if (!this.justDragged) {
                     $wire.viewItem(id);
@@ -1204,9 +1188,7 @@ new #[Layout('components.layouts.app')] class extends Component
                 {{-- Drop Zone --}}
                 <div
                     class="cards-area rounded-xl bg-gray-50/80 border-2 border-dashed border-transparent p-2 min-h-[200px] space-y-2 transition-all duration-200"
-                    x-on:dragover="dragOver($event)"
-                    x-on:dragleave="dragLeave($event)"
-                    x-on:drop="drop($event, '{{ $stage['key'] }}')"
+                    data-stage="{{ $stage['key'] }}"
                 >
                     @forelse ($stageItems as $item)
                         @php
@@ -1215,12 +1197,10 @@ new #[Layout('components.layouts.app')] class extends Component
                         <div
                             class="kanban-card {{ $isOverdue ? 'overdue' : '' }} bg-white rounded-xl border border-gray-100 p-3 {{ $this->canMoveWorkflow ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer' }} hover:shadow-md hover:border-gray-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand)]/40 focus-visible:border-[var(--brand)] transition-all duration-150"
                             data-id="{{ $item->id }}"
+                            @if ($this->canMoveWorkflow) data-draggable="true" @endif
                             role="button"
                             tabindex="0"
                             aria-label="View workflow item: {{ $item->title }}"
-                            @if ($this->canMoveWorkflow) draggable="true" @endif
-                            @if ($this->canMoveWorkflow) x-on:dragstart="dragStart($event, {{ $item->id }})" @endif
-                            @if ($this->canMoveWorkflow) x-on:dragend="dragEnd($event)" @endif
                             x-on:click="openCard({{ $item->id }})"
                             x-on:keydown.enter.prevent="openCard({{ $item->id }})"
                             x-on:keydown.space.prevent="openCard({{ $item->id }})"
@@ -2180,4 +2160,75 @@ new #[Layout('components.layouts.app')] class extends Component
             </div>
         </div>
     @endif
+
+    <script>
+        (function () {
+            if (window._wfSortableInit) return;
+            window._wfSortableInit = true;
+
+            function initWorkflowSortable() {
+                if (typeof Sortable === 'undefined') return;
+                document.querySelectorAll('.cards-area').forEach(function (el) {
+                    if (el._sortable) {
+                        el._sortable.destroy();
+                    }
+                    el._sortable = new Sortable(el, {
+                        group: 'workflow-board',
+                        animation: 150,
+                        ghostClass: 'opacity-40',
+                        chosenClass: 'drag-chosen',
+                        dragClass: 'drag-active',
+                        draggable: '.kanban-card[data-draggable]',
+                        onEnd: function (evt) {
+                            var boardEl = evt.from.closest('.kanban-board');
+                            if (boardEl && boardEl.__x) {
+                                boardEl.__x.$data.justDragged = true;
+                                setTimeout(function () {
+                                    boardEl.__x.$data.justDragged = false;
+                                }, 200);
+                            }
+                            var cardId = parseInt(evt.item.dataset.id);
+                            var fromStage = evt.from.dataset.stage;
+                            var toStage = evt.to.dataset.stage;
+                            var toCardIds = Array.from(evt.to.children)
+                                .filter(function (c) {
+                                    return c.dataset && c.dataset.id;
+                                })
+                                .map(function (c) {
+                                    return parseInt(c.dataset.id);
+                                });
+                            var wireEl = evt.from.closest('[wire\\:id]');
+                            if (!wireEl) return;
+                            var wireId = wireEl.getAttribute('wire:id');
+                            if (!wireId) return;
+                            var component = Livewire.find(wireId);
+                            if (!component) return;
+                            if (fromStage !== toStage) {
+                                component.call('moveItem', cardId, toStage);
+                                var fromCardIds = Array.from(evt.from.children)
+                                    .filter(function (c) {
+                                        return c.dataset && c.dataset.id;
+                                    })
+                                    .map(function (c) {
+                                        return parseInt(c.dataset.id);
+                                    });
+                                component.call('reorderCards', fromCardIds);
+                            }
+                            component.call('reorderCards', toCardIds);
+                        }
+                    });
+                });
+            }
+
+            document.addEventListener('DOMContentLoaded', function () {
+                setTimeout(initWorkflowSortable, 300);
+            });
+
+            document.addEventListener('livewire:initialized', function () {
+                Livewire.hook('morphed', function () {
+                    setTimeout(initWorkflowSortable, 100);
+                });
+            });
+        })();
+    </script>
 </div>

@@ -1480,6 +1480,30 @@ body {
     transform: rotate(2deg);
 }
 
+.sortable-ghost {
+    opacity: 0.3;
+    background: rgba(var(--brand-rgb), 0.05);
+    border: 2px dashed var(--brand);
+    border-radius: 12px;
+}
+
+.sortable-chosen {
+    box-shadow: 0 8px 25px -5px rgba(0, 0, 0, 0.15);
+    transform: rotate(1deg);
+}
+
+.sortable-drag {
+    opacity: 0.9;
+    z-index: 50;
+}
+
+.cards-area:empty {
+    min-height: 120px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
 /* ============================================================
    Calendar
    ============================================================ */
