@@ -391,6 +391,157 @@ new #[Layout('components.layouts.app')] class extends Component
     {
         return $client->invoices()->latest()->limit(10)->get();
     }
+
+    // ── Client Account / Credentials Management ──────────────
+
+    public bool $showResetPasswordModal = false;
+    public string $newPassword = '';
+    public bool $showChangeEmailModal = false;
+    public string $newAccountEmail = '';
+    public bool $showResendConfirm = false;
+    public bool $showToggleAccountStatus = false;
+    public string $newAccountStatus = '';
+
+    public function getClientAccount(Client $client): ?ClientAccount
+    {
+        return ClientAccount::where('client_id', $client->id)->first();
+    }
+
+    public function generateNewPassword(int $clientId): void
+    {
+        $client = Client::find($clientId);
+        if (! $client) return;
+
+        $account = ClientAccount::where('client_id', $clientId)->first();
+        if (! $account) {
+            $this->dispatch('toast', message: 'No portal account found for this client', type: 'error');
+            return;
+        }
+
+        $this->newPassword = Str::password(12, true, true, true);
+        $this->showResetPasswordModal = true;
+    }
+
+    public function confirmResetPassword(int $clientId): void
+    {
+        $account = ClientAccount::where('client_id', $clientId)->first();
+        if (! $account) return;
+
+        $account->update(['password' => Hash::make($this->newPassword)]);
+
+        try {
+            Mail::to($account->email)->queue(new ClientCredentialsMail(
+                name: $account->name,
+                email: $account->email,
+                password: $this->newPassword,
+            ));
+        } catch (\Exception $e) {
+            Log::warning('Failed to send password reset email to ' . $account->email . ': ' . $e->getMessage());
+        }
+
+        $this->showResetPasswordModal = false;
+        $this->newPassword = '';
+        $this->dispatch('toast', message: 'Password reset and new credentials sent to client', type: 'success');
+    }
+
+    public function openChangeEmail(int $clientId): void
+    {
+        $account = ClientAccount::where('client_id', $clientId)->first();
+        if (! $account) return;
+
+        $this->newAccountEmail = $account->email;
+        $this->showChangeEmailModal = true;
+    }
+
+    public function confirmChangeEmail(int $clientId): void
+    {
+        $this->validate([
+            'newAccountEmail' => 'required|email|max:255',
+        ]);
+
+        $account = ClientAccount::where('client_id', $clientId)->first();
+        if (! $account) return;
+
+        $duplicate = ClientAccount::where('email', $this->newAccountEmail)->where('id', '!=', $account->id)->first();
+        if ($duplicate) {
+            $this->dispatch('toast', message: 'This email is already in use by another account', type: 'error');
+            return;
+        }
+
+        $oldEmail = $account->email;
+        $account->update(['email' => $this->newAccountEmail]);
+
+        $this->showChangeEmailModal = false;
+        $this->dispatch('toast', message: "Portal email changed from {$oldEmail} to {$this->newAccountEmail}", type: 'success');
+        $this->newAccountEmail = '';
+    }
+
+    public function openResendConfirm(int $clientId): void
+    {
+        $account = ClientAccount::where('client_id', $clientId)->first();
+        if (! $account) {
+            $this->dispatch('toast', message: 'No portal account found for this client', type: 'error');
+            return;
+        }
+        $this->showResendConfirm = true;
+    }
+
+    public function confirmResendCredentials(int $clientId): void
+    {
+        $account = ClientAccount::where('client_id', $clientId)->first();
+        if (! $account) return;
+
+        $plainPassword = Str::password(12, true, true, true);
+        $account->update(['password' => Hash::make($plainPassword)]);
+
+        try {
+            Mail::to($account->email)->queue(new ClientCredentialsMail(
+                name: $account->name,
+                email: $account->email,
+                password: $plainPassword,
+            ));
+        } catch (\Exception $e) {
+            Log::warning('Failed to resend credentials email to ' . $account->email . ': ' . $e->getMessage());
+        }
+
+        $this->showResendConfirm = false;
+        $this->dispatch('toast', message: 'New credentials generated and sent to ' . $account->email, type: 'success');
+    }
+
+    public function openToggleAccountStatus(int $clientId): void
+    {
+        $account = ClientAccount::where('client_id', $clientId)->first();
+        if (! $account) {
+            $this->dispatch('toast', message: 'No portal account found for this client', type: 'error');
+            return;
+        }
+
+        $this->newAccountStatus = $account->status === 'active' ? 'inactive' : 'active';
+        $this->showToggleAccountStatus = true;
+    }
+
+    public function confirmToggleAccountStatus(int $clientId): void
+    {
+        $account = ClientAccount::where('client_id', $clientId)->first();
+        if (! $account) return;
+
+        $account->update(['status' => $this->newAccountStatus]);
+
+        $this->showToggleAccountStatus = false;
+        $this->dispatch('toast', message: 'Portal account ' . ($this->newAccountStatus === 'active' ? 'activated' : 'deactivated'), type: 'success');
+        $this->newAccountStatus = '';
+    }
+
+    public function cancelAccountAction(): void
+    {
+        $this->showResetPasswordModal = false;
+        $this->showChangeEmailModal = false;
+        $this->showResendConfirm = false;
+        $this->showToggleAccountStatus = false;
+        $this->newPassword = '';
+        $this->newAccountEmail = '';
+        $this->newAccountStatus = '';
+    }
 }; ?>
 
 <div>
@@ -916,6 +1067,12 @@ new #[Layout('components.layouts.app')] class extends Component
                         >
                             <i class="fas fa-receipt mr-1"></i> Invoices
                         </button>
+                        <button
+                            wire:click="$set('detailTab', 'account')"
+                            class="tab-btn {{ $detailTab === 'account' ? 'active' : '' }}"
+                        >
+                            <i class="fas fa-key mr-1"></i> Account
+                        </button>
                     </div>
 
                     {{-- Tab: Overview --}}
@@ -1264,6 +1421,122 @@ new #[Layout('components.layouts.app')] class extends Component
                             </div>
                         @endif
                     @endif
+
+                    {{-- Tab: Account --}}
+                    @if ($detailTab === 'account')
+                        @php $account = $this->getClientAccount($selectedClient); @endphp
+                        @if (! $account)
+                            <div class="py-12 text-center">
+                                <div
+                                    class="flex h-12 w-12 mx-auto items-center justify-center rounded-2xl bg-gray-100 mb-3"
+                                >
+                                    <i class="fas fa-key text-xl text-gray-300"></i>
+                                </div>
+                                <p class="text-gray-500 text-sm font-medium">No portal account</p>
+                                <p class="text-gray-400 text-xs mt-1">This client does not have a portal account yet</p>
+                            </div>
+                        @else
+                            <div class="space-y-5">
+                                {{-- Account Info --}}
+                                <div class="rounded-xl border border-gray-100 bg-gray-50/80 p-4">
+                                    <h4 class="text-xs font-bold uppercase tracking-wider text-gray-400 mb-3">
+                                        <i class="fas fa-user-shield mr-1"></i> Portal Account Details
+                                    </h4>
+                                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                        <div>
+                                            <p class="text-[11px] font-medium text-gray-500 mb-1">Login Email</p>
+                                            <p class="text-sm font-semibold text-gray-900 font-mono">{{ $account->email }}</p>
+                                        </div>
+                                        <div>
+                                            <p class="text-[11px] font-medium text-gray-500 mb-1">Account Status</p>
+                                            <span
+                                                class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold {{ $account->status === 'active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600' }}"
+                                            >
+                                                {{ ucfirst($account->status) }}
+                                            </span>
+                                        </div>
+                                        <div>
+                                            <p class="text-[11px] font-medium text-gray-500 mb-1">Account Name</p>
+                                            <p class="text-sm text-gray-700">{{ $account->name }}</p>
+                                        </div>
+                                        <div>
+                                            <p class="text-[11px] font-medium text-gray-500 mb-1">Created</p>
+                                            <p class="text-sm text-gray-700">{{ $account->created_at->format('M d, Y') }}</p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {{-- Actions --}}
+                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                    {{-- Reset Password --}}
+                                    <button
+                                        wire:click="generateNewPassword({{ $selectedClient->id }})"
+                                        class="flex items-center gap-3 rounded-xl border border-gray-100 bg-white p-4 text-left hover:border-blue-200 hover:bg-blue-50/50 transition-all group"
+                                    >
+                                        <div
+                                            class="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-blue-100 text-blue-600 group-hover:bg-blue-200 transition-colors"
+                                        >
+                                            <i class="fas fa-key text-sm"></i>
+                                        </div>
+                                        <div>
+                                            <p class="text-sm font-semibold text-gray-900">Reset Password</p>
+                                            <p class="text-[11px] text-gray-500">Generate new password and email it</p>
+                                        </div>
+                                    </button>
+
+                                    {{-- Resend Credentials --}}
+                                    <button
+                                        wire:click="openResendConfirm({{ $selectedClient->id }})"
+                                        class="flex items-center gap-3 rounded-xl border border-gray-100 bg-white p-4 text-left hover:border-green-200 hover:bg-green-50/50 transition-all group"
+                                    >
+                                        <div
+                                            class="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-green-100 text-green-600 group-hover:bg-green-200 transition-colors"
+                                        >
+                                            <i class="fas fa-paper-plane text-sm"></i>
+                                        </div>
+                                        <div>
+                                            <p class="text-sm font-semibold text-gray-900">Resend Credentials</p>
+                                            <p class="text-[11px] text-gray-500">New password + send login email</p>
+                                        </div>
+                                    </button>
+
+                                    {{-- Change Email --}}
+                                    <button
+                                        wire:click="openChangeEmail({{ $selectedClient->id }})"
+                                        class="flex items-center gap-3 rounded-xl border border-gray-100 bg-white p-4 text-left hover:border-purple-200 hover:bg-purple-50/50 transition-all group"
+                                    >
+                                        <div
+                                            class="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-purple-100 text-purple-600 group-hover:bg-purple-200 transition-colors"
+                                        >
+                                            <i class="fas fa-envelope text-sm"></i>
+                                        </div>
+                                        <div>
+                                            <p class="text-sm font-semibold text-gray-900">Change Email</p>
+                                            <p class="text-[11px] text-gray-500">Update the login email address</p>
+                                        </div>
+                                    </button>
+
+                                    {{-- Toggle Account Status --}}
+                                    <button
+                                        wire:click="openToggleAccountStatus({{ $selectedClient->id }})"
+                                        class="flex items-center gap-3 rounded-xl border border-gray-100 bg-white p-4 text-left hover:border-amber-200 hover:bg-amber-50/50 transition-all group"
+                                    >
+                                        <div
+                                            class="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl {{ $account->status === 'active' ? 'bg-red-100 text-red-600 group-hover:bg-red-200' : 'bg-green-100 text-green-600 group-hover:bg-green-200' }} transition-colors"
+                                        >
+                                            <i
+                                                class="fas fa-{{ $account->status === 'active' ? 'ban' : 'check-circle' }} text-sm"
+                                            ></i>
+                                        </div>
+                                        <div>
+                                            <p class="text-sm font-semibold text-gray-900">{{ $account->status === 'active' ? 'Deactivate Account' : 'Activate Account' }}</p>
+                                            <p class="text-[11px] text-gray-500">{{ $account->status === 'active' ? 'Prevent client from logging in' : 'Allow client to log in again' }}</p>
+                                        </div>
+                                    </button>
+                                </div>
+                            </div>
+                        @endif
+                    @endif
                 </div>
             </div>
         </div>
@@ -1389,6 +1662,158 @@ new #[Layout('components.layouts.app')] class extends Component
                 >
                     Got it
                 </button>
+            </div>
+        </div>
+    @endif
+
+    {{-- ========== RESET PASSWORD MODAL ========== --}}
+    @if ($showResetPasswordModal)
+        <div class="confirm-overlay" x-data x-on:keydown.escape.window="$wire.cancelAccountAction()">
+            <div class="confirm-box max-w-md">
+                <div class="confirm-icon bg-blue-100 text-blue-600">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+                    </svg>
+                </div>
+                <h3 class="mb-2 text-lg font-bold text-gray-900">Reset Client Password</h3>
+                <p class="mb-4 text-sm text-gray-500">A new password will be generated and emailed to the client. The old password will stop working immediately.</p>
+
+                <div class="rounded-xl border border-blue-200 bg-blue-50 p-4 mb-4">
+                    <p class="text-xs font-semibold text-blue-700 uppercase tracking-wider mb-2">
+                        <i class="fas fa-key mr-1"></i> New Password
+                    </p>
+                    <p class="text-sm font-mono font-bold text-gray-900 select-all">{{ $newPassword }}</p>
+                </div>
+
+                <div class="flex gap-3">
+                    <button
+                        wire:click="cancelAccountAction"
+                        class="flex-1 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors"
+                    >
+                        Cancel
+                    </button>
+                    <button
+                        wire:click="confirmResetPassword({{ $selectedClient?->id ?? 0 }})"
+                        class="flex-1 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 transition-colors"
+                    >
+                        <i class="fas fa-paper-plane text-xs mr-1"></i> Reset & Send
+                    </button>
+                </div>
+            </div>
+        </div>
+    @endif
+
+    {{-- ========== CHANGE EMAIL MODAL ========== --}}
+    @if ($showChangeEmailModal)
+        <div class="confirm-overlay" x-data x-on:keydown.escape.window="$wire.cancelAccountAction()">
+            <div class="confirm-box max-w-md">
+                <div class="confirm-icon bg-purple-100 text-purple-600">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                    </svg>
+                </div>
+                <h3 class="mb-2 text-lg font-bold text-gray-900">Change Portal Email</h3>
+                <p class="mb-4 text-sm text-gray-500">Update the login email for this client's portal account.</p>
+
+                <div class="mb-4">
+                    <label class="form-label">New Email Address</label>
+                    <input
+                        type="email"
+                        wire:model="newAccountEmail"
+                        class="form-input"
+                        placeholder="client@example.com"
+                    />
+                    @error ('newAccountEmail')
+                        <span class="text-xs text-red-500 mt-1 block">{{ $message }}</span>
+                    @enderror
+                </div>
+
+                <div class="flex gap-3">
+                    <button
+                        wire:click="cancelAccountAction"
+                        class="flex-1 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors"
+                    >
+                        Cancel
+                    </button>
+                    <button
+                        wire:click="confirmChangeEmail({{ $selectedClient?->id ?? 0 }})"
+                        class="flex-1 rounded-xl bg-purple-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-purple-700 transition-colors"
+                    >
+                        <i class="fas fa-check text-xs mr-1"></i> Update Email
+                    </button>
+                </div>
+            </div>
+        </div>
+    @endif
+
+    {{-- ========== RESEND CREDENTIALS CONFIRM ========== --}}
+    @if ($showResendConfirm)
+        <div class="confirm-overlay" x-data x-on:keydown.escape.window="$wire.cancelAccountAction()">
+            <div class="confirm-box">
+                <div class="confirm-icon bg-green-100 text-green-600">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                    </svg>
+                </div>
+                <h3 class="mb-2 text-lg font-bold text-gray-900">Resend Credentials</h3>
+                <p class="mb-6 text-sm text-gray-500">A new password will be generated and the current login credentials will be sent to the client's email. The old password will stop working.</p>
+                <div class="flex gap-3">
+                    <button
+                        wire:click="cancelAccountAction"
+                        class="flex-1 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors"
+                    >
+                        Cancel
+                    </button>
+                    <button
+                        wire:click="confirmResendCredentials({{ $selectedClient?->id ?? 0 }})"
+                        class="flex-1 rounded-xl bg-green-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-green-700 transition-colors"
+                    >
+                        <i class="fas fa-paper-plane text-xs mr-1"></i> Send Now
+                    </button>
+                </div>
+            </div>
+        </div>
+    @endif
+
+    {{-- ========== TOGGLE ACCOUNT STATUS CONFIRM ========== --}}
+    @if ($showToggleAccountStatus)
+        <div class="confirm-overlay" x-data x-on:keydown.escape.window="$wire.cancelAccountAction()">
+            <div class="confirm-box">
+                <div
+                    class="confirm-icon {{ $newAccountStatus === 'active' ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600' }}"
+                >
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            stroke-width="2"
+                            d="{{ $newAccountStatus === 'active' ? 'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z' : 'M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636' }}"
+                        />
+                    </svg>
+                </div>
+                <h3 class="mb-2 text-lg font-bold text-gray-900">
+                    {{ $newAccountStatus === 'active' ? 'Activate' : 'Deactivate' }} Portal Account
+                </h3>
+                <p class="mb-6 text-sm text-gray-500">
+                    {{ $newAccountStatus === 'active'
+                        ? 'The client will be able to log in to the portal again.'
+                        : 'The client will not be able to log in to the portal until reactivated.' }}
+                </p>
+                <div class="flex gap-3">
+                    <button
+                        wire:click="cancelAccountAction"
+                        class="flex-1 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors"
+                    >
+                        Cancel
+                    </button>
+                    <button
+                        wire:click="confirmToggleAccountStatus({{ $selectedClient?->id ?? 0 }})"
+                        class="flex-1 rounded-xl {{ $newAccountStatus === 'active' ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700' }} px-4 py-2.5 text-sm font-semibold text-white transition-colors"
+                    >
+                        <i class="fas fa-{{ $newAccountStatus === 'active' ? 'check' : 'ban' }} text-xs mr-1"></i>
+                        {{ $newAccountStatus === 'active' ? 'Activate' : 'Deactivate' }}
+                    </button>
+                </div>
             </div>
         </div>
     @endif
