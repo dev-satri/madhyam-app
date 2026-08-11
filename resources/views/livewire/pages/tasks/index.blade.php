@@ -165,6 +165,14 @@ new #[Layout('components.layouts.app')] class extends Component
             ->leftJoin('clients', 'tasks.client_id', '=', 'clients.id')
             ->leftJoin('users', 'tasks.assignee', '=', 'users.id');
 
+        // Exclude tasks whose linked workflow is soft-deleted
+        $q->where(function ($tq) {
+            $tq->whereNull('tasks.workflow_id')
+                ->orWhereIn('tasks.workflow_id', function ($sub) {
+                    $sub->select('id')->from('workflows')->whereNull('deleted_at');
+                });
+        });
+
         $user = Auth::user();
         $rbac = app(RbacService::class);
         if ($user && ! $rbac->hasDataAccess($user->role, 'seeAllTasks')) {
@@ -200,6 +208,14 @@ new #[Layout('components.layouts.app')] class extends Component
     public function getStats(): array
     {
         $all = Task::query();
+
+        // Exclude tasks whose linked workflow is soft-deleted
+        $all->where(function ($q) {
+            $q->whereNull('tasks.workflow_id')
+                ->orWhereIn('tasks.workflow_id', function ($sub) {
+                    $sub->select('id')->from('workflows')->whereNull('deleted_at');
+                });
+        });
 
         return [
             'total' => $all->count(),
