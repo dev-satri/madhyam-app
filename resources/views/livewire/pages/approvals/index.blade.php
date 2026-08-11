@@ -391,7 +391,7 @@ new #[Layout('components.layouts.app')] class extends Component
                     $decodeAndAdd($content->attachments);
                     $decodeAndAdd($approval->attachments);
 
-                    DB::table('workflows')->insert([
+                    $newWorkflowId = DB::table('workflows')->insertGetId([
                         'title' => $approval->title,
                         'client_id' => $approval->client_id,
                         'content_id' => $approval->content_id,
@@ -404,6 +404,17 @@ new #[Layout('components.layouts.app')] class extends Component
                         'created_at' => now(),
                         'updated_at' => now(),
                     ]);
+
+                    // Notify the assignee that a workflow item was created from their content
+                    if (!empty($content->assignee) && !$suppressSideEffects) {
+                        $assigneeUser = \App\Models\User::find($content->assignee);
+                        if ($assigneeUser) {
+                            $workflowModel = \App\Models\Workflow::find($newWorkflowId);
+                            if ($workflowModel) {
+                                $assigneeUser->notify(new \App\Notifications\WorkflowAssignedNotification($workflowModel, $actor));
+                            }
+                        }
+                    }
 
                     // Track package usage (only for client content, not internal)
                     if ($approval->client_id) {

@@ -619,6 +619,13 @@ new #[Layout('components.layouts.app')] class extends Component
 
             return;
         }
+
+        // Soft-delete linked workflows so they don't linger on the kanban board
+        DB::table('workflows')->where('content_id', $id)->whereNull('deleted_at')->update([
+            'deleted_at' => now(),
+            'updated_at' => now(),
+        ]);
+
         $content->delete();
         $this->loadMonthContent();
         $this->dispatch('contentUpdated');

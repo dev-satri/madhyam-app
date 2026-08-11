@@ -644,6 +644,15 @@ new #[Layout('components.layouts.app')] class extends Component
             $this->dispatch('toast', message: 'Only admins can delete locked items', type: 'error');
             return;
         }
+
+        // Soft-delete linked content so it disappears from the content planner
+        if ($workflow->content_id) {
+            DB::table('contents')->where('id', $workflow->content_id)->whereNull('deleted_at')->update([
+                'deleted_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
+
         $workflow->delete();
         app(ActivityLogger::class)->record(Auth::user(), "Deleted workflow #{$id}");
         $this->dispatch('workflowUpdated');
