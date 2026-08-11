@@ -269,6 +269,7 @@ new #[Layout('components.layouts.app')] class extends Component
         // ── Tasks / Shoots / Editing with due_date ──
         $taskQ = DB::table('tasks')
             ->leftJoin('clients', 'tasks.client_id', '=', 'clients.id')
+            ->whereNull('tasks.deleted_at')
             ->whereBetween('tasks.due_date', [$start->format('Y-m-d'), $end->format('Y-m-d')])
             ->whereNotNull('tasks.due_date')
             ->select('tasks.*', 'clients.name as client_name');
