@@ -1351,7 +1351,13 @@ new #[Layout('components.layouts.app')] class extends Component
                                                         >{{ $cPlatformLabel }}</span
                                                     >
                                                 </td>
-                                                <td class="text-gray-600">{{ $c->type ?? '-' }}</td>
+                                                <td class="text-gray-600">
+                                                    @php
+                                                        $cTypes = is_array($c->type) ? $c->type : (is_string($c->type) ? json_decode($c->type, true) : null);
+                                                        $cTypeLabel = is_array($cTypes) ? implode(', ', array_map(fn($t) => ucfirst($t), $cTypes)) : ucfirst($c->type ?? '-');
+                                                    @endphp
+                                                    {{ $cTypeLabel }}
+                                                </td>
                                                 <td class="text-gray-600">
                                                     {{ $c->date ? \App\Support\NepaliDate::display($c->date) : '-' }}
                                                 </td>
