@@ -210,6 +210,15 @@ new #[Layout('components.layouts.app')] class extends Component
             ->whereBetween('contents.date', [$start->format('Y-m-d'), $end->format('Y-m-d')])
             ->select('contents.*', 'clients.name as client_name');
 
+        // Exclude orphaned content whose linked workflows are ALL soft-deleted
+        $query->whereNotIn('contents.id', function ($sub) {
+            $sub->select('content_id')
+                ->from('workflows')
+                ->whereNotNull('content_id')
+                ->groupBy('content_id')
+                ->havingRaw('COUNT(CASE WHEN deleted_at IS NULL THEN 1 END) = 0');
+        });
+
         if ($account = Auth::guard('client')->user()) {
             $query->where('contents.client_id', $account->client_id);
         }
@@ -263,6 +272,14 @@ new #[Layout('components.layouts.app')] class extends Component
             ->whereBetween('tasks.due_date', [$start->format('Y-m-d'), $end->format('Y-m-d')])
             ->whereNotNull('tasks.due_date')
             ->select('tasks.*', 'clients.name as client_name');
+
+        // Exclude tasks whose linked workflow is soft-deleted
+        $taskQ->where(function ($tq) {
+            $tq->whereNull('tasks.workflow_id')
+                ->orWhereIn('tasks.workflow_id', function ($sub) {
+                    $sub->select('id')->from('workflows')->whereNull('deleted_at');
+                });
+        });
 
         if ($account = Auth::guard('client')->user()) {
             $taskQ->where('tasks.client_id', $account->client_id);
@@ -636,6 +653,15 @@ new #[Layout('components.layouts.app')] class extends Component
     {
         $query = DB::table('contents')->whereNull('deleted_at');
 
+        // Exclude orphaned content whose linked workflows are ALL soft-deleted
+        $query->whereNotIn('id', function ($sub) {
+            $sub->select('content_id')
+                ->from('workflows')
+                ->whereNotNull('content_id')
+                ->groupBy('content_id')
+                ->havingRaw('COUNT(CASE WHEN deleted_at IS NULL THEN 1 END) = 0');
+        });
+
         // Tenant isolation — clients see stats for their own content only.
         if ($account = Auth::guard('client')->user()) {
             $query->where('client_id', $account->client_id);
@@ -670,6 +696,15 @@ new #[Layout('components.layouts.app')] class extends Component
             ->whereNull('contents.deleted_at')
             ->select('contents.*', 'clients.name as client_name')
             ->orderBy('contents.date', 'desc');
+
+        // Exclude orphaned content whose linked workflows are ALL soft-deleted
+        $query->whereNotIn('contents.id', function ($sub) {
+            $sub->select('content_id')
+                ->from('workflows')
+                ->whereNotNull('content_id')
+                ->groupBy('content_id')
+                ->havingRaw('COUNT(CASE WHEN deleted_at IS NULL THEN 1 END) = 0');
+        });
 
         if ($this->search) {
             $query->where(function ($q) {
