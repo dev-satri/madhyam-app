@@ -165,23 +165,104 @@ new #[Layout('components.layouts.app')] class extends Component
             ->first();
 
         if ($this->isAdmin) {
-            $this->workload = UserVisibility::apply(
-                DB::table('users')
-                    ->leftJoin('tasks', function ($join) use ($dateFilter) {
-                        $join->on(DB::raw('JSON_CONTAINS(tasks.assignee, CAST(users.id AS JSON))'), '=', DB::raw('1'))
-                            ->where('tasks.created_at', '>=', $dateFilter);
-                    })
-                    ->select(
-                        'users.id',
-                        'users.name',
-                        'users.role',
-                        DB::raw("COUNT(CASE WHEN tasks.status IN ('todo','in-progress') THEN 1 END) as assigned"),
-                        DB::raw("COUNT(CASE WHEN tasks.status = 'in-progress' THEN 1 END) as in_progress"),
-                        DB::raw("COUNT(CASE WHEN tasks.status = 'completed' THEN 1 END) as completed"),
-                        DB::raw("COUNT(CASE WHEN tasks.due_date < CURDATE() AND tasks.status != 'completed' THEN 1 END) as overdue")
-                    )
-                    ->groupBy('users.id', 'users.name', 'users.role')
-            )->get();
+            // Build comprehensive workload from tasks, workflows, and content planner
+            $users = UserVisibility::apply(DB::table('users'))->get();
+            
+            $this->workload = $users->map(function ($user) use ($dateFilter) {
+                $userId = $user->id;
+                
+                // Count tasks for this user
+                $taskAssigned = DB::table('tasks')
+                    ->whereRaw('JSON_CONTAINS(assignee, ?)', [json_encode($userId)])
+                    ->whereIn('status', ['todo', 'in-progress'])
+                    ->where('created_at', '>=', $dateFilter)
+                    ->count();
+                    
+                $taskInProgress = DB::table('tasks')
+                    ->whereRaw('JSON_CONTAINS(assignee, ?)', [json_encode($userId)])
+                    ->where('status', 'in-progress')
+                    ->where('created_at', '>=', $dateFilter)
+                    ->count();
+                    
+                $taskCompleted = DB::table('tasks')
+                    ->whereRaw('JSON_CONTAINS(assignee, ?)', [json_encode($userId)])
+                    ->where('status', 'completed')
+                    ->where('created_at', '>=', $dateFilter)
+                    ->count();
+                    
+                $taskOverdue = DB::table('tasks')
+                    ->whereRaw('JSON_CONTAINS(assignee, ?)', [json_encode($userId)])
+                    ->where('due_date', '<', now())
+                    ->where('status', '!=', 'completed')
+                    ->count();
+                
+                // Count workflows for this user
+                $workflowAssigned = DB::table('workflows')
+                    ->whereRaw('JSON_CONTAINS(assignee, ?)', [json_encode($userId)])
+                    ->whereIn('stage', ['todo', 'in-progress', 'scripting'])
+                    ->where('created_at', '>=', $dateFilter)
+                    ->count();
+                    
+                $workflowInProgress = DB::table('workflows')
+                    ->whereRaw('JSON_CONTAINS(assignee, ?)', [json_encode($userId)])
+                    ->where('stage', 'in-progress')
+                    ->where('created_at', '>=', $dateFilter)
+                    ->count();
+                    
+                $workflowCompleted = DB::table('workflows')
+                    ->whereRaw('JSON_CONTAINS(assignee, ?)', [json_encode($userId)])
+                    ->where('stage', 'published')
+                    ->where('created_at', '>=', $dateFilter)
+                    ->count();
+                    
+                $workflowOverdue = DB::table('workflows')
+                    ->whereRaw('JSON_CONTAINS(assignee, ?)', [json_encode($userId)])
+                    ->whereNotNull('deadline')
+                    ->where('deadline', '<', now())
+                    ->whereNotIn('stage', ['published'])
+                    ->count();
+                
+                // Count content planner items for this user
+                $contentAssigned = DB::table('contents')
+                    ->whereNull('deleted_at')
+                    ->whereRaw('JSON_CONTAINS(assignee, ?)', [json_encode($userId)])
+                    ->whereIn('status', ['draft', 'scripting'])
+                    ->where('created_at', '>=', $dateFilter)
+                    ->count();
+                    
+                $contentInProgress = DB::table('contents')
+                    ->whereNull('deleted_at')
+                    ->whereRaw('JSON_CONTAINS(assignee, ?)', [json_encode($userId)])
+                    ->where('status', 'scripting')
+                    ->where('created_at', '>=', $dateFilter)
+                    ->count();
+                    
+                $contentCompleted = DB::table('contents')
+                    ->whereNull('deleted_at')
+                    ->whereRaw('JSON_CONTAINS(assignee, ?)', [json_encode($userId)])
+                    ->where('status', 'published')
+                    ->where('created_at', '>=', $dateFilter)
+                    ->count();
+                    
+                $contentOverdue = DB::table('contents')
+                    ->whereNull('deleted_at')
+                    ->whereRaw('JSON_CONTAINS(assignee, ?)', [json_encode($userId)])
+                    ->whereNotNull('date')
+                    ->where('date', '<', now())
+                    ->whereNotIn('status', ['published'])
+                    ->count();
+                
+                return (object) [
+                    'id' => $user->id,
+                    'name' => $user->name,
+                    'role' => $user->role,
+                    // Sum up all sources (no duplicates since they're from different tables)
+                    'assigned' => $taskAssigned + $workflowAssigned + $contentAssigned,
+                    'in_progress' => $taskInProgress + $workflowInProgress + $contentInProgress,
+                    'completed' => $taskCompleted + $workflowCompleted + $contentCompleted,
+                    'overdue' => $taskOverdue + $workflowOverdue + $contentOverdue,
+                ];
+            });
         }
 
         $this->deadlines = collect();
