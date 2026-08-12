@@ -552,7 +552,8 @@ new #[Layout('components.layouts.app')] class extends Component
             if ($this->editingId) {
                 // Check if assignee is changing
                 $oldContent = DB::table('contents')->where('id', $this->editingId)->first();
-                $oldAssignee = json_decode($oldContent->assignee, true) ?? [];
+                $oldAssigneeRaw = $oldContent->assignee ?? null;
+                $oldAssignee = is_string($oldAssigneeRaw) ? (json_decode($oldAssigneeRaw, true) ?? []) : (is_array($oldAssigneeRaw) ? $oldAssigneeRaw : []);
                 $newAssignee = !empty($this->formAssigneeIds) ? $this->formAssigneeIds : [];
 
                 DB::table('contents')->where('id', $this->editingId)->update([
@@ -588,14 +589,35 @@ new #[Layout('components.layouts.app')] class extends Component
                 // Sync assignees and date to linked workflows
                 if (!static::$syncingWorkflow) {
                     static::$syncingWorkflow = true;
-                    DB::table('workflows')
-                        ->where('content_id', $this->editingId)
-                        ->whereNull('deleted_at')
-                        ->update([
-                            'assignee' => json_encode($newAssignee),
-                            'deadline' => $this->formDate,
-                            'updated_at' => now(),
+                    
+                    try {
+                        // Map content status to workflow stage
+                        $workflowStage = match($this->formStatus) {
+                            'draft' => 'todo',
+                            'scripting' => 'scripting',
+                            'in-review' => 'review',
+                            'revision' => 'revision',
+                            'published' => 'published',
+                            default => 'todo',
+                        };
+                        
+                        DB::table('workflows')
+                            ->where('content_id', $this->editingId)
+                            ->whereNull('deleted_at')
+                            ->update([
+                                'assignee' => json_encode($newAssignee),
+                                'deadline' => $this->formDate,
+                                'stage' => $workflowStage,
+                                'updated_at' => now(),
+                            ]);
+                    } catch (\Exception $e) {
+                        // Log but don't fail the content update if workflow sync fails
+                        logger()->error('Failed to sync content to workflow', [
+                            'content_id' => $this->editingId,
+                            'error' => $e->getMessage()
                         ]);
+                    }
+                    
                     static::$syncingWorkflow = false;
                 }
 

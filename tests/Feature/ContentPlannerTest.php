@@ -108,12 +108,18 @@ class ContentPlannerTest extends TestCase
 
         $id = DB::table('contents')->first()->id;
 
-        Livewire::test('pages.calendar.index')
+        // Chain all operations to maintain component state
+        $component = Livewire::test('pages.calendar.index')
             ->call('editContent', $id)
+            ->assertSet('editingId', $id)
+            ->assertSet('title', 'Original')  // Check it loaded correctly
             ->set('title', 'Updated Title')
+            ->assertSet('title', 'Updated Title')  // Check it was set
             ->set('formPlatforms', ['facebook', 'tiktok'])
             ->set('formTypes', ['reel'])
-            ->call('save');
+            ->call('save')
+            ->assertHasNoErrors()
+            ->assertDispatched('toast');  // Check what toast was dispatched
 
         $this->assertDatabaseCount('contents', 1);
         $row = DB::table('contents')->where('id', $id)->first();

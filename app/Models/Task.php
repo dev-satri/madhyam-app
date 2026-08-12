@@ -41,9 +41,16 @@ class Task extends Model
 
     public function getAssigneeUsers()
     {
-        $ids = is_array($this->assignee) ? $this->assignee : [];
+        // Handle both array and single ID cases
+        if (is_array($this->assignee)) {
+            $ids = $this->assignee;
+        } elseif (is_numeric($this->assignee)) {
+            $ids = [$this->assignee];
+        } else {
+            $ids = [];
+        }
 
-        return User::whereIn('id', $ids)->get();
+        return User::whereIn('id', array_filter($ids))->get();
     }
 
     public function comments(): HasMany

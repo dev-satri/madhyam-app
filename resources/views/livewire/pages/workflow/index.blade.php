@@ -368,6 +368,25 @@ new #[Layout('components.layouts.app')] class extends Component
 
         $workflow->update($updateData);
 
+        // Sync workflow stage changes to content status
+        if ($workflow->content_id && !static::$syncingContent) {
+            static::$syncingContent = true;
+            $contentStatus = match($newStage) {
+                'todo', 'in-progress' => 'draft',
+                'scripting' => 'scripting',
+                'review' => 'in-review',
+                'revision' => 'revision',
+                'ready-for-production' => 'in-review', // Keep as in-review until actually published
+                'published' => 'published',
+                default => 'draft',
+            };
+            DB::table('contents')->where('id', $workflow->content_id)->update([
+                'status' => $contentStatus,
+                'updated_at' => now(),
+            ]);
+            static::$syncingContent = false;
+        }
+
         app(ActivityLogger::class)->record(
             Auth::user(),
             "Moved workflow '{$workflow->title}' {$oldStage} → {$newStage}"
@@ -596,6 +615,44 @@ new #[Layout('components.layouts.app')] class extends Component
             $priorAssignee = [];
             $maxSort = Workflow::where('stage', $this->formStage)->max('sort_order') ?? 0;
             $data['sort_order'] = $maxSort + 1;
+            
+            // Auto-create linked content if not already linked and deadline is set
+            // This ensures workflow items appear in content planner
+            if (empty($data['content_id']) && !empty($data['deadline']) && !static::$syncingContent) {
+                static::$syncingContent = true;
+                
+                // Map workflow stage to content status
+                $contentStatus = match($data['stage']) {
+                    'todo', 'in-progress' => 'draft',
+                    'scripting' => 'scripting',
+                    'review' => 'in-review',
+                    'revision' => 'revision',
+                    'ready-for-production', 'published' => 'published',
+                    default => 'draft',
+                };
+                
+                $contentId = DB::table('contents')->insertGetId([
+                    'title' => $data['title'],
+                    'client_id' => $data['client_id'],
+                    'date' => $data['deadline'],
+                    'due_date' => null,
+                    'platform' => json_encode([$data['type']]), // Use type as platform initially
+                    'type' => json_encode([$data['type']]),
+                    'status' => $contentStatus,
+                    'assignee' => $data['assignee'] ? json_encode($data['assignee']) : null,
+                    'caption' => $data['notes'] ?? '',
+                    'attachments' => $data['attachments'] ? json_encode($data['attachments']) : null,
+                    'created_by' => auth()->id(),
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+                
+                $data['content_id'] = $contentId;
+                static::$syncingContent = false;
+                
+                app(ActivityLogger::class)->record(Auth::user(), "Auto-created content planner entry for workflow '{$this->formTitle}'");
+            }
+            
             $workflowId = Workflow::create($data)->id;
             $verb = 'created';
             // Track package usage (only for client content, not internal)
@@ -617,6 +674,17 @@ new #[Layout('components.layouts.app')] class extends Component
             if (!empty($data['deadline'])) {
                 $syncData['date'] = $data['deadline'];
             }
+            // Sync workflow stage to content status
+            $contentStatus = match($data['stage']) {
+                'todo', 'in-progress' => 'draft',
+                'scripting' => 'scripting',
+                'review' => 'in-review',
+                'revision' => 'revision',
+                'ready-for-production', 'published' => 'published',
+                default => 'draft',
+            };
+            $syncData['status'] = $contentStatus;
+            
             DB::table('contents')->where('id', $data['content_id'])->update($syncData);
             static::$syncingContent = false;
         }
