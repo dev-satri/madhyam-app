@@ -1412,18 +1412,41 @@ new #[Layout('components.layouts.app')] class extends Component
                      x-data="{
                          dragging: false,
                          upP: 0, upOn: false, upDone: false, upB: 0, upT: 0,
+                         selectedFiles: [],
                          fmt(bytes) {
                              if (!bytes) return '0 B';
                              const k = 1024, s = ['B','KB','MB','GB'];
                              const i = Math.floor(Math.log(bytes) / Math.log(k));
                              return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + s[i];
+                         },
+                         handleFileSelect(e) {
+                             this.selectedFiles = Array.from(e.target.files);
+                         },
+                         handleDrop(e) {
+                             this.dragging = false;
+                             this.selectedFiles = Array.from(e.dataTransfer.files);
+                         },
+                         startUpload() {
+                             if (this.selectedFiles.length === 0) return;
+                             this.upOn = true; this.upP = 0; this.upDone = false;
+                             $wire.uploadMultiple('pendingFiles', this.selectedFiles);
+                         },
+                         finishUpload() {
+                             upP = 100; upOn = false; upDone = true;
+                             const mode = $wire.uploadMode;
+                             if (mode === 'drive-upload') {
+                                 $wire.uploadToGoogleDrive();
+                             } else {
+                                 $wire.uploadFiles();
+                             }
+                             setTimeout(() => { upDone = false; }, 3000);
                          }
                      }"
                      x-on:upload:started.window="if($event.detail.id==='pendingFiles'){upOn=true;upDone=false;upP=0;}"
                      x-on:upload:progress.window="if($event.detail.id==='pendingFiles'){upP=Math.round($event.detail.progress);upB=$event.detail.bytesUploaded;upT=$event.detail.bytesTotal;upOn=true;}"
-                     x-on:upload:finished.window="if($event.detail.id==='pendingFiles'){upP=100;upOn=false;upDone=true;setTimeout(()=>{upDone=false},3000);}"
-                     x-on:upload:cancelled.window="if($event.detail.id==='pendingFiles'){upOn=false;upP=0;upDone=false;}"
-                     x-on:upload:error.window="if($event.detail.id==='pendingFiles'){upOn=false;upP=0;}"
+                     x-on:upload:finished.window="if($event.detail.id==='pendingFiles'){finishUpload()}"
+                     x-on:upload:cancelled.window="if($event.detail.id==='pendingFiles'){upOn=false;upP=0;upDone=false;selectedFiles=[];}"
+                     x-on:upload:error.window="if($event.detail.id==='pendingFiles'){upOn=false;upP=0;selectedFiles=[];}"
                 >
                     <div class="modal-box w-full sm:max-w-lg sm:mx-4 max-h-[90vh] rounded-t-2xl sm:rounded-2xl flex flex-col">
                         <div class="sticky top-0 bg-white flex items-center justify-between p-4 border-b flex-shrink-0 rounded-t-2xl">
@@ -1504,7 +1527,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                     class="border-2 border-dashed rounded-xl p-6 sm:p-8 text-center cursor-pointer transition-colors hover:border-[var(--brand)] hover:bg-[rgba(var(--brand-rgb),0.02)]"
                                     x-on:dragover.prevent="dragging = true"
                                     x-on:dragleave="dragging = false"
-                                    x-on:drop.prevent="dragging = false; $refs.fileInput.files = $event.dataTransfer.files; {{ $uploadMode === 'drive-upload' ? '$wire.uploadToGoogleDrive()' : '$wire.uploadFiles()' }}"
+                                    x-on:drop.prevent="handleDrop($event)"
                                     x-bind:class="dragging ? 'border-[var(--brand)] bg-[rgba(var(--brand-rgb),0.05)]' : ''"
                                 >
                                     @if($uploadMode === 'drive-upload')
@@ -1519,7 +1542,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                     @endif
                                     <label class="btn btn-secondary btn-sm cursor-pointer">
                                         <i class="fas fa-folder-open text-sm"></i> Browse Files
-                                        <input type="file" wire:model="pendingFiles" x-ref="fileInput" multiple class="hidden" accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.txt,.zip">
+                                        <input type="file" x-ref="fileInput" @change="handleFileSelect($event)" multiple class="hidden" accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.txt,.zip">
                                     </label>
                                     <p class="text-xs text-gray-400 mt-2">Max 50MB per file</p>
                                 </div>
@@ -1527,43 +1550,47 @@ new #[Layout('components.layouts.app')] class extends Component
                                 @error('pendingFiles') <p class="text-xs text-red-500">{{ $message }}</p> @enderror
 
                                 {{-- Pending Files List --}}
-                                @if(count($pendingFiles) > 0)
+                                <template x-if="selectedFiles.length > 0 && !upOn && !upDone">
                                     <div class="space-y-1.5 max-h-48 overflow-y-auto">
                                         <div class="flex items-center justify-between">
-                                            <p class="text-xs font-semibold text-gray-500">{{ count($pendingFiles) }} file(s) selected</p>
-                                            <template x-if="!upOn && !upDone">
-                                                <button type="button" @click="$wire.set('pendingFiles', [])" class="text-xs text-red-400 hover:text-red-600 transition-colors">Clear all</button>
-                                            </template>
+                                            <p class="text-xs font-semibold text-gray-500" x-text="selectedFiles.length + ' file(s) selected'"></p>
+                                            <button type="button" @click="selectedFiles = []" class="text-xs text-red-400 hover:text-red-600 transition-colors">Clear all</button>
                                         </div>
-                                        @foreach($pendingFiles as $index => $file)
+                                        <template x-for="(file, idx) in selectedFiles" :key="idx">
                                             <div class="flex items-center gap-2.5 rounded-lg bg-gray-50 hover:bg-gray-100 px-3 py-2.5 transition-colors group">
-                                                @php
-                                                    $ext = strtolower($file->getClientOriginalExtension());
-                                                    $iconClass = match(true) {
-                                                        in_array($ext, ['jpg','jpeg','png','gif','svg','webp']) => 'fa-file-image text-blue-500 bg-blue-50',
-                                                        in_array($ext, ['mp4','mov','avi','mkv','webm']) => 'fa-file-video text-purple-500 bg-purple-50',
-                                                        in_array($ext, ['mp3','wav','ogg','flac']) => 'fa-file-audio text-pink-500 bg-pink-50',
-                                                        $ext === 'pdf' => 'fa-file-pdf text-red-500 bg-red-50',
-                                                        in_array($ext, ['doc','docx']) => 'fa-file-word text-blue-600 bg-blue-50',
-                                                        in_array($ext, ['xls','xlsx']) => 'fa-file-excel text-green-600 bg-green-50',
-                                                        $ext === 'zip' => 'fa-file-zip text-yellow-600 bg-yellow-50',
-                                                        default => 'fa-file text-gray-400 bg-gray-100',
-                                                    };
-                                                @endphp
-                                                <div class="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 {{ $iconClass }}">
-                                                    <i class="fas {{ explode(' ', $iconClass)[0] }} text-sm"></i>
-                                                </div>
-                                                <div class="flex-1 min-w-0">
-                                                    <p class="text-sm font-medium text-gray-800 truncate">{{ $file->getClientOriginalName() }}</p>
-                                                    <p class="text-[11px] text-gray-400 font-mono">{{ $this->formatSize($file->getSize()) }}</p>
-                                                </div>
-                                                <template x-if="!upOn">
-                                                    <button wire:click="removePendingFile({{ $index }})" class="w-7 h-7 rounded-lg flex items-center justify-center text-gray-300 hover:text-red-500 hover:bg-red-50 transition-all opacity-0 group-hover:opacity-100"><i class="fas fa-times text-xs"></i></button>
+                                                <template x-if="['jpg','jpeg','png','gif','svg','webp'].includes(file.name.split('.').pop().toLowerCase())">
+                                                    <div class="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 bg-blue-50 text-blue-500"><i class="fas fa-file-image text-sm"></i></div>
                                                 </template>
+                                                <template x-if="['mp4','mov','avi','mkv','webm'].includes(file.name.split('.').pop().toLowerCase())">
+                                                    <div class="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 bg-purple-50 text-purple-500"><i class="fas fa-file-video text-sm"></i></div>
+                                                </template>
+                                                <template x-if="['mp3','wav','ogg','flac'].includes(file.name.split('.').pop().toLowerCase())">
+                                                    <div class="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 bg-pink-50 text-pink-500"><i class="fas fa-file-audio text-sm"></i></div>
+                                                </template>
+                                                <template x-if="file.name.split('.').pop().toLowerCase() === 'pdf'">
+                                                    <div class="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 bg-red-50 text-red-500"><i class="fas fa-file-pdf text-sm"></i></div>
+                                                </template>
+                                                <template x-if="['doc','docx'].includes(file.name.split('.').pop().toLowerCase())">
+                                                    <div class="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 bg-blue-50 text-blue-600"><i class="fas fa-file-word text-sm"></i></div>
+                                                </template>
+                                                <template x-if="['xls','xlsx'].includes(file.name.split('.').pop().toLowerCase())">
+                                                    <div class="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 bg-green-50 text-green-600"><i class="fas fa-file-excel text-sm"></i></div>
+                                                </template>
+                                                <template x-if="file.name.split('.').pop().toLowerCase() === 'zip'">
+                                                    <div class="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 bg-yellow-50 text-yellow-600"><i class="fas fa-file-zip text-sm"></i></div>
+                                                </template>
+                                                <template x-if="!['jpg','jpeg','png','gif','svg','webp','mp4','mov','avi','mkv','webm','mp3','wav','ogg','flac','pdf','doc','docx','xls','xlsx','zip'].includes(file.name.split('.').pop().toLowerCase())">
+                                                    <div class="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 bg-gray-100 text-gray-400"><i class="fas fa-file text-sm"></i></div>
+                                                </template>
+                                                <div class="flex-1 min-w-0">
+                                                    <p class="text-sm font-medium text-gray-800 truncate" x-text="file.name"></p>
+                                                    <p class="text-[11px] text-gray-400 font-mono" x-text="fmt(file.size)"></p>
+                                                </div>
+                                                <button @click="selectedFiles.splice(idx, 1)" class="w-7 h-7 rounded-lg flex items-center justify-center text-gray-300 hover:text-red-500 hover:bg-red-50 transition-all opacity-0 group-hover:opacity-100"><i class="fas fa-times text-xs"></i></button>
                                             </div>
-                                        @endforeach
+                                        </template>
                                     </div>
-                                @endif
+                                </template>
                             @else
                                 {{-- Google Drive Link --}}
                                 <div class="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-2">
@@ -1611,14 +1638,14 @@ new #[Layout('components.layouts.app')] class extends Component
                         <div class="sticky bottom-0 bg-white flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-2 p-4 border-t flex-shrink-0 rounded-b-2xl">
                             <button wire:click="$set('showUpload', false)" class="btn btn-secondary order-2 sm:order-1">Cancel</button>
                             @if($uploadMode === 'local')
-                                <button wire:click="uploadFiles" class="btn btn-primary order-1 sm:order-2" x-bind:disabled="$wire.pendingFiles.length === 0 || upOn" wire:loading.attr="disabled">
-                                    <span wire:loading.remove wire:target="uploadFiles"><i class="fas fa-upload text-sm"></i> Upload</span>
-                                    <span wire:loading wire:target="uploadFiles"><i class="fas fa-spinner fa-spin text-sm"></i> Uploading...</span>
+                                <button @click="startUpload()" class="btn btn-primary order-1 sm:order-2" x-bind:disabled="selectedFiles.length === 0 || upOn">
+                                    <span x-show="!upOn"><i class="fas fa-upload text-sm"></i> Upload</span>
+                                    <span x-show="upOn"><i class="fas fa-spinner fa-spin text-sm"></i> Uploading...</span>
                                 </button>
                             @elseif($uploadMode === 'drive-upload')
-                                <button wire:click="uploadToGoogleDrive" class="btn btn-primary order-1 sm:order-2" wire:loading.attr="disabled" x-bind:disabled="$wire.pendingFiles.length === 0 || upOn">
-                                    <span wire:loading.remove wire:target="uploadToGoogleDrive"><i class="fab fa-google text-sm mr-1"></i> Upload to Drive</span>
-                                    <span wire:loading wire:target="uploadToGoogleDrive"><i class="fas fa-spinner fa-spin mr-1"></i> Uploading...</span>
+                                <button @click="startUpload()" class="btn btn-primary order-1 sm:order-2" wire:loading.attr="disabled" x-bind:disabled="selectedFiles.length === 0 || upOn">
+                                    <span x-show="!upOn"><i class="fab fa-google text-sm mr-1"></i> Upload to Drive</span>
+                                    <span x-show="upOn"><i class="fas fa-spinner fa-spin mr-1"></i> Uploading...</span>
                                 </button>
                             @elseif($uploadMode === 'drive')
                                 <button wire:click="saveExternalLink" class="btn btn-primary order-1 sm:order-2" x-bind:disabled="!$wire.externalUrl || !$wire.externalFileName">
