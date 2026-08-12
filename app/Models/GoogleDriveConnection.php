@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\GoogleDriveService;
 use Illuminate\Database\Eloquent\Model;
 
 class GoogleDriveConnection extends Model
@@ -33,9 +34,46 @@ class GoogleDriveConnection extends Model
 
     public function isActive(): bool
     {
-        return $this->exists
-            && $this->access_token_expires_at
-            && $this->access_token_expires_at->isFuture();
+        if (! $this->exists || ! $this->refresh_token_encrypted) {
+            return false;
+        }
+
+        // Access token still valid
+        if ($this->access_token_expires_at && $this->access_token_expires_at->isFuture()) {
+            return true;
+        }
+
+        // Access token expired — check session duration using refresh token
+        $duration = Setting::current()->google_drive_session_duration ?? '5d';
+
+        if ($duration === 'forever') {
+            $this->refreshToken();
+
+            return true;
+        }
+
+        $hours = match ($duration) {
+            '24h' => 24,
+            '5d' => 120,
+            default => 120,
+        };
+
+        if (! $this->created_at->copy()->addHours($hours)->isFuture()) {
+            return false;
+        }
+
+        $this->refreshToken();
+
+        return true;
+    }
+
+    private function refreshToken(): void
+    {
+        try {
+            app(GoogleDriveService::class)->refreshAccessToken($this);
+        } catch (\Exception $e) {
+            report($e);
+        }
     }
 
     public static function getActive(): ?static

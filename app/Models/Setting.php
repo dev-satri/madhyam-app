@@ -13,6 +13,7 @@ class Setting extends Model
         'backup_reminder_days', 'last_backup_reminder',
         'paid_leaves_per_year', 'working_days_per_month', 'daily_wage_divisor',
         'google_client_id', 'google_client_secret',
+        'google_drive_session_duration',
     ];
 
     protected $casts = [

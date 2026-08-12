@@ -69,6 +69,7 @@ new #[Layout('components.layouts.app')] class extends Component
     public bool $showDisconnectModal = false;
     public string $drivePassword = '';
     public bool $isTestingDrive = false;
+    public string $googleDriveSessionDuration = '5d';
 
     // System Health tab (super-admin only)
     public string $testMailTo = '';
@@ -120,6 +121,7 @@ new #[Layout('components.layouts.app')] class extends Component
         $setting = Setting::current();
         $this->googleClientId = $setting->google_client_id ?? '';
         $this->googleClientSecret = $setting->google_client_secret ?? '';
+        $this->googleDriveSessionDuration = $setting->google_drive_session_duration ?? '5d';
 
         $this->loadGoogleDriveStatus();
 
@@ -860,9 +862,9 @@ new #[Layout('components.layouts.app')] class extends Component
                                             <span class="text-sm text-gray-400 ml-auto">Closed</span>
                                         @endif
                                     </div>
-                                @endforeach
-                            </div>
-                            <div class="flex justify-end"><button wire:click="saveWorkingHours" class="btn btn-primary">Save Hours</button></div>
+                                    @endforeach
+                                </div>
+                                <div class="flex justify-end"><button wire:click="saveWorkingHours" class="btn btn-primary">Save Hours</button></div>
                         </div>
                     @endif
 
@@ -1400,6 +1402,21 @@ new #[Layout('components.layouts.app')] class extends Component
                                         </div>
                                     </div>
                                 @endif
+
+                                {{-- Session Duration --}}
+                                <div class="mt-5 pt-5 border-t border-gray-100">
+                                    <div class="flex items-center justify-between">
+                                        <div>
+                                            <h4 class="text-sm font-semibold text-gray-900">Session Duration</h4>
+                                            <p class="text-xs text-gray-500 mt-1">How long before requiring re-authentication with Google</p>
+                                        </div>
+                                        <select wire:model.live="googleDriveSessionDuration" wire:change="saveGoogleDriveSessionDuration" class="select select-bordered select-sm w-48">
+                                            <option value="24h">24 hours</option>
+                                            <option value="5d">5 days</option>
+                                            <option value="forever">Until disconnect</option>
+                                        </select>
+                                    </div>
+                                </div>
                             </div>
                         </div>
 
@@ -1694,5 +1711,17 @@ new #[Layout('components.layouts.app')] class extends Component
         } finally {
             $this->isTestingDrive = false;
         }
+    }
+
+    public function saveGoogleDriveSessionDuration(): void
+    {
+        abort_unless(in_array(Auth::user()->role, ['super-admin', 'admin'], true), 403);
+
+        DB::table('settings')->where('id', 1)->update([
+            'google_drive_session_duration' => $this->googleDriveSessionDuration,
+            'updated_at' => now(),
+        ]);
+
+        $this->dispatch('toast', message: 'Session duration updated', type: 'success');
     }
 };
