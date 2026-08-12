@@ -1404,28 +1404,6 @@ new #[Layout('components.layouts.app')] class extends Component
                 @endif
             @endif
 
-            {{-- Upload Progress Tracker (persistent across Livewire re-renders) --}}
-            <div wire:ignore x-data="{
-                     upP: 0, upOn: false, upDone: false, upB: 0, upT: 0,
-                     init() {
-                         window._uploadState = this;
-                         this.$watch('upOn', () => window.dispatchEvent(new CustomEvent('sync-upload')));
-                         this.$watch('upDone', () => window.dispatchEvent(new CustomEvent('sync-upload')));
-                     },
-                     formatB(bytes) {
-                         if (!bytes) return '0 B';
-                         const k = 1024, s = ['B','KB','MB','GB'];
-                         const i = Math.floor(Math.log(bytes) / Math.log(k));
-                         return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + s[i];
-                     }
-                 }"
-                 x-on:upload:started.window="if($event.detail.id==='pendingFiles'){upOn=true;upDone=false;upP=0;}"
-                 x-on:upload:progress.window="if($event.detail.id==='pendingFiles'){upP=Math.round($event.detail.progress);upB=$event.detail.bytesUploaded;upT=$event.detail.bytesTotal;upOn=true;}"
-                 x-on:upload:finished.window="if($event.detail.id==='pendingFiles'){upP=100;upOn=false;upDone=true;setTimeout(()=>{upDone=false},3000);}"
-                 x-on:upload:cancelled.window="if($event.detail.id==='pendingFiles'){upOn=false;upP=0;upDone=false;}"
-                 x-on:upload:error.window="if($event.detail.id==='pendingFiles'){upOn=false;upP=0;}"
-            ></div>
-
             {{-- Upload Modal --}}
             @if($showUpload)
                 <div class="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm"
@@ -1441,16 +1419,11 @@ new #[Layout('components.layouts.app')] class extends Component
                              return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + s[i];
                          }
                      }"
-                     x-on:sync-upload.window="
-                         if(window._uploadState) {
-                             upOn = window._uploadState.upOn;
-                             upP = window._uploadState.upP;
-                             upDone = window._uploadState.upDone;
-                             upB = window._uploadState.upB;
-                             upT = window._uploadState.upT;
-                         }
-                     "
-                     x-init="$nextTick(() => { if(window._uploadState){upOn=window._uploadState.upOn;upP=window._uploadState.upP;upDone=window._uploadState.upDone;upB=window._uploadState.upB;upT=window._uploadState.upT;} })"
+                     x-on:upload:started.window="if($event.detail.id==='pendingFiles'){upOn=true;upDone=false;upP=0;}"
+                     x-on:upload:progress.window="if($event.detail.id==='pendingFiles'){upP=Math.round($event.detail.progress);upB=$event.detail.bytesUploaded;upT=$event.detail.bytesTotal;upOn=true;}"
+                     x-on:upload:finished.window="if($event.detail.id==='pendingFiles'){upP=100;upOn=false;upDone=true;setTimeout(()=>{upDone=false},3000);}"
+                     x-on:upload:cancelled.window="if($event.detail.id==='pendingFiles'){upOn=false;upP=0;upDone=false;}"
+                     x-on:upload:error.window="if($event.detail.id==='pendingFiles'){upOn=false;upP=0;}"
                 >
                     <div class="modal-box w-full sm:max-w-lg sm:mx-4 max-h-[90vh] rounded-t-2xl sm:rounded-2xl flex flex-col">
                         <div class="sticky top-0 bg-white flex items-center justify-between p-4 border-b flex-shrink-0 rounded-t-2xl">
