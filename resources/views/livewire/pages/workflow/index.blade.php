@@ -39,7 +39,7 @@ new #[Layout('components.layouts.app')] class extends Component
     public ?int $formContentId = null;
     public string $formType = 'post';
     public string $formPriority = 'medium';
-    public ?int $formAssignee = null;
+    public array $formAssigneeIds = [];
     public string $formStage = '';
     public ?string $formDeadline = null;
     public string $formTags = '';
@@ -133,12 +133,12 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function getFilteredItems()
     {
-        $query = Workflow::with(['client', 'stageInfo', 'assigneeUser', 'content']);
+        $query = Workflow::with(['client', 'stageInfo', 'content']);
 
         $user = Auth::user();
         $rbac = app(RbacService::class);
         if ($user && !$rbac->hasDataAccess($user->role, 'seeAllWorkflow')) {
-            $query->where('assignee', $user->id);
+            $query->whereJsonContains('assignee', $user->id);
         }
 
         if ($this->search) {
@@ -526,7 +526,7 @@ new #[Layout('components.layouts.app')] class extends Component
         $this->formContentId = $workflow->content_id;
         $this->formType = $workflow->type;
         $this->formPriority = $workflow->priority;
-        $this->formAssignee = $workflow->assignee;
+        $this->formAssigneeIds = is_array($workflow->assignee) ? $workflow->assignee : ($workflow->assignee ? [$workflow->assignee] : []);
         $this->formStage = $workflow->stage;
         $this->formDeadline = $workflow->deadline?->format('Y-m-d');
         $rawTags = $workflow->tags;
@@ -551,17 +551,25 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function save(): void
     {
-        $this->validate([
+        $isBs = \App\Support\NepaliDate::isBs();
+
+        $rules = [
             'formTitle'      => 'required|string|max:255',
             'formClientId'   => 'nullable|exists:clients,id',
             'formType'       => 'required|string|in:reel,post,story,video,carousel,blog',
             'formPriority'   => 'required|string|in:low,medium,high,urgent',
             'formStage'      => 'required|string',
-            'formDeadline'   => 'nullable|date|after_or_equal:today',
-            'formAssignee'   => 'nullable|exists:users,id',
-        ], [
-            'formDeadline.after_or_equal' => 'Deadline must be today or a future date',
-        ]);
+            'formAssigneeIds' => 'nullable|array',
+        ];
+
+        // Only validate deadline format for AD dates; BS dates are strings
+        if (!$isBs) {
+            $rules['formDeadline'] = 'nullable|date|after_or_equal:today';
+        } else {
+            $rules['formDeadline'] = 'nullable|string';
+        }
+
+        $this->validate($rules);
 
         $data = [
             'title'       => $this->formTitle,
@@ -570,7 +578,7 @@ new #[Layout('components.layouts.app')] class extends Component
             'content_id'  => $this->formContentId ?: null,
             'type'        => $this->formType,
             'priority'    => $this->formPriority,
-            'assignee'    => $this->formAssignee,
+            'assignee' => !empty($this->formAssigneeIds) ? $this->formAssigneeIds : null,
             'stage'       => $this->formStage,
             'deadline'    => $this->formDeadline,
             'tags'        => $this->formTags ? trim($this->formTags) : '',
@@ -579,12 +587,13 @@ new #[Layout('components.layouts.app')] class extends Component
         ];
 
         if ($this->formMode === 'edit' && $this->editingId) {
-            $priorAssignee = Workflow::find($this->editingId)?->assignee;
+            $priorAssignee = Workflow::find($this->editingId)?->assignee ?? [];
+            if (!is_array($priorAssignee)) $priorAssignee = $priorAssignee ? [$priorAssignee] : [];
             Workflow::findOrFail($this->editingId)->update($data);
             $workflowId = $this->editingId;
             $verb = 'updated';
         } else {
-            $priorAssignee = null;
+            $priorAssignee = [];
             $maxSort = Workflow::where('stage', $this->formStage)->max('sort_order') ?? 0;
             $data['sort_order'] = $maxSort + 1;
             $workflowId = Workflow::create($data)->id;
@@ -597,11 +606,11 @@ new #[Layout('components.layouts.app')] class extends Component
 
         app(ActivityLogger::class)->record(Auth::user(), "Workflow '{$this->formTitle}' {$verb}");
 
-        // Sync assignee and deadline to linked content
+        // Sync assignees and deadline to linked content
         if (!empty($data['content_id']) && !static::$syncingContent) {
             static::$syncingContent = true;
             $syncData = [
-                'assignee' => $data['assignee'] ?? null,
+                'assignee' => $data['assignee'] ? json_encode($data['assignee']) : null,
                 'updated_at' => now(),
             ];
             // Only sync date if deadline is set (date column is NOT NULL)
@@ -612,13 +621,17 @@ new #[Layout('components.layouts.app')] class extends Component
             static::$syncingContent = false;
         }
 
-        // Notify assignee when set or changed — in-app + email
-        if ($this->formAssignee && $this->formAssignee != $priorAssignee) {
-            $assigneeUser = User::find($this->formAssignee);
-            if ($assigneeUser) {
-                $workflowModel = Workflow::find($workflowId);
-                if ($workflowModel) {
-                    $assigneeUser->notify(new \App\Notifications\WorkflowAssignedNotification($workflowModel, Auth::user()));
+        // Notify new assignees (those in new list but not in old)
+        $newAssignees = !empty($this->formAssigneeIds) ? $this->formAssigneeIds : [];
+        $actorId = Auth::id();
+        $workflowModel = Workflow::find($workflowId);
+        if ($workflowModel) {
+            foreach ($newAssignees as $uid) {
+                if (!in_array($uid, $priorAssignee) && (int) $uid !== $actorId) {
+                    $assigneeUser = User::find($uid);
+                    if ($assigneeUser) {
+                        $assigneeUser->notify(new \App\Notifications\WorkflowAssignedNotification($workflowModel, Auth::user()));
+                    }
                 }
             }
         }
@@ -771,7 +784,7 @@ new #[Layout('components.layouts.app')] class extends Component
     public function getDetailItem()
     {
         if (!$this->detailId) return null;
-        return Workflow::with(['client', 'stageInfo', 'assigneeUser'])->find($this->detailId);
+        return Workflow::with(['client', 'stageInfo'])->find($this->detailId);
     }
 
     public function getDetailAttachments(): array
@@ -869,7 +882,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
         if (!$this->detailId) return;
 
-        $workflow = \App\Models\Workflow::with('assigneeUser')->find($this->detailId);
+        $workflow = \App\Models\Workflow::find($this->detailId);
         if (!$workflow) return;
 
         if ($hasFiles && !$hasText) {
@@ -930,10 +943,12 @@ new #[Layout('components.layouts.app')] class extends Component
         $recipientIds = collect();
 
         // Add assigned user
-        $assigneeId = $entity->assignee ?? null;
-        if ($assigneeId) {
-            $recipientIds->push($assigneeId);
-        }
+            $assigneeIds = $entity->assignee ?? [];
+            if (is_array($assigneeIds)) {
+                $recipientIds = $recipientIds->merge($assigneeIds);
+            } elseif ($assigneeIds) {
+                $recipientIds->push($assigneeIds);
+            }
 
         // Add admins/managers (NOT super-admin — they control the system)
         $adminIds = \App\Models\User::whereIn('role', ['admin', 'manager'])
@@ -1070,7 +1085,7 @@ new #[Layout('components.layouts.app')] class extends Component
         $this->formContentId = null;
         $this->formType = 'post';
         $this->formPriority = 'medium';
-        $this->formAssignee = null;
+        $this->formAssigneeIds = [];
         $this->formDeadline = null;
         $this->formTags = '';
         $this->formAttachments = [];
@@ -1089,7 +1104,18 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function getUserList()
     {
-        return UserVisibility::apply(User::query())->orderBy('name')->get();
+        return UserVisibility::apply(User::query())
+            ->with('department')
+            ->orderBy('name')
+            ->get()
+            ->map(fn($u) => [
+                'id' => $u->id,
+                'name' => $u->name,
+                'role' => $u->role,
+                'department' => $u->department?->name ?? '',
+                'avatar' => $u->avatar,
+            ])
+            ->toArray();
     }
 
     #[On('create-task-from-workflow')]
@@ -1302,19 +1328,24 @@ new #[Layout('components.layouts.app')] class extends Component
                                 </div>
                             @endif
 
-                            {{-- Bottom: Assignee + Deadline --}}
+                            {{-- Bottom: Assignees + Deadline --}}
                             <div class="flex items-center justify-between mt-2">
-                                @if ($item->assigneeUser)
-                                    <div class="flex items-center gap-1.5">
-                                        <div
-                                            class="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-[rgba(var(--brand-rgb),0.1)] text-[9px] font-bold text-[var(--brand)]"
-                                        >
-                                            {{ $item->assigneeUser->initials }}
-                                        </div>
-                                        <span
-                                            class="text-[11px] text-gray-500 truncate max-w-[80px]"
-                                            >{{ $item->assigneeUser->name }}</span
-                                        >
+                                @php $assignees = $item->getAssigneeUsers(); @endphp
+                                @if ($assignees->isNotEmpty())
+                                    <div class="flex items-center -space-x-1.5">
+                                        @foreach ($assignees->take(3) as $au)
+                                            <div
+                                                class="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-[rgba(var(--brand-rgb),0.1)] text-[9px] font-bold text-[var(--brand)] ring-2 ring-white"
+                                                title="{{ $au->name }}"
+                                            >
+                                                {{ $au->initials }}
+                                            </div>
+                                        @endforeach
+                                        @if ($assignees->count() > 3)
+                                            <span class="text-[10px] text-gray-400 ml-1"
+                                                >+{{ $assignees->count() - 3 }}</span
+                                            >
+                                        @endif
                                     </div>
                                 @else
                                     <span class="text-[11px] text-gray-400">Unassigned</span>
@@ -1386,11 +1417,11 @@ new #[Layout('components.layouts.app')] class extends Component
                 x-data
                 x-on:keydown.escape.window="$wire.set('showDetail', false)"
             >
-                <div class="modal-box max-w-2xl" x-on:click.stop>
+                <div class="modal-box max-w-4xl w-full max-h-[90vh] flex flex-col" x-on:click.stop>
                     {{-- Header --}}
-                    <div class="modal-header border-b border-gray-100 pb-3">
+                    <div class="modal-header border-b border-gray-100 pb-3 shrink-0">
                         <div class="flex-1 min-w-0">
-                            <div class="flex flex-wrap items-center gap-1.5 mb-1.5">
+                            <div class="flex flex-wrap items-center gap-1.5 mb-2">
                                 <span
                                     class="inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-semibold border {{ $typeBadge }}"
                                     >{{ ucfirst($detail->type) }}</span
@@ -1418,22 +1449,28 @@ new #[Layout('components.layouts.app')] class extends Component
                                     </span>
                                 @endif
                             </div>
-                            <h3 class="text-lg font-bold text-gray-900 leading-snug">{{ $detail->title }}</h3>
+                            <h3 class="text-base md:text-lg font-bold text-gray-900 leading-snug pr-2">
+                                {{ $detail->title }}
+                            </h3>
                         </div>
-                        <div class="flex items-center gap-2 shrink-0">
+                        <div class="flex items-start gap-2 shrink-0 ml-2">
                             @if ($this->canEditWorkflow && !in_array($detail->stage, ['published', 'ready-for-production']))
-                                <button type="button" wire:click="editFromDetail" class="btn btn-secondary btn-sm">
-                                    <i class="fas fa-pen text-xs"></i> Edit
+                                <button
+                                    type="button"
+                                    wire:click="editFromDetail"
+                                    class="btn btn-secondary btn-sm whitespace-nowrap"
+                                >
+                                    <i class="fas fa-pen text-xs"></i> <span class="hidden sm:inline">Edit</span>
                                 </button>
                             @endif
                             @if (in_array(Auth::user()->role, ['super-admin', 'admin'], true))
                                 <button
                                     type="button"
                                     wire:click="$dispatch('open-confirm', { title: 'Delete Workflow Item?', message: 'This item and its activity will be moved to trash.', type: 'danger', action: 'delete', params: [{{ $detail->id }}] })"
-                                    class="btn btn-sm bg-red-50 text-red-600 border border-red-200 hover:bg-red-100"
+                                    class="btn btn-sm bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 whitespace-nowrap"
                                     aria-label="Delete workflow item"
                                 >
-                                    <i class="fas fa-trash text-xs"></i> Delete
+                                    <i class="fas fa-trash text-xs"></i> <span class="hidden sm:inline">Delete</span>
                                 </button>
                             @endif
                             <button
@@ -1447,7 +1484,7 @@ new #[Layout('components.layouts.app')] class extends Component
                         </div>
                     </div>
 
-                    <div class="modal-body space-y-4 max-h-[70vh] overflow-y-auto">
+                    <div class="modal-body flex-1 overflow-y-auto space-y-4 p-4 md:p-6">
                         {{-- Description --}}
                         @if ($detail->notes)
                             <div>
@@ -1457,21 +1494,31 @@ new #[Layout('components.layouts.app')] class extends Component
                         @endif
 
                         {{-- Metadata --}}
-                        <div class="grid grid-cols-2 sm:grid-cols-3 gap-4 text-sm">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 text-sm">
                             <div>
                                 <p class="text-[11px] uppercase tracking-wide font-semibold text-gray-400 mb-1">Client</p>
                                 <p class="text-gray-800 text-xs flex items-center gap-1.5"><i class="fas fa-building text-gray-400"></i> {{ $detail->client->name ?? '—' }}</p>
                             </div>
                             <div>
                                 <p class="text-[11px] uppercase tracking-wide font-semibold text-gray-400 mb-1">Assignee</p>
-                                @if ($detail->assigneeUser)
-                                    <div class="flex items-center gap-1.5">
-                                        <div
-                                            class="flex h-5 w-5 items-center justify-center rounded-full bg-[rgba(var(--brand-rgb),0.1)] text-[9px] font-bold text-[var(--brand)]"
-                                        >
-                                            {{ $detail->assigneeUser->initials }}
-                                        </div>
-                                        <span class="text-gray-800 text-xs">{{ $detail->assigneeUser->name }}</span>
+                                @php $detailAssignees = $detail->getAssigneeUsers(); @endphp
+                                @if ($detailAssignees->isNotEmpty())
+                                    <div class="flex flex-wrap gap-1.5">
+                                        @foreach ($detailAssignees as $au)
+                                            <div
+                                                class="inline-flex items-center gap-1.5 bg-[rgba(var(--brand-rgb),0.08)] rounded-full px-2 py-1 border border-[rgba(var(--brand-rgb),0.15)]"
+                                            >
+                                                <div
+                                                    class="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-[rgba(var(--brand-rgb),0.2)] text-[8px] font-bold text-[var(--brand)]"
+                                                >
+                                                    {{ $au->initials }}
+                                                </div>
+                                                <span
+                                                    class="text-[var(--brand)] text-xs font-medium"
+                                                    >{{ $au->name }}</span
+                                                >
+                                            </div>
+                                        @endforeach
                                     </div>
                                 @else
                                     <p class="text-gray-400 italic text-xs">Unassigned</p>
@@ -1573,7 +1620,7 @@ new #[Layout('components.layouts.app')] class extends Component
                             </h4>
 
                             @php $comments = $this->getComments(); @endphp
-                            <div class="space-y-3 max-h-48 overflow-y-auto mb-3">
+                            <div class="space-y-3 max-h-60 overflow-y-auto mb-3 pr-2">
                                 @forelse ($comments as $comment)
                                     <div class="flex gap-2.5">
                                         <div
@@ -1675,9 +1722,10 @@ new #[Layout('components.layouts.app')] class extends Component
                 </div>
 
                 <div class="modal-body">
-                    <form wire:submit="save" class="space-y-4">
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div class="md:col-span-2">
+                    <form wire:submit="save" class="flex flex-col max-h-[75vh]">
+                        <div class="flex-1 overflow-y-auto space-y-4 pr-1 -mr-1">
+                            {{-- Title --}}
+                            <div>
                                 <label class="form-label">Title <span class="text-red-500">*</span></label>
                                 <input
                                     type="text"
@@ -1688,24 +1736,22 @@ new #[Layout('components.layouts.app')] class extends Component
                                 @error ('formTitle')
                                     <span class="text-xs text-red-500 mt-1 block">{{ $message }}</span>
                                 @enderror
-                                <span wire:error="formTitle" class="text-red-500 text-xs mt-1 block"></span>
                             </div>
 
-                            <div class="md:col-span-2">
+                            {{-- Description --}}
+                            <div>
                                 <label class="form-label">Description</label>
                                 <textarea
                                     wire:model="formDescription"
                                     class="form-textarea"
-                                    rows="3"
+                                    rows="2"
                                     placeholder="Brief description or notes..."
                                 ></textarea>
                             </div>
 
-                            {{-- Attachments — prominent, top of form --}}
-                            <div
-                                class="md:col-span-2 border border-dashed border-gray-200 rounded-xl bg-gray-50/50 p-4"
-                            >
-                                <label class="form-label mb-2"
+                            {{-- Attachments --}}
+                            <div class="border border-dashed border-gray-200 rounded-xl bg-gray-50/50 p-3">
+                                <label class="form-label mb-2 text-gray-500"
                                     ><i class="fas fa-paperclip text-gray-400 mr-1"></i> Attachments</label
                                 >
                                 <x-file-picker
@@ -1715,25 +1761,64 @@ new #[Layout('components.layouts.app')] class extends Component
                                     wireClientId="formClientId"
                                 />
                                 @if ($formMode === 'edit' && count($formAttachments) > 0)
-                                    <div class="mt-3">
+                                    <div class="mt-2">
                                         @include ('livewire.partials.attachment-display', ['attachments' => $formAttachments, 'label' => ''])
                                     </div>
                                 @endif
                             </div>
 
-                            <div>
-                                <label class="form-label">Client <span class="text-red-500">*</span></label>
-                                <select wire:model="formClientId" class="form-select">
-                                    <option value="">Internal / Own Company</option>
-                                    @foreach ($this->getClientList() as $client)
-                                        <option value="{{ $client->id }}">{{ $client->name }}</option>
-                                    @endforeach
-                                </select>
-                                @error ('formClientId')
-                                    <span class="text-xs text-red-500 mt-1 block">{{ $message }}</span>
-                                @enderror
+                            {{-- Row: Client + Type --}}
+                            <div class="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label class="form-label">Client <span class="text-red-500">*</span></label>
+                                    <select wire:model="formClientId" class="form-select">
+                                        <option value="">Internal / Own Company</option>
+                                        @foreach ($this->getClientList() as $client)
+                                            <option value="{{ $client->id }}">{{ $client->name }}</option>
+                                        @endforeach
+                                    </select>
+                                    @error ('formClientId')
+                                        <span class="text-xs text-red-500 mt-1 block">{{ $message }}</span>
+                                    @enderror
+                                </div>
+                                <div>
+                                    <label class="form-label">Type <span class="text-red-500">*</span></label>
+                                    <select wire:model="formType" class="form-select">
+                                        <option value="reel">Reel</option>
+                                        <option value="post">Post</option>
+                                        <option value="story">Story</option>
+                                        <option value="video">Video</option>
+                                        <option value="carousel">Carousel</option>
+                                        <option value="blog">Blog</option>
+                                    </select>
+                                </div>
                             </div>
 
+                            {{-- Row: Priority + Stage --}}
+                            <div class="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label class="form-label">Priority <span class="text-red-500">*</span></label>
+                                    <select wire:model="formPriority" class="form-select">
+                                        <option value="low">Low</option>
+                                        <option value="medium">Medium</option>
+                                        <option value="high">High</option>
+                                        <option value="urgent">Urgent</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="form-label">Stage <span class="text-red-500">*</span></label>
+                                    <select wire:model="formStage" class="form-select">
+                                        @foreach ($this->getStages() as $stage)
+                                            <option value="{{ $stage['key'] }}">{{ $stage['name'] }}</option>
+                                        @endforeach
+                                    </select>
+                                    @error ('formStage')
+                                        <span class="text-xs text-red-500 mt-1 block">{{ $message }}</span>
+                                    @enderror
+                                </div>
+                            </div>
+
+                            {{-- Link to Content (conditional) --}}
                             @if ($formClientId)
                                 <div x-data>
                                     <label class="form-label"
@@ -1754,70 +1839,36 @@ new #[Layout('components.layouts.app')] class extends Component
                                 </div>
                             @endif
 
+                            {{-- Assignees --}}
                             <div>
-                                <label class="form-label">Type <span class="text-red-500">*</span></label>
-                                <select wire:model="formType" class="form-select">
-                                    <option value="reel">Reel</option>
-                                    <option value="post">Post</option>
-                                    <option value="story">Story</option>
-                                    <option value="video">Video</option>
-                                    <option value="carousel">Carousel</option>
-                                    <option value="blog">Blog</option>
-                                </select>
-                            </div>
-
-                            <div>
-                                <label class="form-label">Priority <span class="text-red-500">*</span></label>
-                                <select wire:model="formPriority" class="form-select">
-                                    <option value="low">Low</option>
-                                    <option value="medium">Medium</option>
-                                    <option value="high">High</option>
-                                    <option value="urgent">Urgent</option>
-                                </select>
-                            </div>
-
-                            <div>
-                                <label class="form-label">Assignee</label>
-                                <select wire:model="formAssignee" class="form-select">
-                                    <option value="">Unassigned</option>
-                                    @foreach ($this->getUserList() as $user)
-                                        <option value="{{ $user->id }}">{{ $user->name }}</option>
-                                    @endforeach
-                                </select>
-                            </div>
-
-                            <div>
-                                <label class="form-label">Stage <span class="text-red-500">*</span></label>
-                                <select wire:model="formStage" class="form-select">
-                                    @foreach ($this->getStages() as $stage)
-                                        <option value="{{ $stage['key'] }}">{{ $stage['name'] }}</option>
-                                    @endforeach
-                                </select>
-                                @error ('formStage')
+                                <label class="form-label">Assignees</label>
+                                @include ('livewire.partials.assignee-select', ['usersJson' => json_encode($this->getUserList()), 'livewireProp' => 'formAssigneeIds'])
+                                @error ('formAssigneeIds')
                                     <span class="text-xs text-red-500 mt-1 block">{{ $message }}</span>
                                 @enderror
                             </div>
 
-                            <div>
-                                <label class="form-label">Deadline</label>
-                                <x-date-input model="formDeadline" name="formDeadline" />
-                            </div>
-
-                            <div class="md:col-span-2">
-                                <label class="form-label">Tags</label>
-                                <input
-                                    type="text"
-                                    wire:model="formTags"
-                                    class="form-input"
-                                    placeholder="e.g. urgent, design, revision"
-                                />
-                                <p class="text-[11px] text-gray-400 mt-1">Separate multiple tags with commas</p>
+                            {{-- Row: Deadline + Tags --}}
+                            <div class="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label class="form-label">Deadline</label>
+                                    <x-date-input model="formDeadline" name="formDeadline" />
+                                </div>
+                                <div>
+                                    <label class="form-label">Tags</label>
+                                    <input
+                                        type="text"
+                                        wire:model="formTags"
+                                        class="form-input"
+                                        placeholder="urgent, design, revision"
+                                    />
+                                    <p class="text-[10px] text-gray-400 mt-0.5">Comma separated</p>
+                                </div>
                             </div>
                         </div>
 
-                        <div
-                            class="mt-6 flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-3 border-t border-gray-100 pt-5"
-                        >
+                        {{-- Actions (fixed at bottom) --}}
+                        <div class="flex items-center justify-end gap-3 border-t border-gray-100 pt-4 mt-4 shrink-0">
                             <button type="button" @click="$wire.set('showForm', false)" class="btn btn-secondary">
                                 Cancel
                             </button>
@@ -2169,6 +2220,10 @@ new #[Layout('components.layouts.app')] class extends Component
             </div>
         </div>
     @endif
+
+    @script
+        <script></script>
+    @endscript
 
     <script>
         (function () {

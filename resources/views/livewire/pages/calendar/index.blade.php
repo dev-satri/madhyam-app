@@ -60,7 +60,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public string $formStatus = 'draft';
 
-    public ?int $formAssignee = null;
+    public array $formAssigneeIds = [];
 
     public string $caption = '';
 
@@ -140,7 +140,18 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function getUserList()
     {
-        return UserVisibility::apply(User::query())->orderBy('name')->get();
+        return UserVisibility::apply(User::query())
+            ->with('department')
+            ->orderBy('name')
+            ->get()
+            ->map(fn($u) => [
+                'id' => $u->id,
+                'name' => $u->name,
+                'role' => $u->role,
+                'department' => $u->department?->name ?? '',
+                'avatar' => $u->avatar,
+            ])
+            ->toArray();
     }
 
     public function prevMonth(): void
@@ -489,7 +500,7 @@ new #[Layout('components.layouts.app')] class extends Component
         $this->formPlatforms = \App\Support\ContentTags::normalize($content->platform, 'platform');
         $this->formTypes = \App\Support\ContentTags::normalize($content->type, 'type');
         $this->formStatus = $content->status;
-        $this->formAssignee = $content->assignee ? (int) $content->assignee : null;
+        $this->formAssigneeIds = is_array($content->assignee) ? $content->assignee : ($content->assignee ? [$content->assignee] : []);
         $this->caption = $content->caption ?? '';
         $this->hashtags = $content->hashtags ?? '';
         $this->referenceFile = $content->reference_file ?? '';
@@ -507,15 +518,25 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function save(): void
     {
-        $this->validate([
+        $isBs = \App\Support\NepaliDate::isBs();
+
+        $rules = [
             'title' => 'required|string|max:255',
             'formClientId' => 'nullable|integer',
-            'formDate' => 'required|date',
-            'formDueDate' => 'nullable|date',
             'formPlatforms' => 'required|array|min:1',
             'formTypes' => 'required|array|min:1',
             'formStatus' => 'required|string|in:draft,scripting,in-review,revision,published',
-        ]);
+        ];
+
+        if (!$isBs) {
+            $rules['formDate'] = 'required|date';
+            $rules['formDueDate'] = 'nullable|date';
+        } else {
+            $rules['formDate'] = 'required|string';
+            $rules['formDueDate'] = 'nullable|string';
+        }
+
+        $this->validate($rules);
 
         try {
             // Normalize + de-dupe (e.g. someone ticks Instagram AND "All" — collapse to ["all"])
@@ -531,8 +552,8 @@ new #[Layout('components.layouts.app')] class extends Component
             if ($this->editingId) {
                 // Check if assignee is changing
                 $oldContent = DB::table('contents')->where('id', $this->editingId)->first();
-                $oldAssignee = $oldContent->assignee ?? null;
-                $newAssignee = $this->formAssignee ?: null;
+                $oldAssignee = json_decode($oldContent->assignee, true) ?? [];
+                $newAssignee = !empty($this->formAssigneeIds) ? $this->formAssigneeIds : [];
 
                 DB::table('contents')->where('id', $this->editingId)->update([
                     'title' => $this->title,
@@ -542,7 +563,7 @@ new #[Layout('components.layouts.app')] class extends Component
                     'platform' => json_encode($platforms),
                     'type' => json_encode($types),
                     'status' => $this->formStatus,
-                    'assignee' => $newAssignee,
+                    'assignee' => json_encode($newAssignee),
                     'caption' => $this->caption,
                     'hashtags' => $this->hashtags,
                     'reference_file' => $this->referenceFile,
@@ -550,23 +571,28 @@ new #[Layout('components.layouts.app')] class extends Component
                     'updated_at' => now(),
                 ]);
 
-                // Notify new assignee if changed
-                if ($newAssignee && $newAssignee != $oldAssignee) {
-                    $contentModel = \App\Models\Content::find($this->editingId);
-                    $assignee = \App\Models\User::find($newAssignee);
-                    if ($contentModel && $assignee) {
-                        $assignee->notify(new \App\Notifications\ContentAssignedNotification($contentModel, Auth::user()));
+                // Notify new assignees (those in new list but not in old)
+                $contentModel = \App\Models\Content::find($this->editingId);
+                if ($contentModel) {
+                    $actorId = Auth::id();
+                    foreach ($newAssignee as $uid) {
+                        if (!in_array($uid, $oldAssignee) && (int) $uid !== $actorId) {
+                            $user = \App\Models\User::find($uid);
+                            if ($user) {
+                                $user->notify(new \App\Notifications\ContentAssignedNotification($contentModel, Auth::user()));
+                            }
+                        }
                     }
                 }
 
-                // Sync assignee and date to linked workflows
+                // Sync assignees and date to linked workflows
                 if (!static::$syncingWorkflow) {
                     static::$syncingWorkflow = true;
                     DB::table('workflows')
                         ->where('content_id', $this->editingId)
                         ->whereNull('deleted_at')
                         ->update([
-                            'assignee' => $this->formAssignee ?? null,
+                            'assignee' => json_encode($newAssignee),
                             'deadline' => $this->formDate,
                             'updated_at' => now(),
                         ]);
@@ -575,6 +601,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
                 $this->dispatch('toast', message: 'Content updated successfully', type: 'success');
             } else {
+                $assigneeVal = !empty($this->formAssigneeIds) ? json_encode($this->formAssigneeIds) : null;
                 DB::table('contents')->insert([
                     'title' => $this->title,
                     'client_id' => $this->formClientId ?: null,
@@ -583,7 +610,7 @@ new #[Layout('components.layouts.app')] class extends Component
                     'platform' => json_encode($platforms),
                     'type' => json_encode($types),
                     'status' => $this->formStatus,
-                    'assignee' => $this->formAssignee ?? null,
+                    'assignee' => $assigneeVal,
                     'caption' => $this->caption,
                     'hashtags' => $this->hashtags,
                     'reference_file' => $this->referenceFile,
@@ -593,13 +620,20 @@ new #[Layout('components.layouts.app')] class extends Component
                     'updated_at' => now(),
                 ]);
 
-                // Notify new assignee if set on create
-                if ($this->formAssignee) {
+                // Notify all assignees if set on create
+                if (!empty($this->formAssigneeIds)) {
                     $newId = DB::table('contents')->orderByDesc('id')->value('id');
                     $contentModel = \App\Models\Content::find($newId);
-                    $assignee = \App\Models\User::find($this->formAssignee);
-                    if ($contentModel && $assignee) {
-                        $assignee->notify(new \App\Notifications\ContentAssignedNotification($contentModel, Auth::user()));
+                    $actorId = Auth::id();
+                    if ($contentModel) {
+                        foreach ($this->formAssigneeIds as $uid) {
+                            if ((int) $uid !== $actorId) {
+                                $user = \App\Models\User::find($uid);
+                                if ($user) {
+                                    $user->notify(new \App\Notifications\ContentAssignedNotification($contentModel, Auth::user()));
+                                }
+                            }
+                        }
                     }
                 }
 
@@ -1018,7 +1052,10 @@ new #[Layout('components.layouts.app')] class extends Component
         $recipientIds = collect();
 
         if ($content->assignee) {
-            $recipientIds->push($content->assignee);
+            $assigneeIds = is_array($content->assignee) ? $content->assignee : json_decode($content->assignee, true);
+            if (is_array($assigneeIds)) {
+                $recipientIds = $recipientIds->merge($assigneeIds);
+            }
         }
 
         // Admins/managers only (NOT super-admin)
@@ -1165,7 +1202,7 @@ new #[Layout('components.layouts.app')] class extends Component
         $this->formPlatforms = [];
         $this->formTypes = [];
         $this->formStatus = 'draft';
-        $this->formAssignee = null;
+        $this->formAssigneeIds = [];
         $this->caption = '';
         $this->hashtags = '';
         $this->referenceFile = '';
@@ -1665,7 +1702,7 @@ new #[Layout('components.layouts.app')] class extends Component
     {{-- ========== CONTENT FORM MODAL ========== --}}
     @if ($showForm)
         <div class="modal-overlay" x-data x-on:keydown.escape.window="$wire.set('showForm', false)">
-            <div class="modal-box max-w-2xl max-h-[90vh]" x-on:click.stop>
+            <div class="modal-box max-w-2xl" x-on:click.stop>
                 <div class="modal-header">
                     <h3 class="text-base font-bold text-gray-900">
                         <i class="fas fa-{{ $editingId ? 'pen' : 'plus' }} text-[var(--brand)] mr-2"></i>
@@ -1679,10 +1716,11 @@ new #[Layout('components.layouts.app')] class extends Component
                     </button>
                 </div>
 
-                <div class="modal-body overflow-y-auto max-h-[calc(90vh-80px)]">
-                    <form wire:submit="save">
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div class="md:col-span-2">
+                <div class="modal-body">
+                    <form wire:submit="save" class="flex flex-col max-h-[75vh]">
+                        <div class="flex-1 overflow-y-auto space-y-4 pr-1 -mr-1">
+                            {{-- Title --}}
+                            <div>
                                 <label class="form-label">Title <span class="text-red-500">*</span></label>
                                 <input
                                     type="text"
@@ -1693,14 +1731,11 @@ new #[Layout('components.layouts.app')] class extends Component
                                 @error ('title')
                                     <span class="text-xs text-red-500 mt-1 block">{{ $message }}</span>
                                 @enderror
-                                <span wire:error="title" class="text-red-500 text-xs mt-1 block"></span>
                             </div>
 
-                            {{-- Attachments — prominent, top of form --}}
-                            <div
-                                class="md:col-span-2 border border-dashed border-gray-200 rounded-xl bg-gray-50/50 p-4"
-                            >
-                                <label class="form-label mb-2"
+                            {{-- Attachments --}}
+                            <div class="border border-dashed border-gray-200 rounded-xl bg-gray-50/50 p-3">
+                                <label class="form-label mb-2 text-gray-500"
                                     ><i class="fas fa-paperclip text-gray-400 mr-1"></i> Attachments</label
                                 >
                                 <x-file-picker
@@ -1710,7 +1745,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                     wireClientId="formClientId"
                                 />
                                 @if ($this->editingId && count($formAttachments) > 0)
-                                    <div class="mt-3">
+                                    <div class="mt-2">
                                         @include ('livewire.partials.attachment-display', ['attachments' => $formAttachments, 'label' => ''])
                                     </div>
                                 @endif
@@ -1720,7 +1755,7 @@ new #[Layout('components.layouts.app')] class extends Component
                             @if ($this->editingId)
                                 @php $allLinkedAtts = $this->getDiscussionAttachments(); @endphp
                                 @if (count($allLinkedAtts) > 0)
-                                    <div class="md:col-span-2 bg-gray-50 border border-gray-200 rounded-xl p-4">
+                                    <div class="bg-gray-50 border border-gray-200 rounded-xl p-3">
                                         <p class="text-[11px] uppercase tracking-wide font-semibold text-gray-400 mb-2">
                                             <i class="fas fa-link text-gray-400 mr-1"></i> All Linked Attachments
                                         </p>
@@ -1729,57 +1764,55 @@ new #[Layout('components.layouts.app')] class extends Component
                                 @endif
                             @endif
 
-                            <div>
-                                <label class="form-label">Client</label>
-                                <select wire:model="formClientId" class="form-select">
-                                    <option value="">Internal / Own Company</option>
-                                    @foreach ($clients as $c)
-                                        <option value="{{ $c->id }}">{{ $c->name }}</option>
-                                    @endforeach
-                                </select>
-                                <p class="text-[11px] text-gray-400 mt-1">Leave as Internal for own company content</p>
+                            {{-- Row: Client + Date --}}
+                            <div class="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label class="form-label">Client</label>
+                                    <select wire:model="formClientId" class="form-select">
+                                        <option value="">Internal / Own Company</option>
+                                        @foreach ($clients as $c)
+                                            <option value="{{ $c->id }}">{{ $c->name }}</option>
+                                        @endforeach
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="form-label">Date <span class="text-red-500">*</span></label>
+                                    <x-date-input model="formDate" name="formDate" />
+                                    @error ('formDate')
+                                        <span class="text-xs text-red-500 mt-1 block">{{ $message }}</span>
+                                    @enderror
+                                </div>
                             </div>
 
-                            <div>
-                                <label class="form-label">Date <span class="text-red-500">*</span></label>
-                                <x-date-input model="formDate" name="formDate" />
-                                @error ('formDate')
-                                    <span class="text-xs text-red-500 mt-1 block">{{ $message }}</span>
-                                @enderror
-                                <span wire:error="formDate" class="text-red-500 text-xs mt-1 block"></span>
+                            {{-- Row: Due Date + Status --}}
+                            <div class="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label class="form-label"
+                                        >Due Date <span class="text-gray-400 text-xs">(optional)</span></label
+                                    >
+                                    <x-date-input model="formDueDate" name="formDueDate" />
+                                </div>
+                                <div>
+                                    <label class="form-label">Status <span class="text-red-500">*</span></label>
+                                    <select wire:model="formStatus" class="form-select">
+                                        @foreach (self::STATUSES as $s)
+                                            <option value="{{ $s }}">{{ str_replace('-', ' ', ucfirst($s)) }}</option>
+                                        @endforeach
+                                    </select>
+                                </div>
                             </div>
 
+                            {{-- Assignees --}}
                             <div>
-                                <label class="form-label"
-                                    >Due Date <span class="text-gray-400 text-xs">(optional)</span></label
-                                >
-                                <x-date-input model="formDueDate" name="formDueDate" />
-                                <p class="text-[11px] text-gray-400 mt-1">When content must be completed by</p>
+                                <label class="form-label">Assignees</label>
+                                @include ('livewire.partials.assignee-select', ['usersJson' => json_encode($this->getUserList()), 'livewireProp' => 'formAssigneeIds'])
                             </div>
 
-                            <div>
-                                <label class="form-label">Status <span class="text-red-500">*</span></label>
-                                <select wire:model="formStatus" class="form-select">
-                                    @foreach (self::STATUSES as $s)
-                                        <option value="{{ $s }}">{{ str_replace('-', ' ', ucfirst($s)) }}</option>
-                                    @endforeach
-                                </select>
-                            </div>
-
-                            <div>
-                                <label class="form-label">Assignee</label>
-                                <select wire:model="formAssignee" class="form-select">
-                                    <option value="">Unassigned</option>
-                                    @foreach ($this->getUserList() as $user)
-                                        <option value="{{ $user->id }}">{{ $user->name }}</option>
-                                    @endforeach
-                                </select>
-                            </div>
-
+                            {{-- Reference File --}}
                             <div>
                                 <label class="form-label"
                                     >Reference File
-                                    <span class="text-gray-400 font-normal">(optional URL/name)</span></label
+                                    <span class="text-gray-400 font-normal text-xs">(optional URL/name)</span></label
                                 >
                                 <input
                                     type="text"
@@ -1791,7 +1824,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
                             {{-- Platforms Multi-Select --}}
                             @php $isAllPlatforms = in_array(\App\Support\ContentTags::ALL, $formPlatforms, true); @endphp
-                            <div class="md:col-span-2">
+                            <div>
                                 <label class="form-label">Platforms <span class="text-red-500">*</span></label>
                                 <div class="flex flex-wrap gap-2">
                                     <button
@@ -1820,7 +1853,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                     @endforeach
                                 </div>
                                 @if ($isAllPlatforms)
-                                    <p class="text-[11px] text-gray-500 mt-1">"All" is selected — includes any future platforms too. Click a chip to switch to individual selection.</p>
+                                    <p class="text-[11px] text-gray-500 mt-1">"All" is selected — includes any future platforms too.</p>
                                 @endif
                                 @error ('formPlatforms')
                                     <span class="text-xs text-red-500 mt-1 block">{{ $message }}</span>
@@ -1829,7 +1862,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
                             {{-- Types Multi-Select --}}
                             @php $isAllTypes = in_array(\App\Support\ContentTags::ALL, $formTypes, true); @endphp
-                            <div class="md:col-span-2">
+                            <div>
                                 <label class="form-label">Content Types <span class="text-red-500">*</span></label>
                                 <div class="flex flex-wrap gap-2">
                                     <button
@@ -1858,47 +1891,49 @@ new #[Layout('components.layouts.app')] class extends Component
                                     @endforeach
                                 </div>
                                 @if ($isAllTypes)
-                                    <p class="text-[11px] text-gray-500 mt-1">"All" is selected — includes any future types too. Click a chip to switch to individual selection.</p>
+                                    <p class="text-[11px] text-gray-500 mt-1">"All" is selected — includes any future types too.</p>
                                 @endif
                                 @error ('formTypes')
                                     <span class="text-xs text-red-500 mt-1 block">{{ $message }}</span>
                                 @enderror
                             </div>
 
-                            <div class="md:col-span-2">
-                                <label class="form-label">Caption</label>
-                                <textarea
-                                    wire:model="caption"
-                                    class="form-textarea"
-                                    rows="3"
-                                    placeholder="Write your caption..."
-                                ></textarea>
+                            {{-- Row: Caption + Hashtags --}}
+                            <div class="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label class="form-label">Caption</label>
+                                    <textarea
+                                        wire:model="caption"
+                                        class="form-textarea"
+                                        rows="3"
+                                        placeholder="Write your caption..."
+                                    ></textarea>
+                                </div>
+                                <div>
+                                    <label class="form-label">Hashtags</label>
+                                    <textarea
+                                        wire:model="hashtags"
+                                        class="form-textarea"
+                                        rows="3"
+                                        placeholder="#hashtag1 #hashtag2"
+                                    ></textarea>
+                                </div>
                             </div>
 
-                            <div class="md:col-span-2">
-                                <label class="form-label">Hashtags</label>
-                                <textarea
-                                    wire:model="hashtags"
-                                    class="form-textarea"
-                                    rows="2"
-                                    placeholder="#hashtag1 #hashtag2"
-                                ></textarea>
-                            </div>
+                            @if (!$editingId && count($formPlatforms) > 0 && count($formTypes) > 0)
+                                <div
+                                    class="rounded-lg bg-blue-50 border border-blue-100 px-4 py-2.5 text-xs text-blue-700"
+                                >
+                                    <i class="fas fa-info-circle mr-1"></i>
+                                    This will create <strong>1</strong> content item covering
+                                    <strong>{{ \App\Support\ContentTags::label($formPlatforms, 'platform') }}</strong> ×
+                                    <strong>{{ \App\Support\ContentTags::label($formTypes, 'type') }}</strong>.
+                                </div>
+                            @endif
                         </div>
 
-                        @if (!$editingId && count($formPlatforms) > 0 && count($formTypes) > 0)
-                            <div
-                                class="mt-3 rounded-lg bg-blue-50 border border-blue-100 px-4 py-2.5 text-xs text-blue-700"
-                            >
-                                <i class="fas fa-info-circle mr-1"></i>
-                                This will create <strong>1</strong> content item covering
-                                <strong>{{ \App\Support\ContentTags::label($formPlatforms, 'platform') }}</strong>
-                                ×
-                                <strong>{{ \App\Support\ContentTags::label($formTypes, 'type') }}</strong>.
-                            </div>
-                        @endif
-
-                        <div class="mt-6 flex items-center justify-end gap-3 border-t border-gray-100 pt-5">
+                        {{-- Actions (fixed at bottom) --}}
+                        <div class="flex items-center justify-end gap-3 border-t border-gray-100 pt-4 mt-4 shrink-0">
                             <button type="button" wire:click="$set('showForm', false)" class="btn btn-secondary">
                                 Cancel
                             </button>

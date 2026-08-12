@@ -28,6 +28,7 @@ class Content extends Model
         'platform' => 'array',
         'type' => 'array',
         'attachments' => 'array',
+        'assignee' => 'array',
         'needs_approval' => 'boolean',
         'submitted_for_approval_at' => 'datetime',
     ];
@@ -42,9 +43,11 @@ class Content extends Model
         return $this->belongsTo(User::class, 'created_by');
     }
 
-    public function assigneeUser(): BelongsTo
+    public function getAssigneeUsers()
     {
-        return $this->belongsTo(User::class, 'assignee');
+        $ids = is_array($this->assignee) ? $this->assignee : [];
+
+        return User::whereIn('id', $ids)->get();
     }
 
     public function workflows(): HasMany

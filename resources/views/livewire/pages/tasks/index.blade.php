@@ -59,7 +59,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public ?int $formWorkflowId = null;
 
-    public int $formAssigneeId = 0;
+    public array $formAssigneeIds = [];
 
     public string $formDueDate = '';
 
@@ -155,15 +155,25 @@ new #[Layout('components.layouts.app')] class extends Component
     public function team()
     {
         return UserVisibility::apply(
-            DB::table('users')->where('status', 'active')
-        )->orderBy('name')->get();
+            User::query()->where('status', 'active')
+        )
+            ->with('department')
+            ->orderBy('name')
+            ->get()
+            ->map(fn($u) => [
+                'id' => $u->id,
+                'name' => $u->name,
+                'role' => $u->role,
+                'department' => $u->department?->name ?? '',
+                'avatar' => $u->avatar,
+            ])
+            ->toArray();
     }
 
     public function getFilteredTasks()
     {
         $q = Task::query()
-            ->leftJoin('clients', 'tasks.client_id', '=', 'clients.id')
-            ->leftJoin('users', 'tasks.assignee', '=', 'users.id');
+            ->leftJoin('clients', 'tasks.client_id', '=', 'clients.id');
 
         // Exclude tasks whose linked workflow is soft-deleted
         $q->where(function ($tq) {
@@ -176,7 +186,7 @@ new #[Layout('components.layouts.app')] class extends Component
         $user = Auth::user();
         $rbac = app(RbacService::class);
         if ($user && ! $rbac->hasDataAccess($user->role, 'seeAllTasks')) {
-            $q->where('tasks.assignee', $user->id);
+            $q->whereJsonContains('tasks.assignee', $user->id);
         }
 
         if ($this->search) {
@@ -200,9 +210,16 @@ new #[Layout('components.layouts.app')] class extends Component
             $q->where('tasks.type', $this->tab);
         }
 
-        return $q->select('tasks.*', 'clients.name as client_name', 'users.name as assignee_name')
+        return $q->select('tasks.*', 'clients.name as client_name')
             ->orderBy('tasks.due_date', 'asc')
             ->paginate(15);
+    }
+
+    public function getAssigneeNames(Task $task): string
+    {
+        $ids = is_array($task->assignee) ? $task->assignee : [];
+        if (empty($ids)) return '—';
+        return User::whereIn('id', $ids)->pluck('name')->implode(', ');
     }
 
     public function getStats(): array
@@ -275,7 +292,7 @@ new #[Layout('components.layouts.app')] class extends Component
                 $this->formPriority = $t->priority;
                 $this->formClientId = $t->client_id ?? 0;
                 $this->formWorkflowId = $t->workflow_id ?? null;
-                $this->formAssigneeId = $t->assignee ?? 0;
+                $this->formAssigneeIds = is_array($t->assignee) ? $t->assignee : ($t->assignee ? [$t->assignee] : []);
                 $this->formDueDate = $t->due_date ?? '';
                 $this->formLocation = $t->location ?? '';
                 $this->formChecklist = $t->checklist ?? '';
@@ -291,7 +308,7 @@ new #[Layout('components.layouts.app')] class extends Component
             }
         } else {
             $this->editingId = 0;
-            $this->reset(['formTitle', 'formDescription', 'formType', 'formPriority', 'formClientId', 'formWorkflowId', 'formAssigneeId', 'formDueDate', 'formLocation', 'formChecklist', 'formNotes']);
+            $this->reset(['formTitle', 'formDescription', 'formType', 'formPriority', 'formClientId', 'formWorkflowId', 'formAssigneeIds', 'formDueDate', 'formLocation', 'formChecklist', 'formNotes']);
             $this->formType = 'task';
             $this->formPriority = 'medium';
             $this->formDueDate = now()->format('Y-m-d');
@@ -316,14 +333,21 @@ new #[Layout('components.layouts.app')] class extends Component
             }
         }
 
-        $this->validate([
+        $isBs = \App\Support\NepaliDate::isBs();
+
+        $rules = [
             'formTitle' => 'required|string|max:255',
             'formType' => 'required|in:task,shoot,editing',
             'formPriority' => 'required|in:low,medium,high,urgent',
-            'formDueDate' => 'nullable|date|after_or_equal:today',
-        ], [
-            'formDueDate.after_or_equal' => 'Due date must be today or a future date',
-        ]);
+        ];
+
+        if (!$isBs) {
+            $rules['formDueDate'] = 'nullable|date|after_or_equal:today';
+        } else {
+            $rules['formDueDate'] = 'nullable|string';
+        }
+
+        $this->validate($rules);
 
         $data = [
             'title' => $this->formTitle,
@@ -332,7 +356,7 @@ new #[Layout('components.layouts.app')] class extends Component
             'priority' => $this->formPriority,
             'client_id' => $this->formClientId ?: null,
             'workflow_id' => $this->formWorkflowId ?: null,
-            'assignee' => $this->formAssigneeId ?: null,
+            'assignee' => !empty($this->formAssigneeIds) ? $this->formAssigneeIds : null,
             'due_date' => $this->formDueDate ?: null,
             'location' => $this->formType === 'shoot' ? $this->formLocation : null,
             'checklist' => $this->formType === 'shoot' ? $this->formChecklist : null,
@@ -340,10 +364,10 @@ new #[Layout('components.layouts.app')] class extends Component
             'attachments' => $this->formAttachments ? array_values($this->formAttachments) : null,
         ];
 
-        $priorAssignee = null;
+        $priorAssignee = [];
         if ($this->editingId) {
             $task = Task::findOrFail($this->editingId);
-            $priorAssignee = $task->assignee;
+            $priorAssignee = is_array($task->assignee) ? $task->assignee : [];
             $task->update($data);
             $taskId = $this->editingId;
             $verb = 'updated';
@@ -357,13 +381,18 @@ new #[Layout('components.layouts.app')] class extends Component
 
         app(ActivityLogger::class)->record(Auth::user(), "Task '{$this->formTitle}' {$verb}");
 
-        // Notify assignee if this is a new task or the assignee changed.
-        // SkipsSelfActor drops the send when the assigner assigned to themself.
-        if ($data['assignee'] && $data['assignee'] != $priorAssignee) {
-            $model = Task::find($taskId);
-            $assignee = User::find($data['assignee']);
-            if ($model && $assignee) {
-                $assignee->notify(new TaskAssignedNotification($model, Auth::user()));
+        // Notify new assignees (those in the new list but not in the old list)
+        $model = Task::find($taskId);
+        if ($model) {
+            $newAssignees = is_array($data['assignee']) ? $data['assignee'] : [];
+            $actorId = Auth::id();
+            foreach ($newAssignees as $uid) {
+                if (!in_array($uid, $priorAssignee) && (int) $uid !== $actorId) {
+                    $assignee = User::find($uid);
+                    if ($assignee) {
+                        $assignee->notify(new TaskAssignedNotification($model, Auth::user()));
+                    }
+                }
             }
         }
 
@@ -385,8 +414,7 @@ new #[Layout('components.layouts.app')] class extends Component
     {
         return Task::query()
             ->leftJoin('clients', 'tasks.client_id', '=', 'clients.id')
-            ->leftJoin('users', 'tasks.assignee', '=', 'users.id')
-            ->select('tasks.*', 'clients.name as client_name', 'users.name as assignee_name')
+            ->select('tasks.*', 'clients.name as client_name')
             ->where('tasks.id', $this->detailId)
             ->first();
     }
@@ -463,7 +491,8 @@ new #[Layout('components.layouts.app')] class extends Component
         $comment = TaskComment::find($commentId);
         $task = $comment?->task;
         if ($comment && $task) {
-            $recipientIds = collect([$task->assignee])
+            $assigneeIds = is_array($task->assignee) ? $task->assignee : [];
+            $recipientIds = collect($assigneeIds)
                 ->merge(
                     DB::table('task_comments')
                         ->where('task_id', $this->detailId)
@@ -514,7 +543,7 @@ new #[Layout('components.layouts.app')] class extends Component
             return;
         }
 
-        $task = Task::with('assigneeUser')->find($this->detailId);
+        $task = Task::find($this->detailId);
         if (!$task) return;
 
         if ($hasFiles && !$hasText) {
@@ -567,9 +596,8 @@ new #[Layout('components.layouts.app')] class extends Component
         $actorId = Auth::id();
         $recipientIds = collect();
 
-        if ($task->assignee) {
-            $recipientIds->push($task->assignee);
-        }
+        $assigneeIds = is_array($task->assignee) ? $task->assignee : [];
+        $recipientIds = $recipientIds->merge($assigneeIds);
 
         // Admins/managers only (NOT super-admin)
         $adminIds = \App\Models\User::whereIn('role', ['admin', 'manager'])
@@ -774,7 +802,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                 <td class="text-gray-500">{{ $t->client_name ?? '—' }}</td>
                                 <td><span class="badge badge-{{ $t->type }}">{{ ucfirst($t->type) }}</span></td>
                                 <td><span class="badge badge-{{ $t->priority }}">{{ ucfirst($t->priority) }}</span></td>
-                                <td class="text-gray-500">{{ $t->assignee_name ?? '—' }}</td>
+                                <td class="text-gray-500">{{ $this->getAssigneeNames($t) }}</td>
                                 <td class="{{ $t->due_date && \Carbon\Carbon::parse($t->due_date)->isPast() && $t->status!=='completed' ? 'text-red-600 font-semibold' : '' }}">{{ $t->due_date ? \App\Support\NepaliDate::display($t->due_date) : '—' }}</td>
                                 <td>
                                     @php
@@ -804,38 +832,114 @@ new #[Layout('components.layouts.app')] class extends Component
             @if($showForm)
             <div class="modal-overlay" wire:click.self="$set('showForm',false)" x-on:keydown.escape.window="$wire.set('showForm',false)">
                 <div class="modal-box max-w-lg">
-                    <div class="modal-header"><h3 class="text-base font-bold text-gray-900">{{ $editingId ? 'Edit Task' : 'New Task' }}</h3><button wire:click="$set('showForm',false)" class="btn btn-ghost btn-icon btn-sm"><i class="fas fa-times"></i></button></div>
-                    <form wire:submit="save" class="modal-body space-y-4">
-                        <div><label class="form-label">Title *</label><input type="text" wire:model="formTitle" class="form-input" required><span wire:error="formTitle" class="text-red-500 text-xs mt-1 block"></span></div>
-                        {{-- Attachments — prominent, top of form --}}
-                        <div class="border border-dashed border-gray-200 rounded-xl bg-gray-50/50 p-4">
-                            <label class="form-label mb-2"><i class="fas fa-paperclip text-gray-400 mr-1"></i> Attachments</label>
-                            <x-file-picker :clientId="$formClientId ?: null" wire="formAttachmentsJson" :initial="$formAttachments" wireClientId="formClientId" />
-                            @if ($this->editingId && count($formAttachments) > 0)
-                                <div class="mt-3">
-                                    @include('livewire.partials.attachment-display', ['attachments' => $formAttachments, 'label' => ''])
+                    <div class="modal-header">
+                        <h3 class="text-base font-bold text-gray-900">{{ $editingId ? 'Edit Task' : 'New Task' }}</h3>
+                        <button wire:click="$set('showForm',false)" class="btn btn-ghost btn-icon btn-sm"><i class="fas fa-times"></i></button>
+                    </div>
+                    <div class="modal-body">
+                        <form wire:submit="save" class="flex flex-col max-h-[75vh]">
+                            <div class="flex-1 overflow-y-auto space-y-4 pr-1 -mr-1">
+                                {{-- Title --}}
+                                <div>
+                                    <label class="form-label">Title *</label>
+                                    <input type="text" wire:model="formTitle" class="form-input" required>
+                                    <span wire:error="formTitle" class="text-red-500 text-xs mt-1 block"></span>
                                 </div>
-                            @endif
-                        </div>
-                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            <div><label class="form-label">Type</label><select wire:model="formType" class="form-select"><option value="task">Task</option><option value="shoot">Shoot</option><option value="editing">Editing</option></select></div>
-                            <div><label class="form-label">Priority</label><select wire:model="formPriority" class="form-select"><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="urgent">Urgent</option></select></div>
-                        </div>
-                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            <div><label class="form-label">Client</label><select wire:model="formClientId" class="form-select"><option value="0">None</option>@foreach($this->clients as $c)<option value="{{ $c->id }}">{{ $c->name }}</option>@endforeach</select></div>
-                            <div><label class="form-label">Assignee</label><select wire:model="formAssigneeId" class="form-select"><option value="0">Unassigned</option>@foreach($this->team as $u)<option value="{{ $u->id }}">{{ $u->name }}</option>@endforeach</select></div>
-                        </div>
-                        @if ($formClientId)
-                            <div><label class="form-label">Link to Workflow <span class="text-gray-400 text-xs">(optional)</span></label><select wire:model="formWorkflowId" class="form-select"><option value="">No linked workflow</option>@foreach($this->getAvailableWorkflows() as $wf)<option value="{{ $wf->id }}">{{ $wf->title }} — {{ ucfirst($wf->type) }} ({{ ucfirst($wf->stage) }})</option>@endforeach</select></div>
-                        @endif
-                        <div><label class="form-label">Due Date</label><x-date-input model="formDueDate" name="formDueDate" /></div>
-                        @if($formType === 'shoot')
-                        <div><label class="form-label">Location</label><input type="text" wire:model="formLocation" class="form-input" placeholder="Shoot location"></div>
-                        <div><label class="form-label">Checklist</label><textarea wire:model="formChecklist" class="form-textarea" placeholder="One item per line"></textarea></div>
-                        @endif
-                        <div><label class="form-label">Description</label><textarea wire:model="formDescription" class="form-textarea" rows="3"></textarea></div>
-                        <div class="flex gap-3 justify-end pt-2"><button type="button" wire:click="$set('showForm',false)" class="btn btn-secondary">Cancel</button><button type="submit" class="btn btn-primary"><i class="fas fa-save text-sm"></i> Save</button></div>
-                    </form>
+
+                                {{-- Attachments --}}
+                                <div class="border border-dashed border-gray-200 rounded-xl bg-gray-50/50 p-3">
+                                    <label class="form-label mb-2 text-gray-500"><i class="fas fa-paperclip text-gray-400 mr-1"></i> Attachments</label>
+                                    <x-file-picker :clientId="$formClientId ?: null" wire="formAttachmentsJson" :initial="$formAttachments" wireClientId="formClientId" />
+                                    @if ($this->editingId && count($formAttachments) > 0)
+                                        <div class="mt-2">
+                                            @include('livewire.partials.attachment-display', ['attachments' => $formAttachments, 'label' => ''])
+                                        </div>
+                                    @endif
+                                </div>
+
+                                {{-- Row: Type + Priority --}}
+                                <div class="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label class="form-label">Type</label>
+                                        <select wire:model="formType" class="form-select">
+                                            <option value="task">Task</option>
+                                            <option value="shoot">Shoot</option>
+                                            <option value="editing">Editing</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="form-label">Priority</label>
+                                        <select wire:model="formPriority" class="form-select">
+                                            <option value="low">Low</option>
+                                            <option value="medium">Medium</option>
+                                            <option value="high">High</option>
+                                            <option value="urgent">Urgent</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                {{-- Row: Client + Assignees --}}
+                                <div class="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label class="form-label">Client</label>
+                                        <select wire:model="formClientId" class="form-select">
+                                            <option value="0">None</option>
+                                            @foreach($this->clients as $c)
+                                                <option value="{{ $c->id }}">{{ $c->name }}</option>
+                                            @endforeach
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="form-label">Assignees</label>
+                                        @include('livewire.partials.assignee-select', ['usersJson' => json_encode($this->team()), 'livewireProp' => 'formAssigneeIds'])
+                                    </div>
+                                </div>
+
+                                {{-- Link to Workflow (conditional) --}}
+                                @if ($formClientId)
+                                    <div>
+                                        <label class="form-label">Link to Workflow <span class="text-gray-400 text-xs">(optional)</span></label>
+                                        <select wire:model="formWorkflowId" class="form-select">
+                                            <option value="">No linked workflow</option>
+                                            @foreach($this->getAvailableWorkflows() as $wf)
+                                                <option value="{{ $wf->id }}">{{ $wf->title }} — {{ ucfirst($wf->type) }} ({{ ucfirst($wf->stage) }})</option>
+                                            @endforeach
+                                        </select>
+                                    </div>
+                                @endif
+
+                                {{-- Due Date --}}
+                                <div>
+                                    <label class="form-label">Due Date</label>
+                                    <x-date-input model="formDueDate" name="formDueDate" />
+                                </div>
+
+                                {{-- Shoot-specific fields --}}
+                                @if($formType === 'shoot')
+                                    <div>
+                                        <label class="form-label">Location</label>
+                                        <input type="text" wire:model="formLocation" class="form-input" placeholder="Shoot location">
+                                    </div>
+                                    <div>
+                                        <label class="form-label">Checklist</label>
+                                        <textarea wire:model="formChecklist" class="form-textarea" placeholder="One item per line"></textarea>
+                                    </div>
+                                @endif
+
+                                {{-- Description --}}
+                                <div>
+                                    <label class="form-label">Description</label>
+                                    <textarea wire:model="formDescription" class="form-textarea" rows="3"></textarea>
+                                </div>
+                            </div>
+
+                            {{-- Actions (fixed at bottom) --}}
+                            <div class="flex gap-3 justify-end border-t border-gray-100 pt-4 mt-4 shrink-0">
+                                <button type="button" wire:click="$set('showForm',false)" class="btn btn-secondary">Cancel</button>
+                                <button type="submit" class="btn btn-primary"><i class="fas fa-save text-sm"></i> Save</button>
+                            </div>
+                        </form>
+                    </div>
                 </div>
             </div>
             @endif
@@ -903,9 +1007,16 @@ new #[Layout('components.layouts.app')] class extends Component
                                 <p class="text-gray-800 text-xs flex items-center gap-1.5"><i class="fas fa-building text-gray-400"></i> {{ $task->client_name ?? '—' }}</p>
                             </div>
                             <div>
-                                <p class="text-[11px] uppercase tracking-wide font-semibold text-gray-400 mb-1">Assignee</p>
-                                @if ($task->assignee_name)
-                                    <p class="text-gray-800 text-xs flex items-center gap-1.5"><i class="fas fa-user text-gray-400"></i> {{ $task->assignee_name }}</p>
+                                    <p class="text-[11px] uppercase tracking-wide font-semibold text-gray-400 mb-1">Assignees</p>
+                                        @php $assigneeUsers = $task->getAssigneeUsers(); @endphp
+                                        @if ($assigneeUsers->isNotEmpty())
+                                            <div class="flex flex-wrap gap-1">
+                                                @foreach ($assigneeUsers as $au)
+                                                    <span class="inline-flex items-center gap-1 text-xs bg-gray-100 rounded-full px-2 py-0.5">
+                                                        <i class="fas fa-user text-gray-400"></i> {{ $au->name }}
+                                                    </span>
+                                                @endforeach
+                                            </div>
                                 @else
                                     <p class="text-gray-400 italic text-xs">Unassigned</p>
                                 @endif
@@ -1027,6 +1138,11 @@ new #[Layout('components.layouts.app')] class extends Component
             @endif
             @endif
         </div>
+
+        @script
+        <script>
+        </script>
+        @endscript
         blade;
     }
 

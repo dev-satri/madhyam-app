@@ -30,18 +30,19 @@ class ShootReminderCommand extends Command
             ->whereNotNull('deadline')
             ->whereDate('deadline', '<=', $targetDate)
             ->whereDate('deadline', '>=', now())
-            ->with('assigneeUser')
             ->get();
 
         $count = 0;
         foreach ($shoots as $shoot) {
+            $assignees = $shoot->getAssigneeUsers();
+            $forRole = $assignees->isNotEmpty() ? $assignees->first()->role : 'all';
             $daysUntil = now()->diffInDays($shoot->deadline, false);
             $notificationService = app(NotificationService::class);
             $notificationService->sendNotification(
                 text: "Shoot '{$shoot->title}' is due in {$daysUntil} day(s) ({$shoot->deadline->format('M d, Y')})",
                 type: 'warning',
                 link: route('workflow', absolute: false),
-                forRole: $shoot->assigneeUser ? $shoot->assigneeUser->role : 'all',
+                forRole: $forRole,
                 clientId: $shoot->client_id,
             );
             $count++;

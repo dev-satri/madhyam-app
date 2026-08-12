@@ -26,6 +26,7 @@ class Task extends Model
         'progress' => 'integer',
         'checklist' => 'array',
         'attachments' => 'array',
+        'assignee' => 'array',
     ];
 
     public function client(): BelongsTo
@@ -38,9 +39,11 @@ class Task extends Model
         return $this->belongsTo(Workflow::class);
     }
 
-    public function assigneeUser(): BelongsTo
+    public function getAssigneeUsers()
     {
-        return $this->belongsTo(User::class, 'assignee');
+        $ids = is_array($this->assignee) ? $this->assignee : [];
+
+        return User::whereIn('id', $ids)->get();
     }
 
     public function comments(): HasMany

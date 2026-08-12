@@ -41,28 +41,30 @@ class DeadlineReminderCommand extends Command
             ->whereNotIn('status', ['completed'])
             ->whereDate('due_date', '<=', $targetDate)
             ->whereDate('due_date', '>=', $today)
-            ->with('assigneeUser')
             ->get();
 
         foreach ($upcomingTasks as $task) {
-            if (! $task->assigneeUser) {
+            $assignees = $task->getAssigneeUsers();
+            if ($assignees->isEmpty()) {
                 continue;
             }
 
             $when = $task->due_date->isSameDay($today) ? 'today' : 'tomorrow';
-            $task->assigneeUser->notify(new TaskDeadlineNotification($task, $when));
-            $count++;
+            foreach ($assignees as $assignee) {
+                $assignee->notify(new TaskDeadlineNotification($task, $when));
+                $count++;
+            }
         }
 
         // Overdue tasks — daily nag until the assignee closes them out.
         $overdueTasks = Task::whereNotNull('due_date')
             ->whereNotIn('status', ['completed'])
             ->whereDate('due_date', '<', $today)
-            ->with('assigneeUser')
             ->get();
 
         foreach ($overdueTasks as $task) {
-            if (! $task->assigneeUser) {
+            $assignees = $task->getAssigneeUsers();
+            if ($assignees->isEmpty()) {
                 continue;
             }
 
@@ -73,8 +75,10 @@ class DeadlineReminderCommand extends Command
                 $daysOverdue = 1;
             }
 
-            $task->assigneeUser->notify(new TaskOverdueNotification($task, $daysOverdue));
-            $count++;
+            foreach ($assignees as $assignee) {
+                $assignee->notify(new TaskOverdueNotification($task, $daysOverdue));
+                $count++;
+            }
         }
 
         // Workflow deadlines
@@ -82,16 +86,17 @@ class DeadlineReminderCommand extends Command
             ->where('stage', '!=', 'published')
             ->whereDate('deadline', '<=', $targetDate)
             ->whereDate('deadline', '>=', now())
-            ->with('assigneeUser')
             ->get();
 
         foreach ($workflows as $workflow) {
+            $assignees = $workflow->getAssigneeUsers();
+            $forRole = $assignees->isNotEmpty() ? $assignees->first()->role : 'all';
             $daysUntil = now()->diffInDays($workflow->deadline, false);
             app(NotificationService::class)->sendNotification(
                 text: "Workflow '{$workflow->title}' is due in {$daysUntil} day(s) ({$workflow->deadline->format('M d, Y')})",
                 type: 'warning',
                 link: route('workflow', absolute: false),
-                forRole: $workflow->assigneeUser ? $workflow->assigneeUser->role : 'all',
+                forRole: $forRole,
                 clientId: $workflow->client_id,
             );
             $count++;

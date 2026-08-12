@@ -367,7 +367,7 @@ new #[Layout('components.layouts.app')] class extends Component
             // FIRST APPROVAL: Content submitted from planner
             if ($status === 'approved') {
                 // Content stays as 'in-review' (it's now in the workflow pipeline)
-                // Create workflow item in first stage — copy assignee + attachments from content
+                    // Create workflow item in first stage — copy assignees + attachments from content
                 $content = DB::table('contents')->where('id', $approval->content_id)->first();
                 if ($content) {
                     $firstStage = DB::table('workflow_stages')->orderBy('order')->first();
@@ -405,13 +405,16 @@ new #[Layout('components.layouts.app')] class extends Component
                         'updated_at' => now(),
                     ]);
 
-                    // Notify the assignee that a workflow item was created from their content
-                    if (!empty($content->assignee) && !$suppressSideEffects) {
-                        $assigneeUser = \App\Models\User::find($content->assignee);
-                        if ($assigneeUser) {
-                            $workflowModel = \App\Models\Workflow::find($newWorkflowId);
-                            if ($workflowModel) {
-                                $assigneeUser->notify(new \App\Notifications\WorkflowAssignedNotification($workflowModel, $actor));
+                    // Notify the assignees that a workflow item was created from their content
+                    if (!$suppressSideEffects) {
+                        $assigneeIds = json_decode($content->assignee, true) ?? [];
+                        foreach ($assigneeIds as $uid) {
+                            $assigneeUser = \App\Models\User::find($uid);
+                            if ($assigneeUser) {
+                                $workflowModel = \App\Models\Workflow::find($newWorkflowId);
+                                if ($workflowModel) {
+                                    $assigneeUser->notify(new \App\Notifications\WorkflowAssignedNotification($workflowModel, $actor));
+                                }
                             }
                         }
                     }

@@ -52,7 +52,7 @@
                 x-show="showPicker"
                 @click.outside="showPicker = false"
                 x-transition
-                class="absolute z-50 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg p-3 w-72"
+                class="absolute z-[60] mt-1 bg-white border border-gray-200 rounded-xl shadow-lg p-3 w-72"
             >
                 <div class="flex items-center justify-between mb-2">
                     <button type="button" @click="prevMonth()" class="btn btn-ghost btn-sm">

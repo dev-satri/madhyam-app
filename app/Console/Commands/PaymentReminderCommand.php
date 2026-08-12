@@ -171,7 +171,7 @@ class PaymentReminderCommand extends Command
                 'title' => "Follow up: Payment overdue — {$client->name} (invoice #{$invoice->id})",
                 'description' => "Invoice #{$invoice->id} for {$client->name} is {$daysOverdue} days overdue.\n\nAmount due: NPR {$netAmount}\nDue date: {$invoice->due_date->format('M d, Y')}\nPayment status: " . ucfirst($invoice->payment_status) . "\n\nPlease follow up with the client for payment collection.",
                 'client_id' => $client->id,
-                'assignee' => $this->getManagerId(),
+                'assignee' => [$this->getManagerId()],
                 'priority' => $priority,
                 'status' => 'todo',
                 'due_date' => now()->addDays($daysOverdue >= 14 ? 1 : 3),

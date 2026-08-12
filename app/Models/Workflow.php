@@ -24,6 +24,7 @@ class Workflow extends Model
     protected $casts = [
         'deadline' => 'date',
         'attachments' => 'array',
+        'assignee' => 'array',
     ];
 
     public function client(): BelongsTo
@@ -41,9 +42,11 @@ class Workflow extends Model
         return $this->belongsTo(WorkflowStage::class, 'stage', 'key');
     }
 
-    public function assigneeUser(): BelongsTo
+    public function getAssigneeUsers()
     {
-        return $this->belongsTo(User::class, 'assignee');
+        $ids = is_array($this->assignee) ? $this->assignee : [];
+
+        return User::whereIn('id', $ids)->get();
     }
 
     public function submitter(): BelongsTo
