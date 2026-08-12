@@ -90,10 +90,10 @@ new #[Layout('components.layouts.app')] class extends Component
         } else {
             $this->stats = [
                 'type' => 'staff',
-                'tasks' => DB::table('tasks')->where('assignee', $userId)->where('created_at', '>=', $dateFilter)->count(),
-                'workflows' => DB::table('workflows')->where('assignee', $userId)->where('created_at', '>=', $dateFilter)->count(),
+                'tasks' => DB::table('tasks')->whereRaw('JSON_CONTAINS(assignee, ?)', [json_encode($userId)])->where('created_at', '>=', $dateFilter)->count(),
+                'workflows' => DB::table('workflows')->whereRaw('JSON_CONTAINS(assignee, ?)', [json_encode($userId)])->where('created_at', '>=', $dateFilter)->count(),
                 'approvals' => DB::table('approvals')->whereNull('deleted_at')->where('submitted_by', $userId)->where('created_at', '>=', $dateFilter)->where('status', 'pending')->count(),
-                'overdue' => DB::table('tasks')->where('assignee', $userId)->where('due_date', '<', now())->where('status', '!=', 'completed')->count(),
+                'overdue' => DB::table('tasks')->whereRaw('JSON_CONTAINS(assignee, ?)', [json_encode($userId)])->where('due_date', '<', now())->where('status', '!=', 'completed')->count(),
             ];
         }
 
@@ -150,7 +150,7 @@ new #[Layout('components.layouts.app')] class extends Component
                 ->toArray();
         } else {
             $this->taskDistribution = DB::table('tasks')
-                ->where('assignee', $userId)
+                ->whereRaw('JSON_CONTAINS(assignee, ?)', [json_encode($userId)])
                 ->where('created_at', '>=', $dateFilter)
                 ->select('status', DB::raw('COUNT(*) as count'))
                 ->groupBy('status')
@@ -168,7 +168,7 @@ new #[Layout('components.layouts.app')] class extends Component
             $this->workload = UserVisibility::apply(
                 DB::table('users')
                     ->leftJoin('tasks', function ($join) use ($dateFilter) {
-                        $join->on('users.id', '=', 'tasks.assignee')
+                        $join->on(DB::raw('JSON_CONTAINS(tasks.assignee, CAST(users.id AS JSON))'), '=', DB::raw('1'))
                             ->where('tasks.created_at', '>=', $dateFilter);
                     })
                     ->select(
@@ -206,7 +206,7 @@ new #[Layout('components.layouts.app')] class extends Component
                 ->map(fn ($t) => (object) ['type' => 'task', 'title' => $t->title, 'date' => $t->due_date]);
         } else {
             $workflowDeadlines = DB::table('workflows')
-                ->where('assignee', $userId)
+                ->whereRaw('JSON_CONTAINS(assignee, ?)', [json_encode($userId)])
                 ->whereNotNull('deadline')
                 ->where('deadline', '>=', $now)
                 ->where('deadline', '<=', $rangeEnd)
@@ -215,7 +215,7 @@ new #[Layout('components.layouts.app')] class extends Component
                 ->get()
                 ->map(fn ($w) => (object) ['type' => 'workflow', 'title' => $w->title, 'date' => $w->deadline]);
             $taskDeadlines = DB::table('tasks')
-                ->where('assignee', $userId)
+                ->whereRaw('JSON_CONTAINS(assignee, ?)', [json_encode($userId)])
                 ->whereNotNull('due_date')
                 ->where('due_date', '>=', $now)
                 ->where('due_date', '<=', $rangeEnd)
@@ -260,7 +260,7 @@ new #[Layout('components.layouts.app')] class extends Component
             $this->teamPerformance = UserVisibility::apply(
                 DB::table('users')
                     ->leftJoin('tasks', function ($join) use ($dateFilter) {
-                        $join->on('users.id', '=', 'tasks.assignee')
+                        $join->on(DB::raw('JSON_CONTAINS(tasks.assignee, CAST(users.id AS JSON))'), '=', DB::raw('1'))
                             ->where('tasks.created_at', '>=', $dateFilter);
                     })
                     ->select(
@@ -282,8 +282,8 @@ new #[Layout('components.layouts.app')] class extends Component
                     'pct' => $m->total_tasks > 0 ? round(($m->completed_tasks / $m->total_tasks) * 100) : 0,
                 ]);
         } else {
-            $totalTasks = DB::table('tasks')->where('assignee', $userId)->where('created_at', '>=', $dateFilter)->count();
-            $completedTasks = DB::table('tasks')->where('assignee', $userId)->where('status', 'completed')->where('created_at', '>=', $dateFilter)->count();
+            $totalTasks = DB::table('tasks')->whereRaw('JSON_CONTAINS(assignee, ?)', [json_encode($userId)])->where('created_at', '>=', $dateFilter)->count();
+            $completedTasks = DB::table('tasks')->whereRaw('JSON_CONTAINS(assignee, ?)', [json_encode($userId)])->where('status', 'completed')->where('created_at', '>=', $dateFilter)->count();
             $this->teamPerformance = collect();
             if ($totalTasks > 0) {
                 $this->teamPerformance = collect([[
@@ -477,7 +477,7 @@ new #[Layout('components.layouts.app')] class extends Component
                 <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
                     @php
                         $myTasks = $stats['tasks'] ?? 0;
-                        $myCompleted = DB::table('tasks')->where('assignee', Auth::id())->where('status', 'completed')->count();
+                        $myCompleted = DB::table('tasks')->whereRaw('JSON_CONTAINS(assignee, ?)', [json_encode(Auth::id())])->where('status', 'completed')->count();
                         $myOverdue = $stats['overdue'] ?? 0;
                         $myWorkflows = $stats['workflows'] ?? 0;
                         $completionPct = $myTasks > 0 ? round(($myCompleted / $myTasks) * 100) : 0;
