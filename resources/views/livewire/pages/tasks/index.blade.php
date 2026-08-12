@@ -1134,15 +1134,9 @@ new #[Layout('components.layouts.app')] class extends Component
                         </div>
                     </div>
                 </div>
-            </div>
             @endif
             @endif
         </div>
-
-        @script
-        <script>
-        </script>
-        @endscript
         blade;
     }
 

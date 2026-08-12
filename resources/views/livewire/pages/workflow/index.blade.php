@@ -2290,15 +2290,8 @@ new #[Layout('components.layouts.app')] class extends Component
     @endif
 
     @script
-        <script></script>
-    @endscript
-
-    <script>
-        (function () {
-            if (window._wfSortableInit) return;
-            window._wfSortableInit = true;
-
-            function initWorkflowSortable() {
+        <script>
+            window.initWorkflowSortable = function () {
                 if (typeof Sortable === 'undefined') return;
                 document.querySelectorAll('.cards-area').forEach(function (el) {
                     if (el._sortable) {
@@ -2350,17 +2343,18 @@ new #[Layout('components.layouts.app')] class extends Component
                         }
                     });
                 });
-            }
+            };
 
-            document.addEventListener('DOMContentLoaded', function () {
-                setTimeout(initWorkflowSortable, 300);
-            });
+            // Initialize immediately when the component loads/mounts
+            setTimeout(window.initWorkflowSortable, 100);
 
-            document.addEventListener('livewire:initialized', function () {
-                Livewire.hook('morphed', function () {
-                    setTimeout(initWorkflowSortable, 100);
+            // Hook into Livewire's morph lifecycle for reactivity
+            if (!window._wfSortableInit) {
+                window._wfSortableInit = true;
+                Livewire.hook('morphed', () => {
+                    setTimeout(window.initWorkflowSortable, 50);
                 });
-            });
-        })();
-    </script>
+            }
+        </script>
+    @endscript
 </div>
