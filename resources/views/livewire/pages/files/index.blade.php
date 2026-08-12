@@ -39,12 +39,32 @@ new #[Layout('components.layouts.app')] class extends Component
     public string $externalFileType = 'document';
     public bool $googleDriveConnected = false;
     public bool $showDriveBrowser = false;
+    public bool $folderMode = false;
+    public string $uploadFolderName = '';
+    public bool $folderUploading = false;
+    public int $folderProgressCurrent = 0;
+    public int $folderProgressTotal = 0;
+    public string $folderProgressFile = '';
+    public array $folderErrors = [];
+    public bool $folderCancelled = false;
 
     public function mount(): void
     {
         $this->currentFolderId = request()->query('folder', 0);
         $connection = GoogleDriveConnection::getActive();
         $this->googleDriveConnected = $connection && $connection->isActive();
+    }
+
+    public function updatedPendingFiles(): void
+    {
+        if ($this->folderMode && ! empty($this->pendingFiles)) {
+            $first = $this->pendingFiles[0];
+            if (method_exists($first, 'getClientOriginalPath')) {
+                $path = $first->getClientOriginalPath();
+                $parts = explode('/', $path);
+                $this->uploadFolderName = $parts[0] ?? 'Selected folder';
+            }
+        }
     }
 
     #[Computed]
@@ -595,6 +615,286 @@ new #[Layout('components.layouts.app')] class extends Component
         } else {
             $this->dispatch('toast', message: "$uploaded file(s) uploaded to Google Drive", type: 'success');
         }
+    }
+
+    public function uploadFolderToDrive(): void
+    {
+        if (empty($this->pendingFiles)) {
+            $this->dispatch('toast', message: 'No files selected', type: 'warning');
+            return;
+        }
+
+        $connection = GoogleDriveConnection::getActive();
+        if (! $connection || ! $connection->isActive()) {
+            $this->dispatch('toast', message: 'Google Drive is not connected. Please connect first.', type: 'error');
+            return;
+        }
+
+        $driveService = app(GoogleDriveService::class);
+        $quota = $driveService->getStorageQuota();
+
+        if ($quota && $quota['limit'] > 0) {
+            $totalNewBytes = array_sum(array_map(fn ($f) => $f->getSize(), $this->pendingFiles));
+            if (($quota['used'] + $totalNewBytes) > $quota['limit']) {
+                $this->dispatch('toast', message: 'Google Drive storage quota exceeded. Free up space first.', type: 'error');
+                return;
+            }
+        }
+
+        $this->folderUploading = true;
+        $this->folderCancelled = false;
+        $this->folderErrors = [];
+        $this->folderProgressCurrent = 0;
+        $this->folderProgressTotal = count($this->pendingFiles);
+        $this->folderProgressFile = '';
+        $folderPathMap = [];
+
+        $retentionDays = DB::table('settings')->value('file_retention_days') ?? 5;
+        $uploaded = 0;
+
+        foreach ($this->pendingFiles as $file) {
+            if ($this->folderCancelled) {
+                break;
+            }
+
+            $relativePath = method_exists($file, 'getClientOriginalPath')
+                ? $file->getClientOriginalPath()
+                : $file->getClientOriginalName();
+            $fileName = $file->getClientOriginalName();
+
+            $this->folderProgressFile = $relativePath;
+            $this->dispatch('folder-upload-progress', [
+                'current' => $this->folderProgressCurrent,
+                'total' => $this->folderProgressTotal,
+                'file' => $this->folderProgressFile,
+            ]);
+
+            try {
+                $parentFolderId = $this->resolveDriveFolder($relativePath, $driveService, $folderPathMap);
+
+                $driveResult = $driveService->uploadFile(
+                    $fileName,
+                    file_get_contents($file->getRealPath()),
+                    $parentFolderId,
+                    $file->getMimeType()
+                );
+
+                $driveFileId = $driveResult['id'] ?? null;
+                $webViewLink = $driveResult['webViewLink'] ?? ("https://drive.google.com/file/d/{$driveFileId}/view");
+
+                $ext = strtolower($file->getClientOriginalExtension());
+                $type = match(true) {
+                    in_array($ext, ['jpg','jpeg','png','gif','svg','webp']) => 'image',
+                    in_array($ext, ['mp4','mov','avi','mkv','webm']) => 'video',
+                    in_array($ext, ['mp3','wav','ogg','flac']) => 'audio',
+                    default => 'document',
+                };
+
+                DB::table('files')->insertGetId([
+                    'name' => $fileName,
+                    'path' => '',
+                    'type' => $type,
+                    'size' => $file->getSize(),
+                    'storage_type' => 'drive',
+                    'external_url' => $webViewLink,
+                    'drive_file_id' => $driveFileId,
+                    'folder_id' => $this->currentFolderId ?: null,
+                    'client_id' => $this->folderClientId ?: null,
+                    'tags' => $this->uploadTags ?: null,
+                    'uploaded_by' => Auth::id(),
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+
+                DB::table('file_expiries')->insert([
+                    'file_id' => DB::getPdo()->lastInsertId(),
+                    'expiry_date' => now()->addDays($retentionDays),
+                    'extended' => false,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+
+                if ($this->folderClientId) {
+                    PackageService::recordFile($this->folderClientId, $file->getSize());
+                }
+
+                $uploaded++;
+                $this->folderProgressCurrent++;
+            } catch (\Exception $e) {
+                $this->folderErrors[] = $relativePath . ': ' . $e->getMessage();
+                \Illuminate\Support\Facades\Log::error('Google Drive folder upload failed', [
+                    'file' => $relativePath,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        $this->folderUploading = false;
+        $this->folderProgressFile = '';
+
+        $this->dispatch('folder-upload-complete', [
+            'uploaded' => $uploaded,
+            'errors' => count($this->folderErrors),
+            'total' => $this->folderProgressTotal,
+        ]);
+
+        if (! $this->folderCancelled && empty($this->folderErrors)) {
+            $this->pendingFiles = [];
+            $this->uploadTags = '';
+            $this->folderMode = false;
+            $this->uploadFolderName = '';
+            $this->showUpload = false;
+            $this->dispatch('toast', message: "$uploaded file(s) uploaded to Google Drive", type: 'success');
+        } elseif (! empty($this->folderErrors)) {
+            $this->dispatch('toast', message: "$uploaded file(s) uploaded, " . count($this->folderErrors) . " failed", type: 'warning');
+        } else {
+            $this->dispatch('toast', message: "Upload cancelled. $uploaded file(s) uploaded before cancel.", type: 'warning');
+        }
+    }
+
+    public function uploadFolderToLocal(): void
+    {
+        if (empty($this->pendingFiles)) {
+            $this->dispatch('toast', message: 'No files selected', type: 'warning');
+            return;
+        }
+
+        if ($this->folderClientId) {
+            $info = $this->getStorageInfo();
+            $totalNewBytes = array_sum(array_map(fn ($f) => $f->getSize(), $this->pendingFiles));
+            $totalNewMb = $totalNewBytes / 1048576;
+
+            if (($info['used_mb'] + $totalNewMb) > $info['limit_mb']) {
+                $this->dispatch('toast', message: 'Storage quota exceeded.', type: 'error');
+                return;
+            }
+        }
+
+        $this->folderUploading = true;
+        $this->folderCancelled = false;
+        $this->folderErrors = [];
+        $this->folderProgressCurrent = 0;
+        $this->folderProgressTotal = count($this->pendingFiles);
+        $this->folderProgressFile = '';
+
+        $retentionDays = DB::table('settings')->value('file_retention_days') ?? 5;
+        $uploaded = 0;
+
+        foreach ($this->pendingFiles as $file) {
+            if ($this->folderCancelled) {
+                break;
+            }
+
+            $relativePath = method_exists($file, 'getClientOriginalPath')
+                ? $file->getClientOriginalPath()
+                : $file->getClientOriginalName();
+            $fileName = $file->getClientOriginalName();
+
+            $this->folderProgressFile = $relativePath;
+            $this->dispatch('folder-upload-progress', [
+                'current' => $this->folderProgressCurrent,
+                'total' => $this->folderProgressTotal,
+                'file' => $this->folderProgressFile,
+            ]);
+
+            try {
+                $path = $file->store('files/' . now()->format('Y/m') . '/' . dirname($relativePath), 'public');
+
+                $ext = strtolower($file->getClientOriginalExtension());
+                $type = match(true) {
+                    in_array($ext, ['jpg','jpeg','png','gif','svg','webp']) => 'image',
+                    in_array($ext, ['mp4','mov','avi','mkv','webm']) => 'video',
+                    in_array($ext, ['mp3','wav','ogg','flac']) => 'audio',
+                    default => 'document',
+                };
+
+                $fileId = DB::table('files')->insertGetId([
+                    'name' => $fileName,
+                    'path' => $path,
+                    'type' => $type,
+                    'size' => $file->getSize(),
+                    'storage_type' => 'local',
+                    'folder_id' => $this->currentFolderId ?: null,
+                    'client_id' => $this->folderClientId ?: null,
+                    'tags' => $this->uploadTags ?: null,
+                    'uploaded_by' => Auth::id(),
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+
+                DB::table('file_expiries')->insert([
+                    'file_id' => $fileId,
+                    'expiry_date' => now()->addDays($retentionDays),
+                    'extended' => false,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+
+                if ($this->folderClientId) {
+                    PackageService::recordFile($this->folderClientId, $file->getSize());
+                }
+
+                $uploaded++;
+                $this->folderProgressCurrent++;
+            } catch (\Exception $e) {
+                $this->folderErrors[] = $relativePath . ': ' . $e->getMessage();
+            }
+        }
+
+        $this->folderUploading = false;
+        $this->folderProgressFile = '';
+
+        $this->dispatch('folder-upload-complete', [
+            'uploaded' => $uploaded,
+            'errors' => count($this->folderErrors),
+            'total' => $this->folderProgressTotal,
+        ]);
+
+        if (! $this->folderCancelled && empty($this->folderErrors)) {
+            $this->pendingFiles = [];
+            $this->uploadTags = '';
+            $this->folderMode = false;
+            $this->uploadFolderName = '';
+            $this->showUpload = false;
+            $this->dispatch('toast', message: "$uploaded file(s) uploaded successfully", type: 'success');
+        } elseif (! empty($this->folderErrors)) {
+            $this->dispatch('toast', message: "$uploaded file(s) uploaded, " . count($this->folderErrors) . " failed", type: 'warning');
+        } else {
+            $this->dispatch('toast', message: "Upload cancelled. $uploaded file(s) uploaded before cancel.", type: 'warning');
+        }
+    }
+
+    private function resolveDriveFolder(string $relativePath, GoogleDriveService $driveService, array &$folderPathMap): ?string
+    {
+        $parts = explode('/', $relativePath);
+        array_pop($parts);
+
+        if (empty($parts)) {
+            return null;
+        }
+
+        $currentParent = null;
+        $currentPath = '';
+
+        foreach ($parts as $part) {
+            $currentPath = $currentPath ? $currentPath . '/' . $part : $part;
+
+            if (isset($folderPathMap[$currentPath])) {
+                $currentParent = $folderPathMap[$currentPath];
+                continue;
+            }
+
+            $folder = $driveService->createFolder($part, $currentParent);
+            $currentParent = $folder['id'];
+            $folderPathMap[$currentPath] = $currentParent;
+        }
+
+        return $currentParent;
+    }
+
+    public function cancelFolderUpload(): void
+    {
+        $this->folderCancelled = true;
     }
 
     public function openPreview(int $id): void
@@ -1417,6 +1717,18 @@ new #[Layout('components.layouts.app')] class extends Component
                              const k = 1024, s = ['B','KB','MB','GB'];
                              const i = Math.floor(Math.log(bytes) / Math.log(k));
                              return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + s[i];
+                         },
+                         treeExpanded: true,
+                         get folderMode() { return $wire.folderMode },
+                         get folderUploading() { return $wire.folderUploading },
+                         get folderProgressCurrent() { return $wire.folderProgressCurrent },
+                         get folderProgressTotal() { return $wire.folderProgressTotal },
+                         get folderProgressFile() { return $wire.folderProgressFile },
+                         get folderErrors() { return $wire.folderErrors },
+                         get folderProgressPct() {
+                             return this.folderProgressTotal > 0
+                                 ? Math.round(this.folderProgressCurrent / this.folderProgressTotal * 100)
+                                 : 0;
                          }
                      }"
                      x-on:upload:started.window="if($event.detail.id==='pendingFiles'){upOn=true;upDone=false;upP=0;}"
@@ -1427,11 +1739,11 @@ new #[Layout('components.layouts.app')] class extends Component
                 >
                     <div class="modal-box w-full sm:max-w-lg sm:mx-4 max-h-[90vh] rounded-t-2xl sm:rounded-2xl flex flex-col">
                         <div class="sticky top-0 bg-white flex items-center justify-between p-4 border-b flex-shrink-0 rounded-t-2xl">
-                            <h3 class="font-bold text-lg">Upload Files</h3>
-                            <button wire:click="$set('showUpload', false)" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
+                            <h3 class="font-bold text-lg" x-text="folderUploading ? 'Uploading Folder...' : 'Upload Files'">Upload Files</h3>
+                            <button wire:click="$set('showUpload', false)" class="text-gray-400 hover:text-gray-600" x-show="!folderUploading"><i class="fas fa-times"></i></button>
                         </div>
 
-                        {{-- Mode Toggle --}}
+                        {{-- Storage Mode Toggle (Local / Drive / Link / Browse) --}}
                         <div class="px-4 pt-4 flex-shrink-0">
                             <div class="grid grid-cols-2 sm:grid-cols-4 bg-gray-100 rounded-lg p-1 gap-1">
                                 <button wire:click="setUploadMode('local')"
@@ -1460,36 +1772,68 @@ new #[Layout('components.layouts.app')] class extends Component
                         <div class="p-4 space-y-4 overflow-y-auto flex-1 min-h-0">
                             @if($uploadMode === 'local' || $uploadMode === 'drive-upload')
 
-                                {{-- Upload Progress Bar --}}
-                                <div x-show="upOn" x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0 -translate-y-2" x-transition:enter-end="opacity-100 translate-y-0" class="space-y-3">
-                                    <div class="bg-[rgba(var(--brand-rgb),0.04)] border border-[rgba(var(--brand-rgb),0.15)] rounded-xl p-4">
-                                        <div class="flex items-center justify-between mb-2.5">
-                                            <div class="flex items-center gap-2">
-                                                <div class="relative">
-                                                    <i class="fas fa-cloud-upload-alt text-[var(--brand)] text-lg upload-icon-spin"></i>
-                                                </div>
-                                                <span class="text-sm font-semibold text-gray-800">Uploading files...</span>
-                                            </div>
-                                            <span class="text-sm font-bold tabular-nums" :class="upP >= 100 ? 'text-green-600' : 'text-[var(--brand)]'" x-text="upP + '%'"></span>
-                                        </div>
-                                        <div class="w-full bg-gray-200 rounded-full h-2.5 overflow-hidden mb-2">
-                                            <div class="h-full rounded-full transition-all duration-300 ease-out"
-                                                 :class="upP >= 100 ? 'bg-green-500' : 'bg-[var(--brand)]'"
-                                                 :style="'width:' + upP + '%'"></div>
-                                        </div>
-                                        <div class="flex items-center justify-between">
-                                            <span class="text-xs text-gray-500 tabular-nums">
-                                                <span x-text="fmt(upB)"></span> / <span x-text="fmt(upT)"></span>
-                                            </span>
-                                            <button type="button" @click="$wire.cancelUpload('pendingFiles')" class="text-xs text-red-500 hover:text-red-700 font-medium transition-colors">
-                                                <i class="fas fa-times mr-1"></i>Cancel
-                                            </button>
-                                        </div>
-                                    </div>
+                                {{-- Files / Folder Toggle --}}
+                                @if(!$folderUploading)
+                                <div class="flex items-center gap-2" x-show="!upOn">
+                                    <button @click="$wire.set('folderMode', false); $wire.set('pendingFiles', [])"
+                                            :class="!folderMode ? 'bg-[var(--brand)] text-white shadow-sm' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'"
+                                            class="flex-1 py-2 px-3 rounded-lg text-sm font-semibold transition-all flex items-center justify-center gap-1.5">
+                                        <i class="fas fa-file text-xs"></i> Files
+                                    </button>
+                                    <button @click="$wire.set('folderMode', true); $wire.set('pendingFiles', [])"
+                                            :class="folderMode ? 'bg-[var(--brand)] text-white shadow-sm' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'"
+                                            class="flex-1 py-2 px-3 rounded-lg text-sm font-semibold transition-all flex items-center justify-center gap-1.5">
+                                        <i class="fas fa-folder-open text-xs"></i> Folder
+                                    </button>
                                 </div>
+                                @endif
 
-                                {{-- Upload Complete Indicator --}}
-                                <div x-show="upDone && !upOn" x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0 scale-95" x-transition:enter-end="opacity-100 scale-100" class="flex items-center gap-2 bg-green-50 border border-green-200 rounded-xl px-4 py-3">
+                                {{-- Folder Upload Progress --}}
+                                <template x-if="folderUploading">
+                                    <div class="space-y-3">
+                                        <div class="bg-[rgba(var(--brand-rgb),0.04)] border border-[rgba(var(--brand-rgb),0.15)] rounded-xl p-4">
+                                            <div class="flex items-center justify-between mb-2.5">
+                                                <div class="flex items-center gap-2">
+                                                    <div class="relative">
+                                                        <i class="fas fa-cloud-upload-alt text-[var(--brand)] text-lg upload-icon-spin"></i>
+                                                    </div>
+                                                    <span class="text-sm font-semibold text-gray-800">Uploading folder...</span>
+                                                </div>
+                                                <span class="text-sm font-bold tabular-nums" :class="folderProgressPct >= 100 ? 'text-green-600' : 'text-[var(--brand)]'" x-text="folderProgressPct + '%'"></span>
+                                            </div>
+                                            <div class="w-full bg-gray-200 rounded-full h-2.5 overflow-hidden mb-2.5">
+                                                <div class="h-full rounded-full transition-all duration-300 ease-out"
+                                                     :class="folderProgressPct >= 100 ? 'bg-green-500' : 'bg-[var(--brand)]'"
+                                                     :style="'width:' + folderProgressPct + '%'"></div>
+                                            </div>
+                                            <div class="flex items-center justify-between">
+                                                <span class="text-xs text-gray-500 tabular-nums" x-text="folderProgressCurrent + ' / ' + folderProgressTotal + ' files'"></span>
+                                                <button type="button" @click="$wire.cancelFolderUpload()" class="text-xs text-red-500 hover:text-red-700 font-medium transition-colors">
+                                                    <i class="fas fa-times mr-1"></i>Cancel
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        {{-- Current file --}}
+                                        <div class="flex items-center gap-2 bg-gray-50 rounded-lg px-3 py-2" x-show="folderProgressFile">
+                                            <i class="fas fa-file text-[var(--brand)] text-xs upload-icon-spin"></i>
+                                            <span class="text-xs text-gray-600 truncate" x-text="folderProgressFile"></span>
+                                        </div>
+
+                                        {{-- Errors --}}
+                                        @if(!empty($folderErrors))
+                                        <div class="bg-red-50 border border-red-200 rounded-lg p-3 space-y-1">
+                                            <p class="text-xs font-semibold text-red-800"><i class="fas fa-exclamation-triangle mr-1"></i>Failed files:</p>
+                                            @foreach($folderErrors as $error)
+                                                <p class="text-[11px] text-red-600 truncate" title="{{ $error }}">{{ $error }}</p>
+                                            @endforeach
+                                        </div>
+                                        @endif
+                                    </div>
+                                </template>
+
+                                {{-- Upload Complete Indicator (regular files) --}}
+                                <div x-show="upDone && !upOn && !folderUploading" x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0 scale-95" x-transition:enter-end="opacity-100 scale-100" class="flex items-center gap-2 bg-green-50 border border-green-200 rounded-xl px-4 py-3">
                                     <div class="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center flex-shrink-0">
                                         <i class="fas fa-check text-green-600 text-sm"></i>
                                     </div>
@@ -1500,7 +1844,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                 </div>
 
                                 {{-- Drop Zone (hidden during upload) --}}
-                                <div x-show="!upOn"
+                                <div x-show="!upOn && !folderUploading"
                                     class="border-2 border-dashed rounded-xl p-6 sm:p-8 text-center cursor-pointer transition-colors hover:border-[var(--brand)] hover:bg-[rgba(var(--brand-rgb),0.02)]"
                                     x-on:dragover.prevent="dragging = true"
                                     x-on:dragleave="dragging = false"
@@ -1511,23 +1855,74 @@ new #[Layout('components.layouts.app')] class extends Component
                                         <div class="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-blue-50 flex items-center justify-center mx-auto mb-3">
                                             <i class="fab fa-google text-blue-500 text-xl sm:text-2xl"></i>
                                         </div>
-                                        <p class="text-sm font-semibold text-gray-700 mb-1">Upload to Google Drive</p>
-                                        <p class="text-xs text-gray-500 mb-3">Files go directly to your connected Drive</p>
+                                        <p class="text-sm font-semibold text-gray-700 mb-1" x-text="folderMode ? 'Upload Folder to Google Drive' : 'Upload to Google Drive'"></p>
+                                        <p class="text-xs text-gray-500 mb-3" x-text="folderMode ? 'Entire folder structure will be mirrored on Drive' : 'Files go directly to your connected Drive'"></p>
                                     @else
                                         <i class="fas fa-cloud-upload-alt text-3xl sm:text-4xl text-gray-300 mb-3"></i>
-                                        <p class="text-sm text-gray-600 mb-1">Drag & drop files here, or</p>
+                                        <p class="text-sm text-gray-600 mb-1" x-text="folderMode ? 'Select a folder to upload' : 'Drag & drop files here, or'"></p>
                                     @endif
-                                    <label class="btn btn-secondary btn-sm cursor-pointer">
+
+                                    {{-- Regular file input --}}
+                                    <label class="btn btn-secondary btn-sm cursor-pointer" x-show="!folderMode">
                                         <i class="fas fa-folder-open text-sm"></i> Browse Files
                                         <input type="file" wire:model="pendingFiles" x-ref="fileInput" multiple class="hidden" accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.txt,.zip">
                                     </label>
-                                    <p class="text-xs text-gray-400 mt-2">Max 50MB per file</p>
+
+                                    {{-- Folder input --}}
+                                    <label class="btn btn-secondary btn-sm cursor-pointer" x-show="folderMode">
+                                        <i class="fas fa-folder-open text-sm"></i> Select Folder
+                                        <input type="file" wire:model="pendingFiles" x-ref="folderInput" webkitdirectory multiple class="hidden">
+                                    </label>
+
+                                    <p class="text-xs text-gray-400 mt-2" x-text="folderMode ? 'All files inside the folder will be uploaded' : 'Max 50MB per file'"></p>
                                 </div>
 
                                 @error('pendingFiles') <p class="text-xs text-red-500">{{ $message }}</p> @enderror
 
-                                {{-- Pending Files List --}}
-                                @if(count($pendingFiles) > 0)
+                                {{-- Folder Tree Preview --}}
+                                @if($folderMode && count($pendingFiles) > 0 && !$folderUploading)
+                                    <div class="space-y-2">
+                                        <div class="flex items-center justify-between">
+                                            <p class="text-sm font-medium text-gray-700 flex items-center gap-1.5">
+                                                <i class="fas fa-folder-open text-yellow-500"></i>
+                                                <span>{{ $uploadFolderName ?: 'Selected folder' }}</span>
+                                                <span class="text-xs text-gray-400 font-normal">({{ count($pendingFiles) }} files)</span>
+                                            </p>
+                                            <button @click="$wire.set('pendingFiles', []); $wire.set('uploadFolderName', '')" class="text-xs text-red-400 hover:text-red-600 transition-colors flex items-center gap-1">
+                                                <i class="fas fa-times"></i> Clear
+                                            </button>
+                                        </div>
+                                        <div class="bg-gray-50 rounded-xl border border-gray-200 divide-y divide-gray-100 max-h-56 overflow-y-auto">
+                                            @foreach($pendingFiles as $file)
+                                                @php
+                                                    $relativePath = method_exists($file, 'getClientOriginalPath') ? $file->getClientOriginalPath() : $file->getClientOriginalName();
+                                                    $parts = explode('/', $relativePath);
+                                                    $depth = max(0, count($parts) - 2);
+                                                    $fileName = end($parts);
+                                                    $ext = strtolower(pathinfo($fileName, PATHINFO_EXTENSION));
+                                                    $iconClass = match(true) {
+                                                        in_array($ext, ['jpg','jpeg','png','gif','svg','webp']) => 'fa-file-image text-blue-500',
+                                                        in_array($ext, ['mp4','mov','avi','mkv','webm']) => 'fa-file-video text-purple-500',
+                                                        in_array($ext, ['mp3','wav','ogg','flac']) => 'fa-file-audio text-pink-500',
+                                                        $ext === 'pdf' => 'fa-file-pdf text-red-500',
+                                                        in_array($ext, ['doc','docx']) => 'fa-file-word text-blue-600',
+                                                        in_array($ext, ['xls','xlsx']) => 'fa-file-excel text-green-600',
+                                                        $ext === 'zip' => 'fa-file-zip text-yellow-600',
+                                                        default => 'fa-file text-gray-400',
+                                                    };
+                                                @endphp
+                                                <div class="flex items-center gap-2 px-3 py-1.5 hover:bg-gray-100 transition-colors group" style="padding-left: {{ 12 + $depth * 16 }}px">
+                                                    <i class="fas {{ $iconClass }} text-xs flex-shrink-0"></i>
+                                                    <span class="text-xs text-gray-700 truncate flex-1" title="{{ $relativePath }}">{{ $fileName }}</span>
+                                                    <span class="text-[10px] text-gray-400 font-mono flex-shrink-0">{{ $this->formatSize($file->getSize()) }}</span>
+                                                </div>
+                                            @endforeach
+                                        </div>
+                                    </div>
+                                @endif
+
+                                {{-- Regular Pending Files List (non-folder mode) --}}
+                                @if(!$folderMode && count($pendingFiles) > 0 && !$folderUploading)
                                     <div class="space-y-1.5 max-h-48 overflow-y-auto">
                                         <div class="flex items-center justify-between">
                                             <p class="text-xs font-semibold text-gray-500">{{ count($pendingFiles) }} file(s) selected</p>
@@ -1603,22 +1998,32 @@ new #[Layout('components.layouts.app')] class extends Component
                                 </div>
                             @endif
 
-                            <div x-show="!upOn">
+                            <div x-show="!upOn && !folderUploading">
                                 <label class="form-label">Tags (comma-separated)</label>
                                 <input type="text" wire:model="uploadTags" class="form-input" placeholder="e.g. logo, banner, social">
                             </div>
                         </div>
                         <div class="sticky bottom-0 bg-white flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-2 p-4 border-t flex-shrink-0 rounded-b-2xl">
-                            <button wire:click="$set('showUpload', false)" class="btn btn-secondary order-2 sm:order-1">Cancel</button>
+                            <button wire:click="$set('showUpload', false)" class="btn btn-secondary order-2 sm:order-1" x-show="!folderUploading">Cancel</button>
                             @if($uploadMode === 'local')
-                                <button wire:click="uploadFiles" class="btn btn-primary order-1 sm:order-2" x-bind:disabled="$wire.pendingFiles.length === 0 || upOn" wire:loading.attr="disabled">
+                                {{-- Regular file upload button --}}
+                                <button wire:click="uploadFiles" class="btn btn-primary order-1 sm:order-2" x-bind:disabled="$wire.pendingFiles.length === 0 || upOn || folderMode" wire:loading.attr="disabled" x-show="!folderMode">
                                     <span wire:loading.remove wire:target="uploadFiles"><i class="fas fa-upload text-sm"></i> Upload</span>
                                     <span wire:loading wire:target="uploadFiles"><i class="fas fa-spinner fa-spin text-sm"></i> Processing...</span>
                                 </button>
+                                {{-- Folder upload button (local) --}}
+                                <button wire:click="uploadFolderToLocal" class="btn btn-primary order-1 sm:order-2" x-bind:disabled="$wire.pendingFiles.length === 0 || folderUploading" x-show="folderMode && !folderUploading">
+                                    <i class="fas fa-folder-open text-sm"></i> Upload Folder
+                                </button>
                             @elseif($uploadMode === 'drive-upload')
-                                <button wire:click="uploadToGoogleDrive" class="btn btn-primary order-1 sm:order-2" wire:loading.attr="disabled" x-bind:disabled="$wire.pendingFiles.length === 0 || upOn">
+                                {{-- Regular file upload button --}}
+                                <button wire:click="uploadToGoogleDrive" class="btn btn-primary order-1 sm:order-2" wire:loading.attr="disabled" x-bind:disabled="$wire.pendingFiles.length === 0 || upOn || folderMode" x-show="!folderMode">
                                     <span wire:loading.remove wire:target="uploadToGoogleDrive"><i class="fab fa-google text-sm mr-1"></i> Upload to Drive</span>
                                     <span wire:loading wire:target="uploadToGoogleDrive"><i class="fas fa-spinner fa-spin mr-1"></i> Processing...</span>
+                                </button>
+                                {{-- Folder upload button (Drive) --}}
+                                <button wire:click="uploadFolderToDrive" class="btn btn-primary order-1 sm:order-2" x-bind:disabled="$wire.pendingFiles.length === 0 || folderUploading" x-show="folderMode && !folderUploading">
+                                    <i class="fab fa-google text-sm mr-1"></i> Upload Folder to Drive
                                 </button>
                             @elseif($uploadMode === 'drive')
                                 <button wire:click="saveExternalLink" class="btn btn-primary order-1 sm:order-2" x-bind:disabled="!$wire.externalUrl || !$wire.externalFileName">
