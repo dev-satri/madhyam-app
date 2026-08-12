@@ -1,22 +1,30 @@
 <?php
 
-use Livewire\Volt\Component;
-use Livewire\WithFileUploads;
-use Livewire\Attributes\Layout;
-use Livewire\Attributes\On;
-use Livewire\Attributes\Computed;
+use App\Models\Client;
+use App\Models\Comment;
+use App\Models\File;
+use App\Models\Folder;
+use App\Models\User;
 use App\Models\Workflow;
 use App\Models\WorkflowStage;
-use App\Models\Client;
-use App\Models\User;
+use App\Notifications\WorkflowAssignedNotification;
+use App\Notifications\WorkflowAttachedNotification;
+use App\Notifications\WorkflowCommentNotification;
 use App\Services\ActivityLogger;
 use App\Services\NotificationService;
 use App\Services\PackageService;
 use App\Services\RbacService;
-use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Auth;
+use App\Support\NepaliDate;
 use App\Support\UserVisibility;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
+use Livewire\Attributes\Computed;
+use Livewire\Attributes\Layout;
+use Livewire\Attributes\On;
+use Livewire\Volt\Component;
+use Livewire\WithFileUploads;
 
 new #[Layout('components.layouts.app')] class extends Component
 {
@@ -25,45 +33,69 @@ new #[Layout('components.layouts.app')] class extends Component
     protected static bool $syncingContent = false;
 
     public string $search = '';
+
     public string $clientFilter = '';
+
     public string $typeFilter = '';
+
     public string $priorityFilter = '';
 
     public bool $showForm = false;
+
     public string $formMode = 'create';
+
     public int $editingId = 0;
 
     public string $formTitle = '';
+
     public string $formDescription = '';
+
     public ?int $formClientId = null;
+
     public ?int $formContentId = null;
+
     public string $formType = 'post';
+
     public string $formPriority = 'medium';
+
     public array $formAssigneeIds = [];
+
     public string $formStage = '';
+
     public ?string $formDeadline = null;
+
     public string $formTags = '';
 
     public array $formAttachments = [];
+
     public string $formAttachmentsJson = '[]';
 
     public bool $showStageManager = false;
+
     public array $stages = [];
+
     public string $newStageName = '';
+
     public string $newStageColor = '#4f46e5';
+
     public string $editingStageColor = '#4f46e5';
+
     public ?int $editingStageId = null;
 
     public bool $showDetail = false;
+
     public int $detailId = 0;
 
     // Revision modal
     public bool $showRevisionModal = false;
+
     public int $revisionWorkflowId = 0;
+
     public string $revisionNotes = '';
 
     // Resubmit
     public bool $showResubmitModal = false;
+
     public int $resubmitWorkflowId = 0;
 
     public array $presetColors = [
@@ -75,15 +107,15 @@ new #[Layout('components.layouts.app')] class extends Component
 
     // Discussion
     public string $commentText = '';
+
     public string $commentAttachments = '[]';
 
     public $newFileUpload = null;
 
-
     public function mount(): void
     {
         $this->loadStages();
-        if (!empty($this->stages) && !$this->formStage) {
+        if (! empty($this->stages) && ! $this->formStage) {
             $this->formStage = $this->stages[0]['key'] ?? '';
         }
     }
@@ -98,9 +130,12 @@ new #[Layout('components.layouts.app')] class extends Component
         $this->stages = WorkflowStage::orderBy('order')->get()->toArray();
     }
 
-    public function getAvailableContent(): \Illuminate\Support\Collection
+    public function getAvailableContent(): Collection
     {
-        if (!$this->formClientId) return collect();
+        if (! $this->formClientId) {
+            return collect();
+        }
+
         return DB::table('contents')
             ->whereNull('deleted_at')
             ->where('client_id', $this->formClientId)
@@ -112,8 +147,11 @@ new #[Layout('components.layouts.app')] class extends Component
     public function canMoveWorkflow(): bool
     {
         $user = Auth::user();
-        if (!$user) return false;
+        if (! $user) {
+            return false;
+        }
         $rbac = app(RbacService::class);
+
         return $rbac->hasDataAccess($user->role, 'canMoveWorkflow');
     }
 
@@ -121,8 +159,11 @@ new #[Layout('components.layouts.app')] class extends Component
     public function canEditWorkflow(): bool
     {
         $user = Auth::user();
-        if (!$user) return false;
+        if (! $user) {
+            return false;
+        }
         $rbac = app(RbacService::class);
+
         return $rbac->hasDataAccess($user->role, 'canEditWorkflow');
     }
 
@@ -137,14 +178,14 @@ new #[Layout('components.layouts.app')] class extends Component
 
         $user = Auth::user();
         $rbac = app(RbacService::class);
-        if ($user && !$rbac->hasDataAccess($user->role, 'seeAllWorkflow')) {
+        if ($user && ! $rbac->hasDataAccess($user->role, 'seeAllWorkflow')) {
             $query->whereJsonContains('assignee', $user->id);
         }
 
         if ($this->search) {
             $query->where(function ($q) {
                 $q->where('title', 'like', "%{$this->search}%")
-                  ->orWhere('tags', 'like', "%{$this->search}%");
+                    ->orWhere('tags', 'like', "%{$this->search}%");
             });
         }
 
@@ -168,7 +209,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function getItemsForStage(string $stageKey)
     {
-        return $this->getFilteredItems()->filter(fn($item) => $item->stage === $stageKey);
+        return $this->getFilteredItems()->filter(fn ($item) => $item->stage === $stageKey);
     }
 
     public function getApprovalStatus($workflow): array
@@ -198,7 +239,7 @@ new #[Layout('components.layouts.app')] class extends Component
                     ->where('status', 'approved')
                     ->where(function ($q) use ($baseTitle) {
                         $q->where('title', $baseTitle)
-                          ->orWhere('title', 'like', $baseTitle . '%');
+                            ->orWhere('title', 'like', $baseTitle . '%');
                     })
                     ->exists();
                 $clientApproved = DB::table('approvals')
@@ -207,13 +248,13 @@ new #[Layout('components.layouts.app')] class extends Component
                     ->where('status', 'approved')
                     ->where(function ($q) use ($baseTitle) {
                         $q->where('title', $baseTitle)
-                          ->orWhere('title', 'like', $baseTitle . '%');
+                            ->orWhere('title', 'like', $baseTitle . '%');
                     })
                     ->exists();
             }
         }
 
-        $isClient = !empty($workflow->client_id);
+        $isClient = ! empty($workflow->client_id);
         $ready = $isClient ? ($adminApproved && $clientApproved) : $adminApproved;
 
         return [
@@ -227,19 +268,25 @@ new #[Layout('components.layouts.app')] class extends Component
     public function moveItem(int $itemId, string $newStage): void
     {
         $workflow = Workflow::find($itemId);
-        if (!$workflow) return;
+        if (! $workflow) {
+            return;
+        }
 
         $oldStage = $workflow->stage;
 
-        if ($oldStage === $newStage) return;
+        if ($oldStage === $newStage) {
+            return;
+        }
 
         // Terminal states: cannot be moved (except ready-for-production → published)
         if ($oldStage === 'published') {
             $this->dispatch('toast', message: 'Published items cannot be moved', type: 'error');
+
             return;
         }
         if ($oldStage === 'ready-for-production' && $newStage !== 'published') {
             $this->dispatch('toast', message: 'Ready for Production items can only be Published', type: 'error');
+
             return;
         }
 
@@ -253,20 +300,21 @@ new #[Layout('components.layouts.app')] class extends Component
                     ->where('content_id', $workflow->content_id)
                     ->where(function ($q) {
                         $q->where('approval_stage', 'completed')
-                          ->orWhere('approval_stage', 'client-pending')
-                          ->orWhere('approval_stage', 'admin-pending');
+                            ->orWhere('approval_stage', 'client-pending')
+                            ->orWhere('approval_stage', 'admin-pending');
                     })
                     ->first();
 
-                $isClientContent = !empty($workflow->client_id);
+                $isClientContent = ! empty($workflow->client_id);
 
                 if ($isClientContent) {
                     // Client content: approval must have reached client-pending stage and been approved/completed
                     $isApproved = $approval
                         && in_array($approval->approval_stage, ['completed', 'client-pending'])
                         && in_array($approval->status, ['approved', 'completed']);
-                    if (!$isApproved) {
+                    if (! $isApproved) {
                         $this->dispatch('toast', message: 'Client content requires Admin + Client approval before publishing.', type: 'error');
+
                         return;
                     }
                 } else {
@@ -274,8 +322,9 @@ new #[Layout('components.layouts.app')] class extends Component
                     $isApproved = $approval
                         && $approval->approval_stage === 'completed'
                         && $approval->status === 'approved';
-                    if (!$isApproved) {
+                    if (! $isApproved) {
                         $this->dispatch('toast', message: 'Internal content requires Admin approval before publishing.', type: 'error');
+
                         return;
                     }
                 }
@@ -295,26 +344,34 @@ new #[Layout('components.layouts.app')] class extends Component
                     } else {
                         $baseTitle = preg_replace('/\s*\([^)]*\)\s*$/', '', $workflow->title ?? '');
                         $q->where('title', $baseTitle)
-                          ->orWhere('title', 'like', $baseTitle . '%');
+                            ->orWhere('title', 'like', $baseTitle . '%');
                     }
                 })
                 ->where('approval_stage', 'admin-pending')
                 ->where('status', 'pending')
                 ->first();
 
-            if (!$existingPending) {
+            if (! $existingPending) {
                 // Merge ALL attachments: workflow + content (same as what user sees in workflow detail)
                 $allAttachments = [];
                 $seenKeys = [];
 
                 $decodeAndAdd = function ($raw) use (&$allAttachments, &$seenKeys) {
-                    if (empty($raw)) return;
-                    if (is_string($raw)) $raw = json_decode($raw, true);
-                    if (!is_array($raw)) return;
+                    if (empty($raw)) {
+                        return;
+                    }
+                    if (is_string($raw)) {
+                        $raw = json_decode($raw, true);
+                    }
+                    if (! is_array($raw)) {
+                        return;
+                    }
                     foreach ($raw as $a) {
-                        if (!is_array($a)) continue;
+                        if (! is_array($a)) {
+                            continue;
+                        }
                         $key = ($a['id'] ?? null) ? ('id:' . $a['id']) : ('url:' . md5($a['url'] ?? ''));
-                        if (!in_array($key, $seenKeys)) {
+                        if (! in_array($key, $seenKeys)) {
                             $seenKeys[] = $key;
                             $allAttachments[] = $a;
                         }
@@ -325,7 +382,7 @@ new #[Layout('components.layouts.app')] class extends Component
                 $decodeAndAdd($workflow->attachments);
 
                 // 2. Content attachments (same as getDetailAttachments shows)
-                if (!empty($workflow->content_id)) {
+                if (! empty($workflow->content_id)) {
                     $contentAtts = DB::table('contents')->where('id', $workflow->content_id)->value('attachments');
                     $decodeAndAdd($contentAtts);
                 }
@@ -338,7 +395,7 @@ new #[Layout('components.layouts.app')] class extends Component
                     'status' => 'pending',
                     'approval_stage' => 'admin-pending',
                     'submitted_by' => auth()->id(),
-                    'attachments' => !empty($allAttachments) ? json_encode($allAttachments) : null,
+                    'attachments' => ! empty($allAttachments) ? json_encode($allAttachments) : null,
                     'created_at' => now(),
                     'updated_at' => now(),
                 ]);
@@ -369,9 +426,9 @@ new #[Layout('components.layouts.app')] class extends Component
         $workflow->update($updateData);
 
         // Sync workflow stage changes to content status
-        if ($workflow->content_id && !static::$syncingContent) {
-            static::$syncingContent = true;
-            $contentStatus = match($newStage) {
+        if ($workflow->content_id && ! self::$syncingContent) {
+            self::$syncingContent = true;
+            $contentStatus = match ($newStage) {
                 'todo', 'in-progress' => 'draft',
                 'scripting' => 'scripting',
                 'review' => 'in-review',
@@ -384,7 +441,7 @@ new #[Layout('components.layouts.app')] class extends Component
                 'status' => $contentStatus,
                 'updated_at' => now(),
             ]);
-            static::$syncingContent = false;
+            self::$syncingContent = false;
         }
 
         app(ActivityLogger::class)->record(
@@ -412,10 +469,13 @@ new #[Layout('components.layouts.app')] class extends Component
     public function confirmRevision(): void
     {
         $workflow = Workflow::find($this->revisionWorkflowId);
-        if (!$workflow) return;
+        if (! $workflow) {
+            return;
+        }
 
         if (in_array($workflow->stage, ['published', 'ready-for-production'])) {
             $this->dispatch('toast', message: 'Published and Ready for Production items cannot be revised', type: 'error');
+
             return;
         }
 
@@ -447,7 +507,9 @@ new #[Layout('components.layouts.app')] class extends Component
     public function confirmResubmit(): void
     {
         $workflow = Workflow::find($this->resubmitWorkflowId);
-        if (!$workflow || $workflow->stage !== 'revision') return;
+        if (! $workflow || $workflow->stage !== 'revision') {
+            return;
+        }
 
         // Reset existing approval to pending (reuse, don't duplicate)
         $existingApproval = DB::table('approvals')
@@ -469,13 +531,21 @@ new #[Layout('components.layouts.app')] class extends Component
             $seenKeys = [];
 
             $decodeAndAdd = function ($raw) use (&$allAttachments, &$seenKeys) {
-                if (empty($raw)) return;
-                if (is_string($raw)) $raw = json_decode($raw, true);
-                if (!is_array($raw)) return;
+                if (empty($raw)) {
+                    return;
+                }
+                if (is_string($raw)) {
+                    $raw = json_decode($raw, true);
+                }
+                if (! is_array($raw)) {
+                    return;
+                }
                 foreach ($raw as $a) {
-                    if (!is_array($a)) continue;
+                    if (! is_array($a)) {
+                        continue;
+                    }
                     $key = ($a['id'] ?? null) ? ('id:' . $a['id']) : ('url:' . md5($a['url'] ?? ''));
-                    if (!in_array($key, $seenKeys)) {
+                    if (! in_array($key, $seenKeys)) {
                         $seenKeys[] = $key;
                         $allAttachments[] = $a;
                     }
@@ -484,7 +554,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
             $decodeAndAdd($workflow->attachments);
 
-            if (!empty($workflow->content_id)) {
+            if (! empty($workflow->content_id)) {
                 $contentAtts = DB::table('contents')->where('id', $workflow->content_id)->value('attachments');
                 $decodeAndAdd($contentAtts);
             }
@@ -497,7 +567,7 @@ new #[Layout('components.layouts.app')] class extends Component
                 'status' => 'pending',
                 'approval_stage' => 'admin-pending',
                 'submitted_by' => auth()->id(),
-                'attachments' => !empty($allAttachments) ? json_encode($allAttachments) : null,
+                'attachments' => ! empty($allAttachments) ? json_encode($allAttachments) : null,
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
@@ -529,11 +599,14 @@ new #[Layout('components.layouts.app')] class extends Component
     public function edit(int $id): void
     {
         $workflow = Workflow::find($id);
-        if (!$workflow) return;
+        if (! $workflow) {
+            return;
+        }
 
         // Prevent editing of published/ready-for-production items
         if (in_array($workflow->stage, ['published', 'ready-for-production'])) {
             $this->dispatch('toast', message: 'Cannot edit ' . str_replace('-', ' ', $workflow->stage) . ' items. They are locked.', type: 'error');
+
             return;
         }
 
@@ -570,19 +643,19 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function save(): void
     {
-        $isBs = \App\Support\NepaliDate::isBs();
+        $isBs = NepaliDate::isBs();
 
         $rules = [
-            'formTitle'      => 'required|string|max:255',
-            'formClientId'   => 'nullable|exists:clients,id',
-            'formType'       => 'required|string|in:reel,post,story,video,carousel,blog',
-            'formPriority'   => 'required|string|in:low,medium,high,urgent',
-            'formStage'      => 'required|string',
+            'formTitle' => 'required|string|max:255',
+            'formClientId' => 'nullable|exists:clients,id',
+            'formType' => 'required|string|in:reel,post,story,video,carousel,blog',
+            'formPriority' => 'required|string|in:low,medium,high,urgent',
+            'formStage' => 'required|string',
             'formAssigneeIds' => 'nullable|array',
         ];
 
         // Only validate deadline format for AD dates; BS dates are strings
-        if (!$isBs) {
+        if (! $isBs) {
             $rules['formDeadline'] = 'nullable|date|after_or_equal:today';
         } else {
             $rules['formDeadline'] = 'nullable|string';
@@ -591,23 +664,25 @@ new #[Layout('components.layouts.app')] class extends Component
         $this->validate($rules);
 
         $data = [
-            'title'       => $this->formTitle,
-            'notes'       => $this->formDescription,
-            'client_id'   => $this->formClientId,
-            'content_id'  => $this->formContentId ?: null,
-            'type'        => $this->formType,
-            'priority'    => $this->formPriority,
-            'assignee' => !empty($this->formAssigneeIds) ? $this->formAssigneeIds : null,
-            'stage'       => $this->formStage,
-            'deadline'    => $this->formDeadline,
-            'tags'        => $this->formTags ? trim($this->formTags) : '',
+            'title' => $this->formTitle,
+            'notes' => $this->formDescription,
+            'client_id' => $this->formClientId,
+            'content_id' => $this->formContentId ?: null,
+            'type' => $this->formType,
+            'priority' => $this->formPriority,
+            'assignee' => ! empty($this->formAssigneeIds) ? $this->formAssigneeIds : null,
+            'stage' => $this->formStage,
+            'deadline' => $this->formDeadline,
+            'tags' => $this->formTags ? trim($this->formTags) : '',
             'attachments' => $this->formAttachments ? array_values($this->formAttachments) : null,
-            'submitted_by'=> auth()->id(),
+            'submitted_by' => auth()->id(),
         ];
 
         if ($this->formMode === 'edit' && $this->editingId) {
             $priorAssignee = Workflow::find($this->editingId)?->assignee ?? [];
-            if (!is_array($priorAssignee)) $priorAssignee = $priorAssignee ? [$priorAssignee] : [];
+            if (! is_array($priorAssignee)) {
+                $priorAssignee = $priorAssignee ? [$priorAssignee] : [];
+            }
             Workflow::findOrFail($this->editingId)->update($data);
             $workflowId = $this->editingId;
             $verb = 'updated';
@@ -615,14 +690,14 @@ new #[Layout('components.layouts.app')] class extends Component
             $priorAssignee = [];
             $maxSort = Workflow::where('stage', $this->formStage)->max('sort_order') ?? 0;
             $data['sort_order'] = $maxSort + 1;
-            
+
             // Auto-create linked content if not already linked and deadline is set
             // This ensures workflow items appear in content planner
-            if (empty($data['content_id']) && !empty($data['deadline']) && !static::$syncingContent) {
-                static::$syncingContent = true;
-                
+            if (empty($data['content_id']) && ! empty($data['deadline']) && ! self::$syncingContent) {
+                self::$syncingContent = true;
+
                 // Map workflow stage to content status
-                $contentStatus = match($data['stage']) {
+                $contentStatus = match ($data['stage']) {
                     'todo', 'in-progress' => 'draft',
                     'scripting' => 'scripting',
                     'review' => 'in-review',
@@ -630,7 +705,7 @@ new #[Layout('components.layouts.app')] class extends Component
                     'ready-for-production', 'published' => 'published',
                     default => 'draft',
                 };
-                
+
                 $contentId = DB::table('contents')->insertGetId([
                     'title' => $data['title'],
                     'client_id' => $data['client_id'],
@@ -646,13 +721,13 @@ new #[Layout('components.layouts.app')] class extends Component
                     'created_at' => now(),
                     'updated_at' => now(),
                 ]);
-                
+
                 $data['content_id'] = $contentId;
-                static::$syncingContent = false;
-                
+                self::$syncingContent = false;
+
                 app(ActivityLogger::class)->record(Auth::user(), "Auto-created content planner entry for workflow '{$this->formTitle}'");
             }
-            
+
             $workflowId = Workflow::create($data)->id;
             $verb = 'created';
             // Track package usage (only for client content, not internal)
@@ -664,18 +739,18 @@ new #[Layout('components.layouts.app')] class extends Component
         app(ActivityLogger::class)->record(Auth::user(), "Workflow '{$this->formTitle}' {$verb}");
 
         // Sync assignees and deadline to linked content
-        if (!empty($data['content_id']) && !static::$syncingContent) {
-            static::$syncingContent = true;
+        if (! empty($data['content_id']) && ! self::$syncingContent) {
+            self::$syncingContent = true;
             $syncData = [
                 'assignee' => $data['assignee'] ? json_encode($data['assignee']) : null,
                 'updated_at' => now(),
             ];
             // Only sync date if deadline is set (date column is NOT NULL)
-            if (!empty($data['deadline'])) {
+            if (! empty($data['deadline'])) {
                 $syncData['date'] = $data['deadline'];
             }
             // Sync workflow stage to content status
-            $contentStatus = match($data['stage']) {
+            $contentStatus = match ($data['stage']) {
                 'todo', 'in-progress' => 'draft',
                 'scripting' => 'scripting',
                 'review' => 'in-review',
@@ -684,21 +759,21 @@ new #[Layout('components.layouts.app')] class extends Component
                 default => 'draft',
             };
             $syncData['status'] = $contentStatus;
-            
+
             DB::table('contents')->where('id', $data['content_id'])->update($syncData);
-            static::$syncingContent = false;
+            self::$syncingContent = false;
         }
 
         // Notify new assignees (those in new list but not in old)
-        $newAssignees = !empty($this->formAssigneeIds) ? $this->formAssigneeIds : [];
+        $newAssignees = ! empty($this->formAssigneeIds) ? $this->formAssigneeIds : [];
         $actorId = Auth::id();
         $workflowModel = Workflow::find($workflowId);
         if ($workflowModel) {
             foreach ($newAssignees as $uid) {
-                if (!in_array($uid, $priorAssignee) && (int) $uid !== $actorId) {
+                if (! in_array($uid, $priorAssignee) && (int) $uid !== $actorId) {
                     $assigneeUser = User::find($uid);
                     if ($assigneeUser) {
-                        $assigneeUser->notify(new \App\Notifications\WorkflowAssignedNotification($workflowModel, Auth::user()));
+                        $assigneeUser->notify(new WorkflowAssignedNotification($workflowModel, Auth::user()));
                     }
                 }
             }
@@ -714,15 +789,16 @@ new #[Layout('components.layouts.app')] class extends Component
     {
         abort_unless(Auth::check(), 403);
         $workflow = Workflow::find($id);
-        if (!$workflow) {
+        if (! $workflow) {
             return;
         }
         // Only super-admin / admin can delete locked stages (published, ready-for-production).
         // Everyone else needs the UI's stage guard — but wire:call bypasses UI, so re-check here.
         $viewer = Auth::user()->role;
         $isPrivileged = in_array($viewer, ['super-admin', 'admin'], true);
-        if (!$isPrivileged && in_array($workflow->stage, ['published', 'ready-for-production'], true)) {
+        if (! $isPrivileged && in_array($workflow->stage, ['published', 'ready-for-production'], true)) {
             $this->dispatch('toast', message: 'Only admins can delete locked items', type: 'error');
+
             return;
         }
 
@@ -757,18 +833,21 @@ new #[Layout('components.layouts.app')] class extends Component
         $name = trim($this->newStageName);
         if (WorkflowStage::where('name', $name)->exists()) {
             $this->dispatch('toast', message: 'A stage with that name already exists', type: 'error');
+
             return;
         }
 
         $key = strtolower(trim(preg_replace('/[^A-Za-z0-9-]/', '-', $name), '-'));
-        if ($key === '') $key = 'stage-' . (WorkflowStage::max('id') + 1);
+        if ($key === '') {
+            $key = 'stage-' . (WorkflowStage::max('id') + 1);
+        }
         if (WorkflowStage::where('key', $key)->exists()) {
             $key .= '-' . (WorkflowStage::max('id') + 1);
         }
 
         WorkflowStage::create([
-            'key'   => $key,
-            'name'  => $name,
+            'key' => $key,
+            'name' => $name,
             'color' => $this->newStageColor,
             'order' => WorkflowStage::max('order') + 1,
         ]);
@@ -788,6 +867,7 @@ new #[Layout('components.layouts.app')] class extends Component
             $count = Workflow::where('stage', $stage->key)->count();
             if ($count > 0) {
                 $this->dispatch('toast', message: 'Cannot delete stage with items. Move items first.', type: 'error');
+
                 return;
             }
             $stage->delete();
@@ -799,7 +879,9 @@ new #[Layout('components.layouts.app')] class extends Component
     public function updateStageColor(int $id, string $color): void
     {
         // Accept hex colors only (either #RGB or #RRGGBB) to avoid style-injection.
-        if (!preg_match('/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/', $color)) return;
+        if (! preg_match('/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/', $color)) {
+            return;
+        }
         WorkflowStage::where('id', $id)->update(['color' => $color]);
         $this->loadStages();
     }
@@ -810,23 +892,30 @@ new #[Layout('components.layouts.app')] class extends Component
         if ($name === '') {
             $this->dispatch('toast', message: 'Stage name cannot be empty', type: 'error');
             $this->loadStages();
+
             return;
         }
         if (mb_strlen($name) > 255) {
             $this->dispatch('toast', message: 'Stage name is too long', type: 'error');
             $this->loadStages();
+
             return;
         }
         $duplicate = WorkflowStage::where('name', $name)->where('id', '!=', $id)->exists();
         if ($duplicate) {
             $this->dispatch('toast', message: 'A stage with that name already exists', type: 'error');
             $this->loadStages();
+
             return;
         }
         $stage = WorkflowStage::find($id);
-        if (!$stage) return;
+        if (! $stage) {
+            return;
+        }
         $old = $stage->name;
-        if ($old === $name) return;
+        if ($old === $name) {
+            return;
+        }
         $stage->update(['name' => $name]);
         app(ActivityLogger::class)->record(Auth::user(), "Renamed workflow stage '{$old}' → '{$name}'");
         $this->loadStages();
@@ -835,15 +924,21 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function viewItem(int $id): void
     {
-        if (!Workflow::whereKey($id)->exists()) return;
+        if (! Workflow::whereKey($id)->exists()) {
+            return;
+        }
         $this->detailId = $id;
         $this->showDetail = true;
     }
 
     public function editFromDetail(): void
     {
-        if (!$this->detailId) return;
-        if (!$this->canEditWorkflow) return;
+        if (! $this->detailId) {
+            return;
+        }
+        if (! $this->canEditWorkflow) {
+            return;
+        }
         $id = $this->detailId;
         $this->showDetail = false;
         $this->edit($id);
@@ -851,51 +946,68 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function getDetailItem()
     {
-        if (!$this->detailId) return null;
+        if (! $this->detailId) {
+            return null;
+        }
+
         return Workflow::with(['client', 'stageInfo'])->find($this->detailId);
     }
 
     public function getDetailAttachments(): array
     {
-        if (!$this->detailId) return [];
+        if (! $this->detailId) {
+            return [];
+        }
         $workflow = Workflow::find($this->detailId);
-        if (!$workflow) return [];
+        if (! $workflow) {
+            return [];
+        }
 
         $atts = [];
         $raw = $workflow->attachments;
-        if (!is_null($raw)) {
-            if (is_string($raw)) $raw = json_decode($raw, true);
-            if (is_array($raw)) $atts = array_values(array_filter($raw, fn($a) => is_array($a)));
+        if (! is_null($raw)) {
+            if (is_string($raw)) {
+                $raw = json_decode($raw, true);
+            }
+            if (is_array($raw)) {
+                $atts = array_values(array_filter($raw, fn ($a) => is_array($a)));
+            }
         }
 
-        if (!empty($workflow->content_id)) {
+        if (! empty($workflow->content_id)) {
             $contentAtts = DB::table('contents')->whereNull('deleted_at')->where('id', $workflow->content_id)->value('attachments');
-            if (!empty($contentAtts)) {
-                if (is_string($contentAtts)) $contentAtts = json_decode($contentAtts, true);
+            if (! empty($contentAtts)) {
+                if (is_string($contentAtts)) {
+                    $contentAtts = json_decode($contentAtts, true);
+                }
                 if (is_array($contentAtts)) {
-                    $validContentAtts = array_values(array_filter($contentAtts, fn($a) => is_array($a)));
+                    $validContentAtts = array_values(array_filter($contentAtts, fn ($a) => is_array($a)));
                     $atts = array_merge($atts, $validContentAtts);
                 }
             }
         }
 
         $atts = array_map(function ($a) {
-            if (empty($a['url']) && !empty($a['id'])) {
+            if (empty($a['url']) && ! empty($a['id'])) {
                 $file = DB::table('files')->where('id', $a['id'])->first();
                 if ($file && $file->path) {
-                    $a['url'] = \Illuminate\Support\Facades\Storage::url($file->path);
+                    $a['url'] = Storage::url($file->path);
                 }
             }
+
             return $a;
         }, $atts);
 
-        return array_values(array_filter($atts, fn($a) => !empty($a['url'])));
+        return array_values(array_filter($atts, fn ($a) => ! empty($a['url'])));
     }
 
     public function getComments()
     {
-        if (!$this->detailId) return collect();
-        return \App\Models\Comment::with('user')
+        if (! $this->detailId) {
+            return collect();
+        }
+
+        return Comment::with('user')
             ->where('commentable_type', Workflow::class)
             ->where('commentable_id', $this->detailId)
             ->latest()
@@ -905,7 +1017,9 @@ new #[Layout('components.layouts.app')] class extends Component
     public function getApprovalAttachments(): array
     {
         $workflow = Workflow::find($this->detailId);
-        if (!$workflow) return [];
+        if (! $workflow) {
+            return [];
+        }
 
         $approvals = DB::table('approvals')
             ->whereNull('deleted_at')
@@ -916,7 +1030,7 @@ new #[Layout('components.layouts.app')] class extends Component
                     $baseTitle = preg_replace('/\s*\([^)]*\)\s*$/', '', $workflow->title ?? '');
                     if ($baseTitle) {
                         $q->where('title', $baseTitle)
-                          ->orWhere('title', 'like', $baseTitle . '%');
+                            ->orWhere('title', 'like', $baseTitle . '%');
                     }
                 }
             })
@@ -935,6 +1049,7 @@ new #[Layout('components.layouts.app')] class extends Component
                 $allAttachments[] = $att;
             }
         }
+
         return $allAttachments;
     }
 
@@ -942,18 +1057,22 @@ new #[Layout('components.layouts.app')] class extends Component
     {
         $hasText = trim($this->commentText) !== '';
         $attachments = json_decode($attachmentsJson, true) ?: [];
-        $hasFiles = !empty($attachments);
+        $hasFiles = ! empty($attachments);
 
-        if (!$hasText && !$hasFiles) {
+        if (! $hasText && ! $hasFiles) {
             return;
         }
 
-        if (!$this->detailId) return;
+        if (! $this->detailId) {
+            return;
+        }
 
-        $workflow = \App\Models\Workflow::find($this->detailId);
-        if (!$workflow) return;
+        $workflow = Workflow::find($this->detailId);
+        if (! $workflow) {
+            return;
+        }
 
-        if ($hasFiles && !$hasText) {
+        if ($hasFiles && ! $hasText) {
             $existingRaw = DB::table('workflows')->whereNull('deleted_at')->where('id', $this->detailId)->value('attachments');
             $existing = $existingRaw ? (json_decode($existingRaw, true) ?: []) : [];
             $merged = array_values(array_merge($existing, $attachments));
@@ -966,17 +1085,18 @@ new #[Layout('components.layouts.app')] class extends Component
             // Notify assigned user + admins (not self)
             $this->notifyRecipients(
                 $workflow,
-                new \App\Notifications\WorkflowAttachedNotification($workflow, $attachments, Auth::user()),
+                new WorkflowAttachedNotification($workflow, $attachments, Auth::user()),
                 'workflow'
             );
 
             $this->commentAttachments = '[]';
             $this->dispatch('workflowUpdated');
             $this->dispatch('toast', message: 'Files attached', type: 'success');
+
             return;
         }
 
-        $comment = \App\Models\Comment::create([
+        $comment = Comment::create([
             'commentable_type' => Workflow::class,
             'commentable_id' => $this->detailId,
             'user_id' => Auth::id(),
@@ -984,7 +1104,7 @@ new #[Layout('components.layouts.app')] class extends Component
             'attachments' => $attachments ?: null,
         ]);
 
-        app(\App\Services\ActivityLogger::class)->record(
+        app(ActivityLogger::class)->record(
             Auth::user(),
             "Commented on workflow #{$this->detailId}"
         );
@@ -992,7 +1112,7 @@ new #[Layout('components.layouts.app')] class extends Component
         // Notify assigned user + admins (not self)
         $this->notifyRecipients(
             $workflow,
-            new \App\Notifications\WorkflowCommentNotification($comment, $workflow, Auth::user()),
+            new WorkflowCommentNotification($comment, $workflow, Auth::user()),
             'workflow'
         );
 
@@ -1011,25 +1131,27 @@ new #[Layout('components.layouts.app')] class extends Component
         $recipientIds = collect();
 
         // Add assigned user
-            $assigneeIds = $entity->assignee ?? [];
-            if (is_array($assigneeIds)) {
-                $recipientIds = $recipientIds->merge($assigneeIds);
-            } elseif ($assigneeIds) {
-                $recipientIds->push($assigneeIds);
-            }
+        $assigneeIds = $entity->assignee ?? [];
+        if (is_array($assigneeIds)) {
+            $recipientIds = $recipientIds->merge($assigneeIds);
+        } elseif ($assigneeIds) {
+            $recipientIds->push($assigneeIds);
+        }
 
         // Add admins/managers (NOT super-admin — they control the system)
-        $adminIds = \App\Models\User::whereIn('role', ['admin', 'manager'])
+        $adminIds = User::whereIn('role', ['admin', 'manager'])
             ->where('status', 'active')
             ->pluck('id');
         $recipientIds = $recipientIds->merge($adminIds);
 
         // Remove self
-        $recipientIds = $recipientIds->filter(fn($id) => (int) $id !== (int) $actorId)->unique();
+        $recipientIds = $recipientIds->filter(fn ($id) => (int) $id !== (int) $actorId)->unique();
 
-        if ($recipientIds->isEmpty()) return;
+        if ($recipientIds->isEmpty()) {
+            return;
+        }
 
-        $recipients = \App\Models\User::whereIn('id', $recipientIds)->where('status', 'active')->get();
+        $recipients = User::whereIn('id', $recipientIds)->where('status', 'active')->get();
         foreach ($recipients as $recipient) {
             $recipient->notify($notification);
         }
@@ -1037,7 +1159,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function getPickableFiles(?string $search = null, ?int $clientId = null, ?int $folderId = null): array
     {
-        $q = \App\Models\File::select('id', 'name', 'type', 'size')
+        $q = File::select('id', 'name', 'type', 'size')
             ->orderBy('name');
 
         if ($folderId) {
@@ -1060,7 +1182,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function getPickableFolders(int $parentId = 0, ?int $clientId = null): array
     {
-        $q = \App\Models\Folder::select('id', 'name')
+        $q = Folder::select('id', 'name')
             ->orderBy('name');
 
         if ($parentId > 0) {
@@ -1070,7 +1192,8 @@ new #[Layout('components.layouts.app')] class extends Component
         }
 
         $folders = $q->get()->map(function ($folder) {
-            $fileCount = \App\Models\File::where('folder_id', $folder->id)->count();
+            $fileCount = File::where('folder_id', $folder->id)->count();
+
             return [
                 'id' => $folder->id,
                 'name' => $folder->name,
@@ -1081,7 +1204,7 @@ new #[Layout('components.layouts.app')] class extends Component
         $breadcrumbs = [];
         $current = $parentId;
         while ($current > 0) {
-            $folder = \App\Models\Folder::select('id', 'name', 'parent_id')->find($current);
+            $folder = Folder::select('id', 'name', 'parent_id')->find($current);
             if ($folder) {
                 array_unshift($breadcrumbs, ['id' => $folder->id, 'name' => $folder->name]);
                 $current = $folder->parent_id ?? 0;
@@ -1095,18 +1218,20 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function updatedNewFileUpload(): void
     {
-        if (!$this->newFileUpload) return;
+        if (! $this->newFileUpload) {
+            return;
+        }
 
         $file = $this->newFileUpload;
         $path = $file->store('files/' . now()->format('Y/m'), 'public');
 
         $ext = strtolower($file->getClientOriginalExtension());
-        $typeMap = ['jpg'=>'image','jpeg'=>'image','png'=>'image','gif'=>'image','webp'=>'image','svg'=>'image',
-            'mp4'=>'video','mov'=>'video','avi'=>'video','webm'=>'video','mkv'=>'video',
-            'mp3'=>'audio','wav'=>'audio','ogg'=>'audio','aac'=>'audio','m4a'=>'audio'];
+        $typeMap = ['jpg' => 'image', 'jpeg' => 'image', 'png' => 'image', 'gif' => 'image', 'webp' => 'image', 'svg' => 'image',
+            'mp4' => 'video', 'mov' => 'video', 'avi' => 'video', 'webm' => 'video', 'mkv' => 'video',
+            'mp3' => 'audio', 'wav' => 'audio', 'ogg' => 'audio', 'aac' => 'audio', 'm4a' => 'audio'];
         $fileType = $typeMap[$ext] ?? 'document';
 
-        $fileModel = \App\Models\File::create([
+        $fileModel = File::create([
             'name' => $file->getClientOriginalName(),
             'path' => $path,
             'type' => $fileType,
@@ -1167,7 +1292,7 @@ new #[Layout('components.layouts.app')] class extends Component
                 if (empty($lane['cardIds'])) {
                     continue;
                 }
-                
+
                 foreach ($lane['cardIds'] as $index => $cardId) {
                     $workflow = Workflow::find($cardId);
                     if ($workflow) {
@@ -1194,7 +1319,7 @@ new #[Layout('components.layouts.app')] class extends Component
         $this->formTags = '';
         $this->formAttachments = [];
         $this->formAttachmentsJson = '[]';
-        if (!empty($this->stages)) {
+        if (! empty($this->stages)) {
             $this->formStage = $this->stages[0]['key'] ?? '';
         } else {
             $this->formStage = '';
@@ -1212,7 +1337,7 @@ new #[Layout('components.layouts.app')] class extends Component
             ->with('department')
             ->orderBy('name')
             ->get()
-            ->map(fn($u) => [
+            ->map(fn ($u) => [
                 'id' => $u->id,
                 'name' => $u->name,
                 'role' => $u->role,
@@ -2364,7 +2489,7 @@ new #[Layout('components.layouts.app')] class extends Component
                             if (!wireId) return;
                             var component = Livewire.find(wireId);
                             if (!component) return;
-                            
+
                             // Batch updates to avoid race conditions
                             if (fromStage !== toStage) {
                                 // Moving between stages
@@ -2375,9 +2500,9 @@ new #[Layout('components.layouts.app')] class extends Component
                                     .map(function (c) {
                                         return parseInt(c.dataset.id);
                                     });
-                                
+
                                 // First move the item to the new stage
-                                component.call('moveItem', cardId, toStage).then(function() {
+                                component.call('moveItem', cardId, toStage).then(function () {
                                     // Then update both lanes in a single transaction
                                     component.call('reorderMultipleLanes', [
                                         { stage: fromStage, cardIds: fromCardIds },
