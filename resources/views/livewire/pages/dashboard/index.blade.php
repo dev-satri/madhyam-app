@@ -338,11 +338,11 @@ new #[Layout('components.layouts.app')] class extends Component
                         });
                     },
                     buildCharts(revenueData, taskDist, platformData, stageData, isAdmin) {
-                        revenueData = revenueData || @js($revenueData);
-                        taskDist = taskDist || @js($taskDistribution);
-                        platformData = platformData || @js($platformData);
-                        stageData = stageData || @js($stageData);
-                        isAdmin = isAdmin !== undefined ? isAdmin : @js($isAdmin);
+                        revenueData = revenueData || (@js($revenueData ?? []));
+                        taskDist = taskDist || (@js($taskDistribution ?? []));
+                        platformData = platformData || (@js($platformData ?? []));
+                        stageData = stageData || (@js($stageData ?? []));
+                        isAdmin = isAdmin !== undefined ? isAdmin : (@js($isAdmin ?? false));
 
                         Object.values(charts).forEach(c => { try { c.destroy(); } catch (_) {} });
                         charts = {};
