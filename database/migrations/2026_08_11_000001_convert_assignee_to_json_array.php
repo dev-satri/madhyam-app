@@ -9,48 +9,53 @@ return new class extends Migration
 {
     public function up(): void
     {
+        $driver = config('database.default');
+
         // ── Drop ALL indexes on assignee column for each table ──
         foreach (['workflows', 'tasks', 'contents'] as $tableName) {
-            $indexes = Schema::getIndexes($tableName);
-            foreach ($indexes as $index) {
-                $columns = $index['columns'] ?? [];
-                $name = $index['name'] ?? '';
-                if (in_array('assignee', $columns) && $name !== 'PRIMARY') {
-                    try {
-                        Schema::table($tableName, function (Blueprint $table) use ($name) {
-                            $table->dropIndex($name);
-                        });
-                    } catch (Exception $e) {
-                        // Index might already be dropped, continue
+            try {
+                $indexes = Schema::getConnection()->getDoctrineSchemaManager()->listTableIndexes($tableName);
+                foreach ($indexes as $index) {
+                    $columns = $index->getColumns();
+                    $name = $index->getName();
+                    if (in_array('assignee', $columns) && $name !== 'PRIMARY') {
+                        try {
+                            DB::statement("ALTER TABLE {$tableName} DROP INDEX {$name}");
+                        } catch (Exception $e) {
+                            // Index might already be dropped, continue
+                        }
                     }
                 }
+            } catch (Exception $e) {
+                // Might fail on fresh database, continue
             }
         }
 
         // ── Drop foreign keys if they exist ──
         foreach (['workflows', 'tasks', 'contents'] as $tableName) {
-            $foreignKeys = Schema::getForeignKeys($tableName);
-            foreach ($foreignKeys as $fk) {
-                if (in_array('assignee', $fk['columns']) && ($fk['foreign'] ?? '') === 'assignee') {
-                    try {
-                        Schema::table($tableName, function (Blueprint $table) {
-                            $table->dropForeign(['assignee']);
-                        });
-                    } catch (Exception $e) {
-                        // FK might already be dropped
-                    }
-                }
+            try {
+                Schema::table($tableName, function (Blueprint $table) {
+                    $table->dropForeign(['assignee']);
+                });
+            } catch (Exception $e) {
+                // FK might not exist
             }
         }
 
         // ── Change column type to text first (intermediate step) ──
-        $driver = config('database.default');
         if ($driver === 'sqlite') {
             // SQLite doesn't support MODIFY; the column is already flexible
         } else {
-            DB::statement('ALTER TABLE workflows MODIFY assignee TEXT NULL');
-            DB::statement('ALTER TABLE tasks MODIFY assignee TEXT NULL');
-            DB::statement('ALTER TABLE contents MODIFY assignee TEXT NULL');
+            // Use Schema builder instead of raw SQL for better compatibility
+            Schema::table('workflows', function (Blueprint $table) {
+                $table->text('assignee')->nullable()->change();
+            });
+            Schema::table('tasks', function (Blueprint $table) {
+                $table->text('assignee')->nullable()->change();
+            });
+            Schema::table('contents', function (Blueprint $table) {
+                $table->text('assignee')->nullable()->change();
+            });
         }
 
         // ── Migrate data: single int → JSON array ──
@@ -74,9 +79,15 @@ return new class extends Migration
         if ($driver === 'sqlite') {
             // SQLite stores JSON as TEXT; no column type change needed
         } else {
-            DB::statement('ALTER TABLE workflows MODIFY assignee JSON NULL');
-            DB::statement('ALTER TABLE tasks MODIFY assignee JSON NULL');
-            DB::statement('ALTER TABLE contents MODIFY assignee JSON NULL');
+            Schema::table('workflows', function (Blueprint $table) {
+                $table->json('assignee')->nullable()->change();
+            });
+            Schema::table('tasks', function (Blueprint $table) {
+                $table->json('assignee')->nullable()->change();
+            });
+            Schema::table('contents', function (Blueprint $table) {
+                $table->json('assignee')->nullable()->change();
+            });
         }
     }
 
