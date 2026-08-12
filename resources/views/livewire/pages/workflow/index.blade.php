@@ -1131,17 +1131,53 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function reorderStages(array $stageIds): void
     {
-        foreach ($stageIds as $index => $stageId) {
-            WorkflowStage::where('id', $stageId)->update(['order' => $index]);
-        }
+        DB::transaction(function () use ($stageIds) {
+            foreach ($stageIds as $index => $stageId) {
+                WorkflowStage::where('id', $stageId)->update(['order' => $index]);
+            }
+        });
         $this->loadStages();
     }
 
     public function reorderCards(array $cardIds): void
     {
-        foreach ($cardIds as $index => $cardId) {
-            Workflow::where('id', $cardId)->update(['sort_order' => $index]);
+        if (empty($cardIds)) {
+            return;
         }
+
+        DB::transaction(function () use ($cardIds) {
+            foreach ($cardIds as $index => $cardId) {
+                // Use Eloquent model to respect global scopes (client account isolation)
+                $workflow = Workflow::find($cardId);
+                if ($workflow) {
+                    $workflow->sort_order = $index;
+                    $workflow->timestamps = false; // Avoid unnecessary timestamp updates
+                    $workflow->save();
+                }
+            }
+        });
+    }
+
+    public function reorderMultipleLanes(array $lanes): void
+    {
+        // Batch update for multiple lanes to avoid race conditions
+        // Expected format: [['stage' => 'draft', 'cardIds' => [1,2,3]], ...]
+        DB::transaction(function () use ($lanes) {
+            foreach ($lanes as $lane) {
+                if (empty($lane['cardIds'])) {
+                    continue;
+                }
+                
+                foreach ($lane['cardIds'] as $index => $cardId) {
+                    $workflow = Workflow::find($cardId);
+                    if ($workflow) {
+                        $workflow->sort_order = $index;
+                        $workflow->timestamps = false;
+                        $workflow->save();
+                    }
+                }
+            }
+        });
     }
 
     public function resetForm(): void
@@ -2328,8 +2364,10 @@ new #[Layout('components.layouts.app')] class extends Component
                             if (!wireId) return;
                             var component = Livewire.find(wireId);
                             if (!component) return;
+                            
+                            // Batch updates to avoid race conditions
                             if (fromStage !== toStage) {
-                                component.call('moveItem', cardId, toStage);
+                                // Moving between stages
                                 var fromCardIds = Array.from(evt.from.children)
                                     .filter(function (c) {
                                         return c.dataset && c.dataset.id;
@@ -2337,9 +2375,19 @@ new #[Layout('components.layouts.app')] class extends Component
                                     .map(function (c) {
                                         return parseInt(c.dataset.id);
                                     });
-                                component.call('reorderCards', fromCardIds);
+                                
+                                // First move the item to the new stage
+                                component.call('moveItem', cardId, toStage).then(function() {
+                                    // Then update both lanes in a single transaction
+                                    component.call('reorderMultipleLanes', [
+                                        { stage: fromStage, cardIds: fromCardIds },
+                                        { stage: toStage, cardIds: toCardIds }
+                                    ]);
+                                });
+                            } else {
+                                // Same stage reordering
+                                component.call('reorderCards', toCardIds);
                             }
-                            component.call('reorderCards', toCardIds);
                         }
                     });
                 });
