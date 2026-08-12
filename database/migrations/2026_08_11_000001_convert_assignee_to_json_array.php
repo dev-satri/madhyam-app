@@ -29,7 +29,7 @@ return new class extends Migration
                     $indexes = DB::select("SHOW INDEX FROM {$tableName}");
                     foreach ($indexes as $index) {
                         // If index includes assignee column and is not PRIMARY
-                        if (strtolower($index->Column_name ?? '') === 'assignee' && 
+                        if (strtolower($index->Column_name ?? '') === 'assignee' &&
                             strtoupper($index->Key_name ?? '') !== 'PRIMARY') {
                             try {
                                 DB::statement("ALTER TABLE {$tableName} DROP INDEX `{$index->Key_name}`");
