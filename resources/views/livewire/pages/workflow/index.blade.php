@@ -305,27 +305,39 @@ new #[Layout('components.layouts.app')] class extends Component
                     })
                     ->first();
 
-                $isClientContent = ! empty($workflow->client_id);
+                // Check if any approval record exists for this content (even rejected ones)
+                $anyApprovalExists = DB::table('approvals')
+                    ->whereNull('deleted_at')
+                    ->where('content_id', $workflow->content_id)
+                    ->exists();
 
-                if ($isClientContent) {
-                    // Client content: approval must have reached client-pending stage and been approved/completed
-                    $isApproved = $approval
-                        && in_array($approval->approval_stage, ['completed', 'client-pending'])
-                        && in_array($approval->status, ['approved', 'completed']);
-                    if (! $isApproved) {
-                        $this->dispatch('toast', message: 'Client content requires Admin + Client approval before publishing.', type: 'error');
-
-                        return;
-                    }
+                // If no approval record exists at all, this workflow skipped approval - allow it through
+                if (!$anyApprovalExists) {
+                    // Workflow was created via "Skip to Workflow" - no approval validation needed
                 } else {
-                    // Internal content: approval must be completed (admin approved, no client stage)
-                    $isApproved = $approval
-                        && $approval->approval_stage === 'completed'
-                        && $approval->status === 'approved';
-                    if (! $isApproved) {
-                        $this->dispatch('toast', message: 'Internal content requires Admin approval before publishing.', type: 'error');
+                    // Approval record exists, so we need to validate it
+                    $isClientContent = ! empty($workflow->client_id);
 
-                        return;
+                    if ($isClientContent) {
+                        // Client content: approval must have reached client-pending stage and been approved/completed
+                        $isApproved = $approval
+                            && in_array($approval->approval_stage, ['completed', 'client-pending'])
+                            && in_array($approval->status, ['approved', 'completed']);
+                        if (! $isApproved) {
+                            $this->dispatch('toast', message: 'Client content requires Admin + Client approval before publishing.', type: 'error');
+
+                            return;
+                        }
+                    } else {
+                        // Internal content: approval must be completed (admin approved, no client stage)
+                        $isApproved = $approval
+                            && $approval->approval_stage === 'completed'
+                            && $approval->status === 'approved';
+                        if (! $isApproved) {
+                            $this->dispatch('toast', message: 'Internal content requires Admin approval before publishing.', type: 'error');
+
+                            return;
+                        }
                     }
                 }
             }

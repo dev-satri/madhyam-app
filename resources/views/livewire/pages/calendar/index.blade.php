@@ -78,7 +78,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public $newFileUpload = null;
 
-
+    public bool $skipApproval = false;
 
     public ?int $selectedContentId = null;
 
@@ -624,7 +624,7 @@ new #[Layout('components.layouts.app')] class extends Component
                 $this->dispatch('toast', message: 'Content updated successfully', type: 'success');
             } else {
                 $assigneeVal = !empty($this->formAssigneeIds) ? json_encode($this->formAssigneeIds) : null;
-                DB::table('contents')->insert([
+                $newContentId = DB::table('contents')->insertGetId([
                     'title' => $this->title,
                     'client_id' => $this->formClientId ?: null,
                     'date' => $this->formDate,
@@ -642,21 +642,78 @@ new #[Layout('components.layouts.app')] class extends Component
                     'updated_at' => now(),
                 ]);
 
-                // Notify all assignees if set on create
-                if (!empty($this->formAssigneeIds)) {
-                    $newId = DB::table('contents')->orderByDesc('id')->value('id');
-                    $contentModel = \App\Models\Content::find($newId);
-                    $actorId = Auth::id();
-                    if ($contentModel) {
-                        foreach ($this->formAssigneeIds as $uid) {
-                            if ((int) $uid !== $actorId) {
-                                $user = \App\Models\User::find($uid);
-                                if ($user) {
-                                    $user->notify(new \App\Notifications\ContentAssignedNotification($contentModel, Auth::user()));
+                // If "Create Workflow Immediately" is checked, create workflow and skip approval
+                if ($this->skipApproval && $newContentId) {
+                    // Update content status to in-review (it's now in workflow)
+                    DB::table('contents')->where('id', $newContentId)->update([
+                        'status' => 'in-review',
+                        'updated_at' => now(),
+                    ]);
+
+                    // Get first workflow stage
+                    $firstStage = DB::table('workflow_stages')->orderBy('order')->first();
+
+                    // Get primary type for workflow
+                    $primaryType = \App\Support\ContentTags::primary($types, 'type');
+
+                    // Create workflow item directly (no approval needed)
+                    $workflowId = DB::table('workflows')->insertGetId([
+                        'title' => $this->title,
+                        'client_id' => $this->formClientId ?: null,
+                        'content_id' => $newContentId,
+                        'type' => $primaryType,
+                        'stage' => $firstStage->key ?? 'todo',
+                        'priority' => 'medium',
+                        'assignee' => $assigneeVal,
+                        'deadline' => $this->formDate,
+                        'attachments' => $this->formAttachments ? json_encode(array_values($this->formAttachments)) : null,
+                        'submitted_by' => auth()->id(),
+                        'created_at' => now(),
+                        'updated_at' => now(),
+                    ]);
+
+                    // Notify assignees about workflow creation
+                    if (!empty($this->formAssigneeIds)) {
+                        $actorId = Auth::id();
+                        $workflowModel = \App\Models\Workflow::find($workflowId);
+                        if ($workflowModel) {
+                            foreach ($this->formAssigneeIds as $uid) {
+                                if ((int) $uid !== $actorId) {
+                                    $assigneeUser = \App\Models\User::find($uid);
+                                    if ($assigneeUser) {
+                                        $assigneeUser->notify(new \App\Notifications\WorkflowAssignedNotification($workflowModel, Auth::user()));
+                                    }
                                 }
                             }
                         }
                     }
+
+                    // Track package usage for workflow (only for client content)
+                    if ($this->formClientId) {
+                        \App\Services\PackageService::recordWorkflow($this->formClientId);
+                    }
+
+                    app(ActivityLogger::class)->record(Auth::user(), "Content '{$this->title}' created with workflow (approval skipped)");
+                    
+                    $this->dispatch('toast', message: 'Content and workflow created successfully (approval skipped)', type: 'success');
+                } else {
+                    // Normal flow: just notify assignees about content creation
+                    if (!empty($this->formAssigneeIds)) {
+                        $contentModel = \App\Models\Content::find($newContentId);
+                        $actorId = Auth::id();
+                        if ($contentModel) {
+                            foreach ($this->formAssigneeIds as $uid) {
+                                if ((int) $uid !== $actorId) {
+                                    $user = \App\Models\User::find($uid);
+                                    if ($user) {
+                                        $user->notify(new \App\Notifications\ContentAssignedNotification($contentModel, Auth::user()));
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    $this->dispatch('toast', message: 'Content created successfully', type: 'success');
                 }
 
                 // Package usage counter still bumps per selected type (expand "all" sentinel)
@@ -669,8 +726,6 @@ new #[Layout('components.layouts.app')] class extends Component
                         );
                     }
                 }
-
-                $this->dispatch('toast', message: 'Content created successfully', type: 'success');
             }
 
             $this->showForm = false;
@@ -906,6 +961,98 @@ new #[Layout('components.layouts.app')] class extends Component
             $this->dispatch('toast', message: 'Status changed to ' . str_replace('-', ' ', ucfirst($next)), type: 'success');
         }
 
+        $this->loadMonthContent();
+    }
+
+    /**
+     * Send content directly to workflow, bypassing Approval #1
+     */
+    public function sendToWorkflowDirectly(int $contentId): void
+    {
+        $content = DB::table('contents')->where('id', $contentId)->first();
+        if (! $content) {
+            return;
+        }
+
+        if ($content->status === 'published') {
+            $this->dispatch('toast', message: 'Published content cannot be changed', type: 'error');
+            return;
+        }
+
+        // Check if workflow already exists
+        $existingWorkflow = DB::table('workflows')
+            ->where('content_id', $contentId)
+            ->whereNull('deleted_at')
+            ->first();
+
+        if ($existingWorkflow) {
+            $this->dispatch('toast', message: 'Workflow already exists for this content', type: 'info');
+            return;
+        }
+
+        // Update content status to in-review (it's now in workflow)
+        DB::table('contents')->where('id', $contentId)->update([
+            'status' => 'in-review',
+            'updated_at' => now(),
+        ]);
+
+        // Get first workflow stage
+        $firstStage = DB::table('workflow_stages')->orderBy('order')->first();
+
+        // Prepare attachments
+        $contentAttachments = $content->attachments;
+        if (is_string($contentAttachments)) {
+            $decoded = json_decode($contentAttachments, true);
+            $contentAttachments = is_array($decoded) ? $decoded : null;
+        }
+
+        // Get primary type for workflow
+        $_typeArr = \App\Support\ContentTags::normalize($content->type, 'type');
+        $primaryType = \App\Support\ContentTags::primary($_typeArr, 'type');
+
+        // Create workflow item directly
+        $workflowId = DB::table('workflows')->insertGetId([
+            'title' => $content->title,
+            'client_id' => $content->client_id,
+            'content_id' => $contentId,
+            'type' => $primaryType,
+            'stage' => $firstStage->key ?? 'todo',
+            'priority' => 'medium',
+            'assignee' => $content->assignee ?? null,
+            'deadline' => $content->date,
+            'attachments' => $contentAttachments ? json_encode($contentAttachments) : null,
+            'submitted_by' => auth()->id(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        // Notify assignees
+        if (!empty($content->assignee)) {
+            $assigneeIds = is_string($content->assignee) ? json_decode($content->assignee, true) : $content->assignee;
+            if (is_array($assigneeIds)) {
+                $actorId = Auth::id();
+                foreach ($assigneeIds as $uid) {
+                    if ((int) $uid !== $actorId) {
+                        $assigneeUser = \App\Models\User::find($uid);
+                        if ($assigneeUser) {
+                            $workflowModel = \App\Models\Workflow::find($workflowId);
+                            if ($workflowModel) {
+                                $assigneeUser->notify(new \App\Notifications\WorkflowAssignedNotification($workflowModel, Auth::user()));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Track package usage (only for client content)
+        if ($content->client_id) {
+            \App\Services\PackageService::recordWorkflow($content->client_id);
+        }
+
+        app(ActivityLogger::class)->record(Auth::user(), "Content '{$content->title}' sent directly to workflow (skipped approval)");
+        
+        $this->dispatch('toast', message: 'Content sent directly to workflow (approval skipped)', type: 'success');
         $this->loadMonthContent();
     }
 
@@ -1230,6 +1377,7 @@ new #[Layout('components.layouts.app')] class extends Component
         $this->referenceFile = '';
         $this->formAttachments = [];
         $this->formAttachmentsJson = '[]';
+        $this->skipApproval = false;
     }
 
     #[On('confirm-resolved')]
@@ -1583,12 +1731,51 @@ new #[Layout('components.layouts.app')] class extends Component
                                                 $btnIcon = match($item->status) { 'draft' => 'fa-arrow-right', 'scripting' => 'fa-paper-plane', 'revision' => 'fa-redo', default => 'fa-arrow-right' };
                                                 $btnLabel = match($item->status) { 'draft' => 'Script', 'scripting' => 'Submit', 'revision' => 'Resubmit', default => '' };
                                             @endphp
-                                            <button
-                                                wire:click="submitForApproval({{ $item->id }})"
-                                                class="btn btn-sm {{ $btnClass }} py-1 px-2 text-xs"
-                                            >
-                                                <i class="fas {{ $btnIcon }} mr-1"></i> {{ $btnLabel }}
-                                            </button>
+
+                                            @if ($item->status === 'scripting')
+                                                {{-- Dropdown for scripting status: Submit or Skip to Workflow --}}
+                                                <div class="relative inline-block" x-data="{ open: false }">
+                                                    <button
+                                                        @click="open = !open"
+                                                        @click.away="open = false"
+                                                        class="btn btn-sm {{ $btnClass }} py-1 px-2 text-xs flex items-center gap-1"
+                                                    >
+                                                        <i class="fas {{ $btnIcon }}"></i>
+                                                        <span>{{ $btnLabel }}</span>
+                                                        <i class="fas fa-chevron-down text-[9px]"></i>
+                                                    </button>
+                                                    <div
+                                                        x-show="open"
+                                                        x-transition
+                                                        class="absolute right-0 mt-1 w-48 bg-white rounded-lg shadow-lg border border-gray-200 z-50"
+                                                    >
+                                                        <button
+                                                            wire:click="submitForApproval({{ $item->id }})"
+                                                            @click="open = false"
+                                                            class="w-full text-left px-3 py-2 text-xs hover:bg-gray-50 rounded-t-lg flex items-center gap-2"
+                                                        >
+                                                            <i class="fas fa-check-circle text-green-600"></i>
+                                                            <span>Submit for Approval</span>
+                                                        </button>
+                                                        <button
+                                                            wire:click="sendToWorkflowDirectly({{ $item->id }})"
+                                                            @click="open = false"
+                                                            class="w-full text-left px-3 py-2 text-xs hover:bg-gray-50 rounded-b-lg flex items-center gap-2 border-t border-gray-100"
+                                                        >
+                                                            <i class="fas fa-bolt text-amber-600"></i>
+                                                            <span>Skip to Workflow</span>
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            @else
+                                                {{-- Regular button for draft and revision --}}
+                                                <button
+                                                    wire:click="submitForApproval({{ $item->id }})"
+                                                    class="btn btn-sm {{ $btnClass }} py-1 px-2 text-xs"
+                                                >
+                                                    <i class="fas {{ $btnIcon }} mr-1"></i> {{ $btnLabel }}
+                                                </button>
+                                            @endif
                                         @endif
                                         @if ($item->status === 'in-review')
                                             <span class="text-xs text-amber-600 font-medium"
@@ -1952,6 +2139,37 @@ new #[Layout('components.layouts.app')] class extends Component
                                     <strong>{{ \App\Support\ContentTags::label($formTypes, 'type') }}</strong>.
                                 </div>
                             @endif
+
+                            {{-- Create Workflow Immediately Option (only for new content) --}}
+                            @if (!$editingId)
+                                <div class="rounded-lg border-2 border-dashed border-gray-200 bg-gray-50/50 px-4 py-3">
+                                    <label class="flex items-start gap-3 cursor-pointer group">
+                                        <input
+                                            type="checkbox"
+                                            wire:model="skipApproval"
+                                            class="mt-0.5 rounded border-gray-300 text-[var(--brand)] focus:ring-[var(--brand)]"
+                                        />
+                                        <div class="flex-1">
+                                            <div class="flex items-center gap-2">
+                                                <span class="text-sm font-semibold text-gray-900"
+                                                    >Create Workflow Immediately</span
+                                                >
+                                                <span
+                                                    class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 text-[10px] font-bold uppercase tracking-wide"
+                                                >
+                                                    <i class="fas fa-bolt text-[8px]"></i>
+                                                    Skip Approval
+                                                </span>
+                                            </div>
+                                            <p class="text-xs text-gray-500 mt-1">When checked, content will be created in Content Planner AND a workflow item will be created automatically, bypassing the approval process.</p>
+                                            <p class="text-xs text-gray-400 mt-1">
+                                                <i class="fas fa-info-circle mr-1"></i>
+                                                Useful for internal content or when approval is not required.
+                                            </p>
+                                        </div>
+                                    </label>
+                                </div>
+                            @endif
                         </div>
 
                         {{-- Actions (fixed at bottom) --}}
@@ -2188,13 +2406,50 @@ new #[Layout('components.layouts.app')] class extends Component
                                                 $ddBtnIcon = match($item->status) { 'draft' => 'fa-arrow-right', 'scripting' => 'fa-paper-plane', 'revision' => 'fa-redo', default => 'fa-arrow-right' };
                                                 $ddBtnLabel = match($item->status) { 'draft' => 'Script', 'scripting' => 'Submit', 'revision' => 'Resubmit', default => '' };
                                             @endphp
-                                                <button
-                                                    wire:click.stop="submitForApproval({{ $item->id }})"
-                                                    class="text-[11px] px-2.5 py-1 rounded-lg {{ $item->status === 'draft' ? 'bg-gray-100 text-gray-600 hover:bg-gray-200' : 'bg-[var(--brand)] text-white hover:opacity-90' }} font-medium transition"
-                                                >
-                                                    <i class="fas {{ $ddBtnIcon }} mr-1 text-[9px]"></i
-                                                    >{{ $ddBtnLabel }}
-                                                </button>
+                                                @if ($item->status === 'scripting')
+                                                    {{-- Dropdown for scripting: Submit or Skip to Workflow --}}
+                                                    <div class="relative inline-block" x-data="{ open: false }">
+                                                        <button
+                                                            @click.stop="open = !open"
+                                                            @click.away="open = false"
+                                                            class="text-[11px] px-2.5 py-1 rounded-lg bg-[var(--brand)] text-white hover:opacity-90 font-medium transition flex items-center gap-1"
+                                                        >
+                                                            <i class="fas {{ $ddBtnIcon }} text-[9px]"></i>
+                                                            <span>{{ $ddBtnLabel }}</span>
+                                                            <i class="fas fa-chevron-down text-[8px]"></i>
+                                                        </button>
+                                                        <div
+                                                            x-show="open"
+                                                            x-transition
+                                                            class="absolute right-0 mt-1 w-48 bg-white rounded-lg shadow-lg border border-gray-200 z-50"
+                                                        >
+                                                            <button
+                                                                wire:click.stop="submitForApproval({{ $item->id }})"
+                                                                @click="open = false"
+                                                                class="w-full text-left px-3 py-2 text-xs hover:bg-gray-50 rounded-t-lg flex items-center gap-2"
+                                                            >
+                                                                <i class="fas fa-check-circle text-green-600"></i>
+                                                                <span>Submit for Approval</span>
+                                                            </button>
+                                                            <button
+                                                                wire:click.stop="sendToWorkflowDirectly({{ $item->id }})"
+                                                                @click="open = false"
+                                                                class="w-full text-left px-3 py-2 text-xs hover:bg-gray-50 rounded-b-lg flex items-center gap-2 border-t border-gray-100"
+                                                            >
+                                                                <i class="fas fa-bolt text-amber-600"></i>
+                                                                <span>Skip to Workflow</span>
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                @else
+                                                    <button
+                                                        wire:click.stop="submitForApproval({{ $item->id }})"
+                                                        class="text-[11px] px-2.5 py-1 rounded-lg {{ $item->status === 'draft' ? 'bg-gray-100 text-gray-600 hover:bg-gray-200' : 'bg-[var(--brand)] text-white hover:opacity-90' }} font-medium transition"
+                                                    >
+                                                        <i class="fas {{ $ddBtnIcon }} mr-1 text-[9px]"></i
+                                                        >{{ $ddBtnLabel }}
+                                                    </button>
+                                                @endif
                                             @elseif ($item->status === 'in-review')
                                                 @if ($approval)
                                                     <span
