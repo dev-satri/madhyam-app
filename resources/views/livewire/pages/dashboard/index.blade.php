@@ -338,42 +338,85 @@ new #[Layout('components.layouts.app')] class extends Component
         )->orderBy('name')->get();
 
         if ($this->isAdmin) {
-            $this->teamPerformance = UserVisibility::apply(
-                DB::table('users')
-                    ->leftJoin('tasks', function ($join) use ($dateFilter) {
-                        $join->on(DB::raw('JSON_CONTAINS(tasks.assignee, CAST(users.id AS JSON))'), '=', DB::raw('1'))
-                            ->where('tasks.created_at', '>=', $dateFilter);
-                    })
-                    ->select(
-                        'users.id',
-                        'users.name',
-                        'users.role',
-                        DB::raw('COUNT(tasks.id) as total_tasks'),
-                        DB::raw("COUNT(CASE WHEN tasks.status = 'completed' THEN 1 END) as completed_tasks")
-                    )
-                    ->groupBy('users.id', 'users.name', 'users.role')
-                    ->havingRaw('COUNT(tasks.id) > 0')
-            )->get()
-                ->map(fn ($m) => [
-                    'id' => $m->id,
-                    'name' => $m->name,
-                    'role' => $m->role,
-                    'total' => $m->total_tasks,
-                    'completed' => $m->completed_tasks,
-                    'pct' => $m->total_tasks > 0 ? round(($m->completed_tasks / $m->total_tasks) * 100) : 0,
-                ]);
+            // Team Performance: Count both tasks AND workflows
+            $users = UserVisibility::apply(DB::table('users'))->get();
+            
+            $this->teamPerformance = $users->map(function ($user) use ($dateFilter) {
+                $userId = $user->id;
+                
+                // Count tasks
+                $totalTasks = DB::table('tasks')
+                    ->whereRaw('JSON_CONTAINS(assignee, ?)', [json_encode($userId)])
+                    ->where('created_at', '>=', $dateFilter)
+                    ->count();
+                    
+                $completedTasks = DB::table('tasks')
+                    ->whereRaw('JSON_CONTAINS(assignee, ?)', [json_encode($userId)])
+                    ->where('status', 'completed')
+                    ->where('created_at', '>=', $dateFilter)
+                    ->count();
+                
+                // Count workflows (including those that skipped approval)
+                $totalWorkflows = DB::table('workflows')
+                    ->whereRaw('JSON_CONTAINS(assignee, ?)', [json_encode($userId)])
+                    ->where('created_at', '>=', $dateFilter)
+                    ->count();
+                    
+                $completedWorkflows = DB::table('workflows')
+                    ->whereRaw('JSON_CONTAINS(assignee, ?)', [json_encode($userId)])
+                    ->where('stage', 'published')
+                    ->where('created_at', '>=', $dateFilter)
+                    ->count();
+                
+                // Combine tasks and workflows
+                $total = $totalTasks + $totalWorkflows;
+                $completed = $completedTasks + $completedWorkflows;
+                
+                return [
+                    'id' => $user->id,
+                    'name' => $user->name,
+                    'role' => $user->role,
+                    'total' => $total,
+                    'completed' => $completed,
+                    'pct' => $total > 0 ? round(($completed / $total) * 100) : 0,
+                ];
+            })->filter(fn($m) => $m['total'] > 0)->values();
         } else {
-            $totalTasks = DB::table('tasks')->whereRaw('JSON_CONTAINS(assignee, ?)', [json_encode($userId)])->where('created_at', '>=', $dateFilter)->count();
-            $completedTasks = DB::table('tasks')->whereRaw('JSON_CONTAINS(assignee, ?)', [json_encode($userId)])->where('status', 'completed')->where('created_at', '>=', $dateFilter)->count();
+            // Staff view: Count their own tasks and workflows
+            $totalTasks = DB::table('tasks')
+                ->whereRaw('JSON_CONTAINS(assignee, ?)', [json_encode($userId)])
+                ->where('created_at', '>=', $dateFilter)
+                ->count();
+                
+            $completedTasks = DB::table('tasks')
+                ->whereRaw('JSON_CONTAINS(assignee, ?)', [json_encode($userId)])
+                ->where('status', 'completed')
+                ->where('created_at', '>=', $dateFilter)
+                ->count();
+            
+            $totalWorkflows = DB::table('workflows')
+                ->whereRaw('JSON_CONTAINS(assignee, ?)', [json_encode($userId)])
+                ->where('created_at', '>=', $dateFilter)
+                ->count();
+                
+            $completedWorkflows = DB::table('workflows')
+                ->whereRaw('JSON_CONTAINS(assignee, ?)', [json_encode($userId)])
+                ->where('stage', 'published')
+                ->where('created_at', '>=', $dateFilter)
+                ->count();
+            
+            $total = $totalTasks + $totalWorkflows;
+            $completed = $completedTasks + $completedWorkflows;
+            
             $this->teamPerformance = collect();
-            if ($totalTasks > 0) {
+            if ($total > 0) {
                 $this->teamPerformance = collect([[
                     'id' => $userId,
                     'name' => $user->name,
                     'role' => $user->role,
-                    'total' => $totalTasks,
-                    'completed' => $completedTasks,
-                    'pct' => round(($completedTasks / $totalTasks) * 100),
+                    'total' => $total,
+                    'completed' => $completed,
+                    'pct' => round(($completed / $total) * 100),
                 ]]);
             }
         }
