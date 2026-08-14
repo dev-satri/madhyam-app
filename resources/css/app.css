@@ -1928,3 +1928,28 @@ body {
 .comment-body p {
     margin: 0.25rem 0;
 }
+
+/* ===== Upload Progress Animations ===== */
+@keyframes upload-shimmer {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+}
+.upload-shimmer {
+    animation: upload-shimmer 1.5s ease-in-out infinite;
+}
+
+@keyframes upload-icon-spin {
+    0%, 100% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.15); opacity: 0.7; }
+}
+.upload-icon-spin {
+    animation: upload-icon-spin 1.2s ease-in-out infinite;
+}
+
+@keyframes upload-progress-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.85; }
+}
+.upload-progress-pulse {
+    animation: upload-progress-pulse 2s ease-in-out infinite;
+}

@@ -1712,11 +1712,35 @@ new #[Layout('components.layouts.app')] class extends Component
                      x-data="{
                          dragging: false,
                          upP: 0, upOn: false, upDone: false, upB: 0, upT: 0,
+                         upStartTime: 0, upSpeed: 0, upEta: 0, upLastB: 0, upLastTime: 0,
                          fmt(bytes) {
                              if (!bytes) return '0 B';
                              const k = 1024, s = ['B','KB','MB','GB'];
                              const i = Math.floor(Math.log(bytes) / Math.log(k));
                              return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + s[i];
+                         },
+                         fmtSpeed(bps) {
+                             if (bps <= 0) return '—';
+                             if (bps >= 1048576) return (bps / 1048576).toFixed(1) + ' MB/s';
+                             if (bps >= 1024) return (bps / 1024).toFixed(0) + ' KB/s';
+                             return bps.toFixed(0) + ' B/s';
+                         },
+                         fmtEta(seconds) {
+                             if (seconds <= 0 || !isFinite(seconds)) return '—';
+                             if (seconds < 60) return '~' + Math.ceil(seconds) + 's';
+                             if (seconds < 3600) return '~' + Math.floor(seconds / 60) + 'm ' + Math.ceil(seconds % 60) + 's';
+                             return '~' + Math.floor(seconds / 3600) + 'h ' + Math.floor((seconds % 3600) / 60) + 'm';
+                         },
+                         calcSpeed() {
+                             const now = Date.now();
+                             const elapsed = (now - this.upLastTime) / 1000;
+                             if (elapsed > 0.3 && this.upB > this.upLastB) {
+                                 this.upSpeed = (this.upB - this.upLastB) / elapsed;
+                                 const remaining = this.upT - this.upB;
+                                 this.upEta = this.upSpeed > 0 ? remaining / this.upSpeed : 0;
+                                 this.upLastB = this.upB;
+                                 this.upLastTime = now;
+                             }
                          },
                          treeExpanded: true,
                          get folderMode() { return $wire.folderMode },
@@ -1731,11 +1755,61 @@ new #[Layout('components.layouts.app')] class extends Component
                                  : 0;
                          }
                      }"
-                     x-on:upload:started.window="if($event.detail.id==='pendingFiles'){upOn=true;upDone=false;upP=0;}"
-                     x-on:upload:progress.window="if($event.detail.id==='pendingFiles'){upP=Math.round($event.detail.progress);upB=$event.detail.bytesUploaded;upT=$event.detail.bytesTotal;upOn=true;}"
-                     x-on:upload:finished.window="if($event.detail.id==='pendingFiles'){upP=100;upOn=false;upDone=true;setTimeout(()=>{upDone=false},5000);}"
-                     x-on:upload:cancelled.window="if($event.detail.id==='pendingFiles'){upOn=false;upP=0;upDone=false;}"
-                     x-on:upload:error.window="if($event.detail.id==='pendingFiles'){upOn=false;upP=0;}"
+                     x-on:livewire-upload-start.window="
+                         if($event.target.getAttribute('wire:model') === 'pendingFiles'){
+                             upOn=true;
+                             upDone=false;
+                             upP=0;
+                             const files = $event.target.files;
+                             let total = 0;
+                             for (let i = 0; i < files.length; i++) {
+                                 total += files[i].size;
+                             }
+                             upT=total;
+                             upB=0;
+                             upSpeed=0;
+                             upEta=0;
+                             upStartTime=Date.now();
+                             upLastTime=Date.now();
+                             upLastB=0;
+                         }
+                     "
+                     x-on:livewire-upload-progress.window="
+                         if($event.target.getAttribute('wire:model') === 'pendingFiles'){
+                             upP=Math.round($event.detail.progress);
+                             upB=Math.round((upP / 100) * upT);
+                             calcSpeed();
+                             upOn=true;
+                         }
+                     "
+                     x-on:livewire-upload-finish.window="
+                         if($event.target.getAttribute('wire:model') === 'pendingFiles'){
+                             upP=100;
+                             upB=upT;
+                             upOn=false;
+                             upDone=true;
+                             upSpeed=0;
+                             upEta=0;
+                             setTimeout(()=>{upDone=false},5000);
+                         }
+                     "
+                     x-on:livewire-upload-cancel.window="
+                         if($event.target.getAttribute('wire:model') === 'pendingFiles'){
+                             upOn=false;
+                             upP=0;
+                             upDone=false;
+                             upSpeed=0;
+                             upEta=0;
+                         }
+                     "
+                     x-on:livewire-upload-error.window="
+                         if($event.target.getAttribute('wire:model') === 'pendingFiles'){
+                             upOn=false;
+                             upP=0;
+                             upSpeed=0;
+                             upEta=0;
+                         }
+                     "
                 >
                     <div class="modal-box w-full sm:max-w-lg sm:mx-4 max-h-[90vh] rounded-t-2xl sm:rounded-2xl flex flex-col">
                         <div class="sticky top-0 bg-white flex items-center justify-between p-4 border-b flex-shrink-0 rounded-t-2xl">
@@ -1832,13 +1906,73 @@ new #[Layout('components.layouts.app')] class extends Component
                                     </div>
                                 </template>
 
+                                {{-- Premium Upload Progress Indicator --}}
+                                <div x-show="upOn && !folderUploading"
+                                     x-transition:enter="transition ease-out duration-300"
+                                     x-transition:enter-start="opacity-0 -translate-y-2"
+                                     x-transition:enter-end="opacity-100 translate-y-0"
+                                     class="space-y-3">
+                                    <div class="bg-gradient-to-br from-[rgba(var(--brand-rgb),0.04)] to-[rgba(var(--brand-rgb),0.08)] border border-[rgba(var(--brand-rgb),0.15)] rounded-2xl p-5">
+                                        <div class="flex items-center gap-4 mb-4">
+                                            {{-- Circular Progress Ring --}}
+                                            <div class="relative flex-shrink-0">
+                                                <svg class="w-16 h-16 -rotate-90" viewBox="0 0 64 64">
+                                                    <circle cx="32" cy="32" r="28" fill="none" stroke="#e5e7eb" stroke-width="5"></circle>
+                                                    <circle cx="32" cy="32" r="28" fill="none"
+                                                            stroke="var(--brand)" stroke-width="5" stroke-linecap="round"
+                                                            :stroke-dasharray="2 * Math.PI * 28"
+                                                            :stroke-dashoffset="2 * Math.PI * 28 * (1 - upP / 100)"
+                                                            class="transition-all duration-300 ease-out"
+                                                            :class="upP >= 100 ? '!stroke-green-500' : ''"></circle>
+                                                </svg>
+                                                <div class="absolute inset-0 flex items-center justify-center">
+                                                    <span class="text-sm font-extrabold tabular-nums"
+                                                          :class="upP >= 100 ? 'text-green-600' : 'text-[var(--brand)]'"
+                                                          x-text="upP + '%'"></span>
+                                                </div>
+                                            </div>
+                                            {{-- Upload Info --}}
+                                            <div class="flex-1 min-w-0">
+                                                <p class="text-sm font-bold text-gray-800 mb-0.5">Uploading files...</p>
+                                                <p class="text-xs text-gray-500 tabular-nums">
+                                                    <span x-text="fmt(upB)"></span> / <span x-text="fmt(upT)"></span>
+                                                </p>
+                                                <div class="flex items-center gap-3 mt-1.5">
+                                                    <span class="inline-flex items-center gap-1 text-[11px] text-gray-500 font-medium tabular-nums">
+                                                        <i class="fas fa-bolt text-amber-400 text-[9px]"></i>
+                                                        <span x-text="fmtSpeed(upSpeed)"></span>
+                                                    </span>
+                                                    <span class="inline-flex items-center gap-1 text-[11px] text-gray-500 font-medium tabular-nums">
+                                                        <i class="fas fa-clock text-gray-400 text-[9px]"></i>
+                                                        <span x-text="fmtEta(upEta)"></span>
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        {{-- Linear Progress Bar with Shimmer --}}
+                                        <div class="w-full bg-gray-200/80 rounded-full h-2.5 overflow-hidden">
+                                            <div class="h-full rounded-full transition-all duration-300 ease-out relative overflow-hidden"
+                                                 :class="upP >= 100 ? 'bg-green-500' : 'bg-gradient-to-r from-[var(--brand)] via-[rgba(var(--brand-rgb),0.8)] to-[var(--brand)]'"
+                                                 :style="'width:' + upP + '%'">
+                                                <div class="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent upload-shimmer" x-show="upP < 100"></div>
+                                            </div>
+                                        </div>
+                                        {{-- Cancel --}}
+                                        <div class="flex items-center justify-end mt-2.5">
+                                            <button type="button" @click="$wire.cancelUpload('pendingFiles')" class="text-xs text-red-500 hover:text-red-700 font-medium transition-colors flex items-center gap-1">
+                                                <i class="fas fa-times"></i> Cancel Upload
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+
                                 {{-- Upload Complete Indicator (regular files) --}}
-                                <div x-show="upDone && !upOn && !folderUploading" x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0 scale-95" x-transition:enter-end="opacity-100 scale-100" class="flex items-center gap-2 bg-green-50 border border-green-200 rounded-xl px-4 py-3">
-                                    <div class="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center flex-shrink-0">
-                                        <i class="fas fa-check text-green-600 text-sm"></i>
+                                <div x-show="upDone && !upOn && !folderUploading" x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0 scale-95" x-transition:enter-end="opacity-100 scale-100" class="flex items-center gap-3 bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-2xl px-5 py-4">
+                                    <div class="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center flex-shrink-0">
+                                        <i class="fas fa-check text-green-600"></i>
                                     </div>
                                     <div>
-                                        <p class="text-sm font-semibold text-green-800">Files ready</p>
+                                        <p class="text-sm font-bold text-green-800">Files ready</p>
                                         <p class="text-xs text-green-600">Click "Upload" to save to server</p>
                                     </div>
                                 </div>
@@ -1874,7 +2008,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                         <input type="file" wire:model="pendingFiles" x-ref="folderInput" webkitdirectory multiple class="hidden">
                                     </label>
 
-                                    <p class="text-xs text-gray-400 mt-2" x-text="folderMode ? 'All files inside the folder will be uploaded' : 'Max 50MB per file'"></p>
+                                    <p class="text-xs text-gray-400 mt-2" x-text="folderMode ? 'All files inside the folder will be uploaded' : 'Max 200MB per file'"></p>
                                 </div>
 
                                 @error('pendingFiles') <p class="text-xs text-red-500">{{ $message }}</p> @enderror

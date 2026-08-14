@@ -406,34 +406,87 @@
                         @livewire ('partials.drive-browser')
                     </div>
 
-                    {{-- ===== UPLOAD TAB (Last - auto-attach) ===== --}}
-                    <div x-show="activeTab === 'upload'" class="p-5">
+                     <div x-show="activeTab === 'upload'" class="p-5">
                         <div
                             x-data="{
                                 uploadProgress: 0,
                                 uploading: false,
                                 uploadedFile: null,
-                                autoAttach: false
+                                autoAttach: false,
+                                uploadBytes: 0,
+                                uploadTotal: 0,
+                                uploadStartTime: 0,
+                                uploadLastTime: 0,
+                                uploadLastB: 0,
+                                uploadSpeed: 0,
+                                uploadEta: 0,
+                                formatBytes(bytes) {
+                                    if (bytes === 0) return '0 B';
+                                    const k = 1024;
+                                    const sizes = ['B', 'KB', 'MB', 'GB'];
+                                    const i = Math.floor(Math.log(bytes) / Math.log(k));
+                                    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+                                },
+                                formatSpeed(bps) {
+                                    if (bps <= 0) return '—';
+                                    if (bps >= 1048576) return (bps / 1048576).toFixed(1) + ' MB/s';
+                                    if (bps >= 1024) return (bps / 1024).toFixed(0) + ' KB/s';
+                                    return bps.toFixed(0) + ' B/s';
+                                },
+                                formatEta(seconds) {
+                                    if (seconds <= 0 || !isFinite(seconds)) return '—';
+                                    if (seconds < 60) return '~' + Math.ceil(seconds) + 's';
+                                    if (seconds < 3600) return '~' + Math.floor(seconds / 60) + 'm ' + Math.ceil(seconds % 60) + 's';
+                                    return '~' + Math.floor(seconds / 3600) + 'h ' + Math.floor((seconds % 3600) / 60) + 'm';
+                                },
+                                calcSpeed() {
+                                    const now = Date.now();
+                                    const elapsed = (now - this.uploadLastTime) / 1000;
+                                    if (elapsed > 0.3 && this.uploadBytes > this.uploadLastB) {
+                                        this.uploadSpeed = (this.uploadBytes - this.uploadLastB) / elapsed;
+                                        const remaining = this.uploadTotal - this.uploadBytes;
+                                        this.uploadEta = this.uploadSpeed > 0 ? remaining / this.uploadSpeed : 0;
+                                        this.uploadLastB = this.uploadBytes;
+                                        this.uploadLastTime = now;
+                                    }
+                                }
                             }"
-                            x-on:upload:started.window="
-                                if ($event.detail.id === 'newFileUpload') {
+                            x-on:livewire-upload-start.window="
+                                if ($event.target.getAttribute('wire:model') === 'newFileUpload') {
                                     uploading = true;
                                     uploadProgress = 0;
                                     uploadedFile = null;
                                     autoAttach = false;
+                                    const filesList = $event.target.files;
+                                    let total = 0;
+                                    for (let i = 0; i < filesList.length; i++) {
+                                        total += filesList[i].size;
+                                    }
+                                    uploadTotal = total;
+                                    uploadBytes = 0;
+                                    uploadStartTime = Date.now();
+                                    uploadLastTime = Date.now();
+                                    uploadLastB = 0;
+                                    uploadSpeed = 0;
+                                    uploadEta = 0;
                                 }
                             "
-                            x-on:upload:progress.window="
-                                if ($event.detail.id === 'newFileUpload') {
+                            x-on:livewire-upload-progress.window="
+                                if ($event.target.getAttribute('wire:model') === 'newFileUpload') {
                                     uploadProgress = Math.round($event.detail.progress);
+                                    uploadBytes = Math.round((uploadProgress / 100) * uploadTotal);
+                                    calcSpeed();
                                     uploading = true;
                                 }
                             "
-                            x-on:upload:finished.window="
-                                if ($event.detail.id === 'newFileUpload') {
+                            x-on:livewire-upload-finish.window="
+                                if ($event.target.getAttribute('wire:model') === 'newFileUpload') {
                                     uploadProgress = 100;
+                                    uploadBytes = uploadTotal;
                                     uploading = false;
                                     autoAttach = true;
+                                    uploadSpeed = 0;
+                                    uploadEta = 0;
                                     var ev = $event.detail;
                                     if (ev && ev.files && ev.files.length) {
                                         ev.files.forEach(function (f) {
@@ -465,11 +518,22 @@
                                     }, 300);
                                 }
                             "
-                            x-on:upload:cancelled.window="
-                                if ($event.detail.id === 'newFileUpload') {
+                            x-on:livewire-upload-cancel.window="
+                                if ($event.target.getAttribute('wire:model') === 'newFileUpload') {
                                     uploading = false;
                                     uploadProgress = 0;
                                     uploadedFile = null;
+                                    uploadSpeed = 0;
+                                    uploadEta = 0;
+                                }
+                            "
+                            x-on:livewire-upload-error.window="
+                                if ($event.target.getAttribute('wire:model') === 'newFileUpload') {
+                                    uploading = false;
+                                    uploadProgress = 0;
+                                    uploadedFile = null;
+                                    uploadSpeed = 0;
+                                    uploadEta = 0;
                                 }
                             "
                         >
@@ -501,22 +565,39 @@
                                 </button>
                             </div>
 
-                            <div x-show="uploading" x-transition class="py-10">
-                                <div class="flex items-center gap-4 mb-4">
-                                    <div class="w-12 h-12 rounded-2xl bg-blue-100 flex items-center justify-center">
-                                        <i class="fas fa-spinner fa-spin text-xl text-blue-500"></i>
+                            <div x-show="uploading" x-transition class="py-8 space-y-4">
+                                <div class="bg-gradient-to-br from-[rgba(var(--brand-rgb),0.04)] to-[rgba(var(--brand-rgb),0.08)] border border-[rgba(var(--brand-rgb),0.15)] rounded-2xl p-4">
+                                    <div class="flex items-center justify-between mb-2.5">
+                                        <div class="flex items-center gap-2">
+                                            <i class="fas fa-cloud-upload-alt text-[var(--brand)] text-lg upload-icon-spin"></i>
+                                            <span class="text-sm font-semibold text-gray-800">Uploading & Attaching...</span>
+                                        </div>
+                                        <span class="text-sm font-bold text-[var(--brand)] tabular-nums" x-text="uploadProgress + '%'"></span>
                                     </div>
-                                    <div class="flex-1">
-                                        <p class="text-sm font-bold text-gray-800">Uploading & Attaching...</p>
-                                        <p class="text-xs text-gray-500">File will be attached automatically</p>
+                                    <div class="w-full bg-gray-200 rounded-full h-2.5 overflow-hidden mb-2.5">
+                                        <div class="h-full rounded-full bg-gradient-to-r from-blue-500 to-[var(--brand)] transition-all duration-300 ease-out relative overflow-hidden"
+                                             :style="'width:' + uploadProgress + '%'">
+                                            <div class="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent upload-shimmer" x-show="uploadProgress < 100"></div>
+                                        </div>
                                     </div>
-                                    <span class="text-lg font-bold text-blue-600" x-text="uploadProgress + '%'"></span>
-                                </div>
-                                <div class="w-full bg-gray-200 rounded-full h-2.5 overflow-hidden">
-                                    <div
-                                        class="h-full rounded-full bg-gradient-to-r from-blue-500 to-[var(--brand)] transition-all duration-300"
-                                        :style="'width:' + uploadProgress + '%'"
-                                    ></div>
+                                    <div class="flex items-center justify-between flex-wrap gap-2">
+                                        <div class="flex items-center gap-3">
+                                            <span class="text-[11px] text-gray-500 tabular-nums">
+                                                <span x-text="formatBytes(uploadBytes)"></span> / <span x-text="formatBytes(uploadTotal)"></span>
+                                            </span>
+                                            <span class="inline-flex items-center gap-1 text-[10px] text-gray-500 font-medium tabular-nums" x-show="uploading && uploadProgress < 100">
+                                                <i class="fas fa-bolt text-amber-400 text-[9px]"></i>
+                                                <span x-text="formatSpeed(uploadSpeed)"></span>
+                                            </span>
+                                            <span class="inline-flex items-center gap-1 text-[10px] text-gray-500 font-medium tabular-nums" x-show="uploading && uploadProgress < 100">
+                                                <i class="fas fa-clock text-gray-400 text-[9px]"></i>
+                                                <span x-text="formatEta(uploadEta)"></span>
+                                            </span>
+                                        </div>
+                                        <button type="button" @click="$wire.cancelUpload('newFileUpload')" class="text-xs text-red-500 hover:text-red-700 font-medium transition-colors">
+                                            Cancel
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
 

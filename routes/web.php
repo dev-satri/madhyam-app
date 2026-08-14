@@ -95,6 +95,66 @@ Route::middleware('auth:web')->group(function () {
 
             return Storage::download($file->path, $file->name);
         })->name('files.download');
+
+        // XHR file upload endpoint — provides real-time progress via XMLHttpRequest
+        Route::post('files/xhr-upload', function (Request $request) {
+            $request->validate([
+                'file' => 'required|file|max:204800', // 200MB
+                'folder_id' => 'nullable|integer',
+                'client_id' => 'nullable|integer',
+                'tags' => 'nullable|string|max:500',
+            ]);
+
+            $file = $request->file('file');
+            $retentionDays = DB::table('settings')->value('file_retention_days') ?? 5;
+
+            $path = $file->store('files/' . now()->format('Y/m'), 'public');
+            $ext = strtolower($file->getClientOriginalExtension());
+            $type = match(true) {
+                in_array($ext, ['jpg','jpeg','png','gif','svg','webp']) => 'image',
+                in_array($ext, ['mp4','mov','avi','mkv','webm']) => 'video',
+                in_array($ext, ['mp3','wav','ogg','flac']) => 'audio',
+                default => 'document',
+            };
+
+            $folderId = $request->input('folder_id') ?: null;
+            $clientId = $request->input('client_id') ?: null;
+            $tags = $request->input('tags') ?: null;
+
+            $fileId = DB::table('files')->insertGetId([
+                'name' => $file->getClientOriginalName(),
+                'path' => $path,
+                'type' => $type,
+                'size' => $file->getSize(),
+                'storage_type' => 'local',
+                'folder_id' => $folderId,
+                'client_id' => $clientId,
+                'tags' => $tags,
+                'uploaded_by' => Auth::id(),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+
+            DB::table('file_expiries')->insert([
+                'file_id' => $fileId,
+                'expiry_date' => now()->addDays($retentionDays),
+                'extended' => false,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+
+            if ($clientId) {
+                \App\Services\PackageService::recordFile($clientId, $file->getSize());
+            }
+
+            return response()->json([
+                'success' => true,
+                'file_id' => $fileId,
+                'name' => $file->getClientOriginalName(),
+                'size' => $file->getSize(),
+                'type' => $type,
+            ]);
+        })->name('files.xhr-upload');
     });
 
     Route::middleware('feature:reports')->group(function () {

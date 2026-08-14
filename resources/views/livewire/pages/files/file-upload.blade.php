@@ -93,47 +93,101 @@ new class extends Component
                  uploadComplete: false,
                  uploadBytes: 0,
                  uploadTotal: 0,
+                 uploadStartTime: 0,
+                 uploadLastTime: 0,
+                 uploadLastB: 0,
+                 uploadSpeed: 0,
+                 uploadEta: 0,
                  formatBytes(bytes) {
                      if (bytes === 0) return '0 B';
                      const k = 1024;
                      const sizes = ['B', 'KB', 'MB', 'GB'];
                      const i = Math.floor(Math.log(bytes) / Math.log(k));
                      return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+                 },
+                 formatSpeed(bps) {
+                     if (bps <= 0) return '—';
+                     if (bps >= 1048576) return (bps / 1048576).toFixed(1) + ' MB/s';
+                     if (bps >= 1024) return (bps / 1024).toFixed(0) + ' KB/s';
+                     return bps.toFixed(0) + ' B/s';
+                 },
+                 formatEta(seconds) {
+                     if (seconds <= 0 || !isFinite(seconds)) return '—';
+                     if (seconds < 60) return '~' + Math.ceil(seconds) + 's';
+                     if (seconds < 3600) return '~' + Math.floor(seconds / 60) + 'm ' + Math.ceil(seconds % 60) + 's';
+                     return '~' + Math.floor(seconds / 3600) + 'h ' + Math.floor((seconds % 3600) / 60) + 'm';
+                 },
+                 calcSpeed() {
+                     const now = Date.now();
+                     const elapsed = (now - this.uploadLastTime) / 1000;
+                     if (elapsed > 0.3 && this.uploadBytes > this.uploadLastB) {
+                         this.uploadSpeed = (this.uploadBytes - this.uploadLastB) / elapsed;
+                         const remaining = this.uploadTotal - this.uploadBytes;
+                         this.uploadEta = this.uploadSpeed > 0 ? remaining / this.uploadSpeed : 0;
+                         this.uploadLastB = this.uploadBytes;
+                         this.uploadLastTime = now;
+                     }
                  }
              }"
-             x-on:upload:started.window="
-                 if ($event.detail.id === 'files') {
+             x-on:livewire-upload-start.window="
+                 if ($event.target.getAttribute('wire:model') === 'files') {
                      uploading = true;
                      uploadComplete = false;
                      uploadProgress = 0;
+                     const filesList = $event.target.files;
+                     let total = 0;
+                     for (let i = 0; i < filesList.length; i++) {
+                         total += filesList[i].size;
+                     }
+                     uploadTotal = total;
+                     uploadBytes = 0;
+                     uploadStartTime = Date.now();
+                     uploadLastTime = Date.now();
+                     uploadLastB = 0;
+                     uploadSpeed = 0;
+                     uploadEta = 0;
                  }
              "
-             x-on:upload:progress.window="
-                 if ($event.detail.id === 'files') {
+             x-on:livewire-upload-progress.window="
+                 if ($event.target.getAttribute('wire:model') === 'files') {
                      uploadProgress = Math.round($event.detail.progress);
-                     uploadBytes = $event.detail.bytesUploaded;
-                     uploadTotal = $event.detail.bytesTotal;
+                     uploadBytes = Math.round((uploadProgress / 100) * uploadTotal);
+                     calcSpeed();
                      uploading = true;
                  }
              "
-             x-on:upload:finished.window="
-                 if ($event.detail.id === 'files') {
+             x-on:livewire-upload-finish.window="
+                 if ($event.target.getAttribute('wire:model') === 'files') {
                      uploadProgress = 100;
+                     uploadBytes = uploadTotal;
                      uploading = false;
                      uploadComplete = true;
+                     uploadSpeed = 0;
+                     uploadEta = 0;
                  }
              "
-             x-on:upload:cancelled.window="
-                 if ($event.detail.id === 'files') {
+             x-on:livewire-upload-cancel.window="
+                 if ($event.target.getAttribute('wire:model') === 'files') {
                      uploading = false;
                      uploadProgress = 0;
                      uploadComplete = false;
+                     uploadSpeed = 0;
+                     uploadEta = 0;
+                 }
+             "
+             x-on:livewire-upload-error.window="
+                 if ($event.target.getAttribute('wire:model') === 'files') {
+                     uploading = false;
+                     uploadProgress = 0;
+                     uploadComplete = false;
+                     uploadSpeed = 0;
+                     uploadEta = 0;
                  }
              "
         >
             {{-- Upload Progress Bar --}}
             <div x-show="uploading" x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0 -translate-y-2" x-transition:enter-end="opacity-100 translate-y-0" class="space-y-3">
-                <div class="bg-[rgba(var(--brand-rgb),0.04)] border border-[rgba(var(--brand-rgb),0.15)] rounded-xl p-4">
+                <div class="bg-gradient-to-br from-[rgba(var(--brand-rgb),0.04)] to-[rgba(var(--brand-rgb),0.08)] border border-[rgba(var(--brand-rgb),0.15)] rounded-xl p-4">
                     <div class="flex items-center justify-between mb-2.5">
                         <div class="flex items-center gap-2">
                             <i class="fas fa-cloud-upload-alt text-[var(--brand)] text-lg upload-icon-spin"></i>
@@ -142,20 +196,31 @@ new class extends Component
                         <span class="text-sm font-bold tabular-nums" :class="uploadProgress >= 100 ? 'text-green-600' : 'text-[var(--brand)]'" x-text="uploadProgress + '%'"></span>
                     </div>
                     <div class="w-full bg-gray-200 rounded-full h-2.5 overflow-hidden mb-2">
-                        <div class="h-full rounded-full transition-all duration-300 ease-out"
-                             :class="uploadProgress >= 100 ? 'bg-green-500' : 'bg-[var(--brand)]'"
-                             :style="'width:' + uploadProgress + '%'"></div>
+                        <div class="h-full rounded-full transition-all duration-300 ease-out relative overflow-hidden"
+                             :class="uploadProgress >= 100 ? 'bg-green-500' : 'bg-gradient-to-r from-[var(--brand)] via-[rgba(var(--brand-rgb),0.8)] to-[var(--brand)]'"
+                             :style="'width:' + uploadProgress + '%'">
+                            <div class="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent upload-shimmer" x-show="uploadProgress < 100"></div>
+                        </div>
                     </div>
-                    <div class="flex items-center justify-between">
-                        <span class="text-xs text-gray-500 tabular-nums">
-                            <span x-text="formatBytes(uploadBytes)"></span> / <span x-text="formatBytes(uploadTotal)"></span>
-                        </span>
+                    <div class="flex items-center justify-between flex-wrap gap-2">
+                        <div class="flex items-center gap-3">
+                            <span class="text-xs text-gray-500 tabular-nums">
+                                <span x-text="formatBytes(uploadBytes)"></span> / <span x-text="formatBytes(uploadTotal)"></span>
+                            </span>
+                            <span class="inline-flex items-center gap-1 text-[11px] text-gray-500 font-medium tabular-nums" x-show="uploading && uploadProgress < 100">
+                                <i class="fas fa-bolt text-amber-400 text-[9px]"></i>
+                                <span x-text="formatSpeed(uploadSpeed)"></span>
+                            </span>
+                            <span class="inline-flex items-center gap-1 text-[11px] text-gray-500 font-medium tabular-nums" x-show="uploading && uploadProgress < 100">
+                                <i class="fas fa-clock text-gray-400 text-[9px]"></i>
+                                <span x-text="formatEta(uploadEta)"></span>
+                            </span>
+                        </div>
                         <button type="button" @click="$wire.cancelUpload('files')" class="text-xs text-red-500 hover:text-red-700 font-medium transition-colors">
                             <i class="fas fa-times mr-1"></i>Cancel
                         </button>
                     </div>
                 </div>
-            </div>
 
             {{-- Drop Zone (hidden during upload) --}}
             <div x-show="!uploading"
