@@ -406,7 +406,7 @@
                         @livewire ('partials.drive-browser')
                     </div>
 
-                     <div x-show="activeTab === 'upload'" class="p-5">
+                    <div x-show="activeTab === 'upload'" class="p-5">
                         <div
                             x-data="{
                                 uploadProgress: 0,
@@ -436,8 +436,15 @@
                                 formatEta(seconds) {
                                     if (seconds <= 0 || !isFinite(seconds)) return '—';
                                     if (seconds < 60) return '~' + Math.ceil(seconds) + 's';
-                                    if (seconds < 3600) return '~' + Math.floor(seconds / 60) + 'm ' + Math.ceil(seconds % 60) + 's';
-                                    return '~' + Math.floor(seconds / 3600) + 'h ' + Math.floor((seconds % 3600) / 60) + 'm';
+                                    if (seconds < 3600)
+                                        return '~' + Math.floor(seconds / 60) + 'm ' + Math.ceil(seconds % 60) + 's';
+                                    return (
+                                        '~' +
+                                        Math.floor(seconds / 3600) +
+                                        'h ' +
+                                        Math.floor((seconds % 3600) / 60) +
+                                        'm'
+                                    );
                                 },
                                 calcSpeed() {
                                     const now = Date.now();
@@ -566,35 +573,60 @@
                             </div>
 
                             <div x-show="uploading" x-transition class="py-8 space-y-4">
-                                <div class="bg-gradient-to-br from-[rgba(var(--brand-rgb),0.04)] to-[rgba(var(--brand-rgb),0.08)] border border-[rgba(var(--brand-rgb),0.15)] rounded-2xl p-4">
+                                <div
+                                    class="bg-gradient-to-br from-[rgba(var(--brand-rgb),0.04)] to-[rgba(var(--brand-rgb),0.08)] border border-[rgba(var(--brand-rgb),0.15)] rounded-2xl p-4"
+                                >
                                     <div class="flex items-center justify-between mb-2.5">
                                         <div class="flex items-center gap-2">
-                                            <i class="fas fa-cloud-upload-alt text-[var(--brand)] text-lg upload-icon-spin"></i>
-                                            <span class="text-sm font-semibold text-gray-800">Uploading & Attaching...</span>
+                                            <i
+                                                class="fas fa-cloud-upload-alt text-[var(--brand)] text-lg upload-icon-spin"
+                                            ></i>
+                                            <span class="text-sm font-semibold text-gray-800"
+                                                >Uploading & Attaching...</span
+                                            >
                                         </div>
-                                        <span class="text-sm font-bold text-[var(--brand)] tabular-nums" x-text="uploadProgress + '%'"></span>
+                                        <span
+                                            class="text-sm font-bold text-[var(--brand)] tabular-nums"
+                                            x-text="uploadProgress + '%'"
+                                        ></span>
                                     </div>
                                     <div class="w-full bg-gray-200 rounded-full h-2.5 overflow-hidden mb-2.5">
-                                        <div class="h-full rounded-full bg-gradient-to-r from-blue-500 to-[var(--brand)] transition-all duration-300 ease-out relative overflow-hidden"
-                                             :style="'width:' + uploadProgress + '%'">
-                                            <div class="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent upload-shimmer" x-show="uploadProgress < 100"></div>
+                                        <div
+                                            class="h-full rounded-full bg-gradient-to-r from-blue-500 to-[var(--brand)] transition-all duration-300 ease-out relative overflow-hidden"
+                                            :style="'width:' + uploadProgress + '%'"
+                                        >
+                                            <div
+                                                class="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent upload-shimmer"
+                                                x-show="uploadProgress < 100"
+                                            ></div>
                                         </div>
                                     </div>
                                     <div class="flex items-center justify-between flex-wrap gap-2">
                                         <div class="flex items-center gap-3">
                                             <span class="text-[11px] text-gray-500 tabular-nums">
-                                                <span x-text="formatBytes(uploadBytes)"></span> / <span x-text="formatBytes(uploadTotal)"></span>
+                                                <span x-text="formatBytes(uploadBytes)"></span> /
+                                                <span x-text="formatBytes(uploadTotal)"></span>
                                             </span>
-                                            <span class="inline-flex items-center gap-1 text-[10px] text-gray-500 font-medium tabular-nums" x-show="uploading && uploadProgress < 100">
+                                            <span
+                                                class="inline-flex items-center gap-1 text-[10px] text-gray-500 font-medium tabular-nums"
+                                                x-show="uploading && uploadProgress < 100"
+                                            >
                                                 <i class="fas fa-bolt text-amber-400 text-[9px]"></i>
                                                 <span x-text="formatSpeed(uploadSpeed)"></span>
                                             </span>
-                                            <span class="inline-flex items-center gap-1 text-[10px] text-gray-500 font-medium tabular-nums" x-show="uploading && uploadProgress < 100">
+                                            <span
+                                                class="inline-flex items-center gap-1 text-[10px] text-gray-500 font-medium tabular-nums"
+                                                x-show="uploading && uploadProgress < 100"
+                                            >
                                                 <i class="fas fa-clock text-gray-400 text-[9px]"></i>
                                                 <span x-text="formatEta(uploadEta)"></span>
                                             </span>
                                         </div>
-                                        <button type="button" @click="$wire.cancelUpload('newFileUpload')" class="text-xs text-red-500 hover:text-red-700 font-medium transition-colors">
+                                        <button
+                                            type="button"
+                                            @click="$wire.cancelUpload('newFileUpload')"
+                                            class="text-xs text-red-500 hover:text-red-700 font-medium transition-colors"
+                                        >
                                             Cancel
                                         </button>
                                     </div>

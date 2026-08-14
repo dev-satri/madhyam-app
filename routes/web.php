@@ -6,6 +6,7 @@ use App\Http\Controllers\GoogleDriveController;
 use App\Livewire\Actions\Logout;
 use App\Models\Invoice;
 use App\Services\InvoicePdfService;
+use App\Services\PackageService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -110,10 +111,10 @@ Route::middleware('auth:web')->group(function () {
 
             $path = $file->store('files/' . now()->format('Y/m'), 'public');
             $ext = strtolower($file->getClientOriginalExtension());
-            $type = match(true) {
-                in_array($ext, ['jpg','jpeg','png','gif','svg','webp']) => 'image',
-                in_array($ext, ['mp4','mov','avi','mkv','webm']) => 'video',
-                in_array($ext, ['mp3','wav','ogg','flac']) => 'audio',
+            $type = match (true) {
+                in_array($ext, ['jpg', 'jpeg', 'png', 'gif', 'svg', 'webp']) => 'image',
+                in_array($ext, ['mp4', 'mov', 'avi', 'mkv', 'webm']) => 'video',
+                in_array($ext, ['mp3', 'wav', 'ogg', 'flac']) => 'audio',
                 default => 'document',
             };
 
@@ -144,7 +145,7 @@ Route::middleware('auth:web')->group(function () {
             ]);
 
             if ($clientId) {
-                \App\Services\PackageService::recordFile($clientId, $file->getSize());
+                PackageService::recordFile($clientId, $file->getSize());
             }
 
             return response()->json([
