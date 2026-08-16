@@ -3,9 +3,15 @@
 use App\Models\Approval;
 use App\Models\Comment;
 use App\Models\File;
+use App\Models\Folder;
 use App\Models\User;
+use App\Models\Workflow;
+use App\Notifications\ApprovalAttachedNotification;
+use App\Notifications\ApprovalCommentNotification;
+use App\Notifications\WorkflowAssignedNotification;
 use App\Services\ActivityLogger;
 use App\Services\NotificationService;
+use App\Services\PackageService;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -14,13 +20,13 @@ use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\On;
 use Livewire\Volt\Component;
-use Livewire\WithPagination;
 use Livewire\WithFileUploads;
+use Livewire\WithPagination;
 
 new #[Layout('components.layouts.app')] class extends Component
 {
-    use WithPagination;
     use WithFileUploads;
+    use WithPagination;
 
     public string $statusFilter = '';
 
@@ -59,8 +65,6 @@ new #[Layout('components.layouts.app')] class extends Component
     public string $commentAttachments = '[]';
 
     public $newFileUpload = null;
-
-
 
     public int $detailId = 0;
 
@@ -216,7 +220,13 @@ new #[Layout('components.layouts.app')] class extends Component
         }
 
         $user = Auth::user() ?? Auth::guard('client')->user();
-        if ($user && ! in_array($user->role ?? 'client', ['super-admin', 'admin', 'manager'])) {
+
+        // Client portal users should only see their client's approvals
+        if ($account = Auth::guard('client')->user()) {
+            $q->where('approvals.client_id', $account->client_id);
+        }
+        // Non-manager staff can only see their own submissions or their client's content
+        elseif ($user && ! in_array($user->role ?? '', ['super-admin', 'admin', 'manager'])) {
             $q->where(function ($q) use ($user) {
                 $q->where('approvals.submitted_by', $user->id)
                     ->orWhere('approvals.client_id', $user->client_id ?? 0);
@@ -367,7 +377,7 @@ new #[Layout('components.layouts.app')] class extends Component
             // FIRST APPROVAL: Content submitted from planner
             if ($status === 'approved') {
                 // Content stays as 'in-review' (it's now in the workflow pipeline)
-                    // Create workflow item in first stage — copy assignees + attachments from content
+                // Create workflow item in first stage — copy assignees + attachments from content
                 $content = DB::table('contents')->where('id', $approval->content_id)->first();
                 if ($content) {
                     $firstStage = DB::table('workflow_stages')->orderBy('order')->first();
@@ -376,13 +386,21 @@ new #[Layout('components.layouts.app')] class extends Component
                     $allAttachments = [];
                     $seenKeys = [];
                     $decodeAndAdd = function ($raw) use (&$allAttachments, &$seenKeys) {
-                        if (empty($raw)) return;
-                        if (is_string($raw)) $raw = json_decode($raw, true);
-                        if (!is_array($raw)) return;
+                        if (empty($raw)) {
+                            return;
+                        }
+                        if (is_string($raw)) {
+                            $raw = json_decode($raw, true);
+                        }
+                        if (! is_array($raw)) {
+                            return;
+                        }
                         foreach ($raw as $a) {
-                            if (!is_array($a)) continue;
+                            if (! is_array($a)) {
+                                continue;
+                            }
                             $key = ($a['id'] ?? null) ? ('id:' . $a['id']) : ('url:' . md5($a['url'] ?? ''));
-                            if (!in_array($key, $seenKeys)) {
+                            if (! in_array($key, $seenKeys)) {
                                 $seenKeys[] = $key;
                                 $allAttachments[] = $a;
                             }
@@ -399,21 +417,21 @@ new #[Layout('components.layouts.app')] class extends Component
                         'stage' => $firstStage->key ?? 'todo',
                         'assignee' => $content->assignee ?? null,
                         'deadline' => $content->due_date,
-                        'attachments' => !empty($allAttachments) ? json_encode($allAttachments) : null,
+                        'attachments' => ! empty($allAttachments) ? json_encode($allAttachments) : null,
                         'submitted_by' => $actor?->id,
                         'created_at' => now(),
                         'updated_at' => now(),
                     ]);
 
                     // Notify the assignees that a workflow item was created from their content
-                    if (!$suppressSideEffects) {
+                    if (! $suppressSideEffects) {
                         $assigneeIds = json_decode($content->assignee, true) ?? [];
                         foreach ($assigneeIds as $uid) {
-                            $assigneeUser = \App\Models\User::find($uid);
+                            $assigneeUser = User::find($uid);
                             if ($assigneeUser) {
-                                $workflowModel = \App\Models\Workflow::find($newWorkflowId);
+                                $workflowModel = Workflow::find($newWorkflowId);
                                 if ($workflowModel) {
-                                    $assigneeUser->notify(new \App\Notifications\WorkflowAssignedNotification($workflowModel, $actor));
+                                    $assigneeUser->notify(new WorkflowAssignedNotification($workflowModel, $actor));
                                 }
                             }
                         }
@@ -421,7 +439,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
                     // Track package usage (only for client content, not internal)
                     if ($approval->client_id) {
-                        \App\Services\PackageService::recordWorkflow($approval->client_id);
+                        PackageService::recordWorkflow($approval->client_id);
                     }
                 }
 
@@ -448,7 +466,7 @@ new #[Layout('components.layouts.app')] class extends Component
         } elseif ($approval->approval_stage === 'admin-pending') {
             // ADMIN PENDING: Workflow review — admin approves first
             if ($status === 'approved') {
-                $hasClient = !empty($approval->client_id);
+                $hasClient = ! empty($approval->client_id);
                 $isAdminOrSuperAdmin = $actor && in_array($actor->role ?? '', ['super-admin', 'admin']);
 
                 // If admin/super-admin approves, they can bypass client review and go directly to production
@@ -861,34 +879,45 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function getDetailAttachments(): array
     {
-        if (!$this->detailId) return [];
+        if (! $this->detailId) {
+            return [];
+        }
         $atts = [];
         $seenKeys = [];
 
         $approval = DB::table('approvals')->where('id', $this->detailId)->whereNull('deleted_at')->first();
-        if (!$approval) return [];
+        if (! $approval) {
+            return [];
+        }
 
         // Helper to normalize an attachment item
         $normalize = function ($a) {
-            if (!is_array($a)) return null;
+            if (! is_array($a)) {
+                return null;
+            }
             // Ensure minimum fields exist
             $item = [
-                'id'   => $a['id'] ?? null,
+                'id' => $a['id'] ?? null,
                 'name' => $a['name'] ?? 'File',
-                'url'  => $a['url'] ?? '',
+                'url' => $a['url'] ?? '',
                 'type' => $a['type'] ?? 'document',
             ];
-            if (isset($a['size_label'])) $item['size_label'] = $a['size_label'];
+            if (isset($a['size_label'])) {
+                $item['size_label'] = $a['size_label'];
+            }
+
             return $item;
         };
 
         // Helper to add attachment if not already seen
         $addAtt = function ($a) use (&$atts, &$seenKeys, $normalize) {
             $normalized = $normalize($a);
-            if (!$normalized) return;
+            if (! $normalized) {
+                return;
+            }
             // Deduplicate by id (if exists) or by url
             $key = $normalized['id'] ? ('id:' . $normalized['id']) : ('url:' . md5($normalized['url']));
-            if (!in_array($key, $seenKeys)) {
+            if (! in_array($key, $seenKeys)) {
                 $seenKeys[] = $key;
                 $atts[] = $normalized;
             }
@@ -896,10 +925,17 @@ new #[Layout('components.layouts.app')] class extends Component
 
         // Helper to decode attachments from various formats
         $decodeAtts = function ($raw) {
-            if (empty($raw)) return [];
-            if (is_string($raw)) $raw = json_decode($raw, true);
-            if (!is_array($raw)) return [];
-            return array_values(array_filter($raw, fn($a) => is_array($a)));
+            if (empty($raw)) {
+                return [];
+            }
+            if (is_string($raw)) {
+                $raw = json_decode($raw, true);
+            }
+            if (! is_array($raw)) {
+                return [];
+            }
+
+            return array_values(array_filter($raw, fn ($a) => is_array($a)));
         };
 
         // 1. Approval's own attachments (highest priority)
@@ -910,7 +946,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
         // 2. Workflow attachments (linked via content_id or directly)
         $workflowIds = [];
-        if (!empty($approval->content_id)) {
+        if (! empty($approval->content_id)) {
             $workflowIds = DB::table('workflows')
                 ->whereNull('deleted_at')
                 ->where('content_id', $approval->content_id)
@@ -918,7 +954,7 @@ new #[Layout('components.layouts.app')] class extends Component
                 ->toArray();
         }
         // Also check if workflow_id is directly on approval
-        if (!empty($approval->workflow_id)) {
+        if (! empty($approval->workflow_id)) {
             $workflowIds[] = $approval->workflow_id;
         }
         foreach ($workflowIds as $wfId) {
@@ -929,7 +965,7 @@ new #[Layout('components.layouts.app')] class extends Component
         }
 
         // 3. Content attachments
-        if (!empty($approval->content_id)) {
+        if (! empty($approval->content_id)) {
             $contentAttsRaw = DB::table('contents')->where('id', $approval->content_id)->value('attachments');
             foreach ($decodeAtts($contentAttsRaw) as $a) {
                 $addAtt($a);
@@ -937,7 +973,7 @@ new #[Layout('components.layouts.app')] class extends Component
         }
 
         // 4. Task attachments (tasks linked to workflows linked to this content)
-        if (!empty($workflowIds)) {
+        if (! empty($workflowIds)) {
             $taskAttsRaw = DB::table('tasks')
                 ->whereIn('tasks.workflow_id', $workflowIds)
                 ->whereNull('tasks.deleted_at')
@@ -952,25 +988,30 @@ new #[Layout('components.layouts.app')] class extends Component
 
         // Resolve any missing URLs from files table
         $atts = array_map(function ($a) {
-            if (empty($a['url']) && !empty($a['id'])) {
+            if (empty($a['url']) && ! empty($a['id'])) {
                 $file = DB::table('files')->where('id', $a['id'])->first();
                 if ($file && $file->path) {
                     $a['url'] = Storage::url($file->path);
                 }
             }
+
             return $a;
         }, $atts);
 
         // Filter out items still without URL
-        return array_values(array_filter($atts, fn($a) => !empty($a['url'])));
+        return array_values(array_filter($atts, fn ($a) => ! empty($a['url'])));
     }
 
     public function getLinkedContent()
     {
-        if (!$this->detailId) return null;
+        if (! $this->detailId) {
+            return null;
+        }
 
         $appr = DB::table('approvals')->where('id', $this->detailId)->whereNull('deleted_at')->first();
-        if (!$appr || empty($appr->content_id)) return null;
+        if (! $appr || empty($appr->content_id)) {
+            return null;
+        }
 
         return DB::table('contents')
             ->leftJoin('clients', 'contents.client_id', '=', 'clients.id')
@@ -983,9 +1024,9 @@ new #[Layout('components.layouts.app')] class extends Component
     {
         $hasText = trim($this->commentText) !== '';
         $attachments = json_decode($attachmentsJson, true) ?: [];
-        $hasFiles = !empty($attachments);
+        $hasFiles = ! empty($attachments);
 
-        if (!$hasText && !$hasFiles) {
+        if (! $hasText && ! $hasFiles) {
             return;
         }
 
@@ -995,9 +1036,11 @@ new #[Layout('components.layouts.app')] class extends Component
 
         $actor = Auth::user() ?? Auth::guard('client')->user();
         $approval = DB::table('approvals')->where('id', $this->detailId)->whereNull('deleted_at')->first();
-        if (!$approval) return;
+        if (! $approval) {
+            return;
+        }
 
-        if ($hasFiles && !$hasText) {
+        if ($hasFiles && ! $hasText) {
             $existingRaw = DB::table('approvals')->where('id', $this->detailId)->whereNull('deleted_at')->value('attachments');
             $existing = $existingRaw ? (json_decode($existingRaw, true) ?: []) : [];
             $merged = array_values(array_merge($existing, $attachments));
@@ -1013,6 +1056,7 @@ new #[Layout('components.layouts.app')] class extends Component
             $this->commentAttachments = '[]';
             $this->resetPage();
             $this->dispatch('toast', message: 'Files attached', type: 'success');
+
             return;
         }
 
@@ -1041,7 +1085,7 @@ new #[Layout('components.layouts.app')] class extends Component
         $recipientIds = collect();
 
         // Find linked workflow assignee
-        if (!empty($approval->content_id)) {
+        if (! empty($approval->content_id)) {
             $wf = DB::table('workflows')->where('content_id', $approval->content_id)->whereNull('deleted_at')->first();
             if ($wf && $wf->assignee) {
                 $recipientIds->push($wf->assignee);
@@ -1049,24 +1093,28 @@ new #[Layout('components.layouts.app')] class extends Component
         }
 
         // Admins/managers only (NOT super-admin)
-        $adminIds = \App\Models\User::whereIn('role', ['admin', 'manager'])
+        $adminIds = User::whereIn('role', ['admin', 'manager'])
             ->where('status', 'active')
             ->pluck('id');
         $recipientIds = $recipientIds->merge($adminIds);
-        $recipientIds = $recipientIds->filter(fn($id) => (int) $id !== (int) $actorId)->unique();
+        $recipientIds = $recipientIds->filter(fn ($id) => (int) $id !== (int) $actorId)->unique();
 
-        if ($recipientIds->isEmpty()) return;
+        if ($recipientIds->isEmpty()) {
+            return;
+        }
 
-        $recipients = \App\Models\User::whereIn('id', $recipientIds)->where('status', 'active')->get();
+        $recipients = User::whereIn('id', $recipientIds)->where('status', 'active')->get();
 
-        $approvalModel = \App\Models\Approval::find($approval->id);
-        if (!$approvalModel) return;
+        $approvalModel = Approval::find($approval->id);
+        if (! $approvalModel) {
+            return;
+        }
 
         foreach ($recipients as $recipient) {
             if ($comment) {
-                $recipient->notify(new \App\Notifications\ApprovalCommentNotification($comment, $approvalModel, $actor));
-            } elseif (!empty($attachments)) {
-                $recipient->notify(new \App\Notifications\ApprovalAttachedNotification($approvalModel, $attachments, $actor));
+                $recipient->notify(new ApprovalCommentNotification($comment, $approvalModel, $actor));
+            } elseif (! empty($attachments)) {
+                $recipient->notify(new ApprovalAttachedNotification($approvalModel, $attachments, $actor));
             }
         }
     }
@@ -1096,7 +1144,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function getPickableFolders(int $parentId = 0, ?int $clientId = null): array
     {
-        $q = \App\Models\Folder::select('id', 'name')
+        $q = Folder::select('id', 'name')
             ->orderBy('name');
 
         if ($parentId > 0) {
@@ -1107,6 +1155,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
         $folders = $q->get()->map(function ($folder) {
             $fileCount = File::where('folder_id', $folder->id)->count();
+
             return [
                 'id' => $folder->id,
                 'name' => $folder->name,
@@ -1117,7 +1166,7 @@ new #[Layout('components.layouts.app')] class extends Component
         $breadcrumbs = [];
         $current = $parentId;
         while ($current > 0) {
-            $folder = \App\Models\Folder::select('id', 'name', 'parent_id')->find($current);
+            $folder = Folder::select('id', 'name', 'parent_id')->find($current);
             if ($folder) {
                 array_unshift($breadcrumbs, ['id' => $folder->id, 'name' => $folder->name]);
                 $current = $folder->parent_id ?? 0;
@@ -1131,15 +1180,17 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function updatedNewFileUpload(): void
     {
-        if (!$this->newFileUpload) return;
+        if (! $this->newFileUpload) {
+            return;
+        }
 
         $file = $this->newFileUpload;
         $path = $file->store('files/' . now()->format('Y/m'), 'public');
 
         $ext = strtolower($file->getClientOriginalExtension());
-        $typeMap = ['jpg'=>'image','jpeg'=>'image','png'=>'image','gif'=>'image','webp'=>'image','svg'=>'image',
-            'mp4'=>'video','mov'=>'video','avi'=>'video','webm'=>'video','mkv'=>'video',
-            'mp3'=>'audio','wav'=>'audio','ogg'=>'audio','aac'=>'audio','m4a'=>'audio'];
+        $typeMap = ['jpg' => 'image', 'jpeg' => 'image', 'png' => 'image', 'gif' => 'image', 'webp' => 'image', 'svg' => 'image',
+            'mp4' => 'video', 'mov' => 'video', 'avi' => 'video', 'webm' => 'video', 'mkv' => 'video',
+            'mp3' => 'audio', 'wav' => 'audio', 'ogg' => 'audio', 'aac' => 'audio', 'm4a' => 'audio'];
         $fileType = $typeMap[$ext] ?? 'document';
 
         $fileModel = File::create([

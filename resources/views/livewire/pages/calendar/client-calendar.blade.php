@@ -493,12 +493,8 @@ new #[Layout('components.layouts.app')] class extends Component
             </div>
         @endforeach
     </div>
-    <span class="ml-0.5 bg-white/60 rounded-full px-1.5 py-0.5 text-[10px]">{{ $stats[$key] ?? 0 }}</span>
-</div>
-@endforeach
-</div>
 
-{{-- Calendar --}}
+    {{-- Calendar --}}
 <div class="bg-white rounded-2xl border border-gray-100 overflow-hidden">
     {{-- Month Navigation --}}
     <div class="flex items-center justify-between border-b border-gray-100 px-5 py-3">
