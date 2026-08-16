@@ -1,18 +1,27 @@
 <?php
 
+use Anuzpandey\LaravelNepaliDate\Exceptions\InvalidDateException;
+use Anuzpandey\LaravelNepaliDate\LaravelNepaliDate;
 use App\Models\Comment;
 use App\Models\Content;
 use App\Models\File;
+use App\Models\Folder;
 use App\Models\User;
+use App\Models\Workflow;
+use App\Notifications\ContentAssignedNotification;
+use App\Notifications\ContentAttachedNotification;
+use App\Notifications\ContentCommentNotification;
+use App\Notifications\WorkflowAssignedNotification;
 use App\Services\ActivityLogger;
 use App\Services\NotificationService;
 use App\Services\PackageService;
+use App\Support\ContentTags;
+use App\Support\NepaliDate;
 use App\Support\UserVisibility;
-use Anuzpandey\LaravelNepaliDate\Exceptions\InvalidDateException;
-use Anuzpandey\LaravelNepaliDate\LaravelNepaliDate;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\On;
 use Livewire\Volt\Component;
@@ -96,7 +105,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function mount(): void
     {
-        if (\App\Support\NepaliDate::isBs()) {
+        if (NepaliDate::isBs()) {
             try {
                 $bsDate = LaravelNepaliDate::from(now()->format('Y-m-d'))->toNepaliDateArray();
                 $this->currentMonth = (int) $bsDate->month;
@@ -144,7 +153,7 @@ new #[Layout('components.layouts.app')] class extends Component
             ->with('department')
             ->orderBy('name')
             ->get()
-            ->map(fn($u) => [
+            ->map(fn ($u) => [
                 'id' => $u->id,
                 'name' => $u->name,
                 'role' => $u->role,
@@ -178,7 +187,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function goToday(): void
     {
-        if (\App\Support\NepaliDate::isBs()) {
+        if (NepaliDate::isBs()) {
             try {
                 $bsDate = LaravelNepaliDate::from(now()->format('Y-m-d'))->toNepaliDateArray();
                 $this->currentMonth = (int) $bsDate->month;
@@ -196,14 +205,14 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function loadMonthContent(): void
     {
-        if (\App\Support\NepaliDate::isBs()) {
+        if (NepaliDate::isBs()) {
             try {
                 $startBs = sprintf('%04d-%02d-01', $this->currentYear, $this->currentMonth);
                 $startAd = LaravelNepaliDate::from($startBs, 'Y-m-d', 'np')->toEnglishDate('Y-m-d');
                 $startCarbon = Carbon::parse($startAd);
 
                 $totalDays = LaravelNepaliDate::daysInMonth($this->currentMonth, $this->currentYear);
-            } catch (InvalidDateException|\RuntimeException $e) {
+            } catch (InvalidDateException|RuntimeException $e) {
                 $startCarbon = Carbon::createFromDate($this->currentYear, $this->currentMonth, 1);
                 $totalDays = $startCarbon->daysInMonth;
             }
@@ -244,7 +253,7 @@ new #[Layout('components.layouts.app')] class extends Component
             $filter = $this->platformFilter;
             $query->where(function ($q) use ($filter) {
                 $q->whereJsonContains('contents.platform', $filter)
-                    ->orWhereJsonContains('contents.platform', \App\Support\ContentTags::ALL);
+                    ->orWhereJsonContains('contents.platform', ContentTags::ALL);
             });
         }
         if ($this->statusFilter) {
@@ -336,14 +345,14 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function getCalendarDays(): array
     {
-        if (\App\Support\NepaliDate::isBs()) {
+        if (NepaliDate::isBs()) {
             try {
                 $startBs = sprintf('%04d-%02d-01', $this->currentYear, $this->currentMonth);
                 $startAd = LaravelNepaliDate::from($startBs, 'Y-m-d', 'np')->toEnglishDate('Y-m-d');
                 $firstDayCarbon = Carbon::parse($startAd);
 
                 $totalDays = LaravelNepaliDate::daysInMonth($this->currentMonth, $this->currentYear);
-            } catch (InvalidDateException|\RuntimeException $e) {
+            } catch (InvalidDateException|RuntimeException $e) {
                 $firstDayCarbon = Carbon::createFromDate($this->currentYear, $this->currentMonth, 1);
                 $totalDays = $firstDayCarbon->daysInMonth;
             }
@@ -425,12 +434,13 @@ new #[Layout('components.layouts.app')] class extends Component
         $items = $this->getDayContent();
         $summary = [];
         foreach ($items as $item) {
-            $platforms = \App\Support\ContentTags::expand(
-                \App\Support\ContentTags::normalize($item->platform ?? null, 'platform'),
+            $platforms = ContentTags::expand(
+                ContentTags::normalize($item->platform ?? null, 'platform'),
                 'platform'
             );
             if (empty($platforms)) {
                 $summary['unknown'] = ($summary['unknown'] ?? 0) + 1;
+
                 continue;
             }
             foreach ($platforms as $p) {
@@ -497,8 +507,8 @@ new #[Layout('components.layouts.app')] class extends Component
         $this->formClientId = $content->client_id ? (int) $content->client_id : null;
         $this->formDate = $content->date instanceof Carbon ? $content->date->format('Y-m-d') : $content->date;
         $this->formDueDate = $content->due_date instanceof Carbon ? $content->due_date->format('Y-m-d') : ($content->due_date ?? '');
-        $this->formPlatforms = \App\Support\ContentTags::normalize($content->platform, 'platform');
-        $this->formTypes = \App\Support\ContentTags::normalize($content->type, 'type');
+        $this->formPlatforms = ContentTags::normalize($content->platform, 'platform');
+        $this->formTypes = ContentTags::normalize($content->type, 'type');
         $this->formStatus = $content->status;
         $this->formAssigneeIds = is_array($content->assignee) ? $content->assignee : ($content->assignee ? [$content->assignee] : []);
         $this->caption = $content->caption ?? '';
@@ -518,7 +528,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function save(): void
     {
-        $isBs = \App\Support\NepaliDate::isBs();
+        $isBs = NepaliDate::isBs();
 
         $rules = [
             'title' => 'required|string|max:255',
@@ -528,7 +538,7 @@ new #[Layout('components.layouts.app')] class extends Component
             'formStatus' => 'required|string|in:draft,scripting,in-review,revision,published',
         ];
 
-        if (!$isBs) {
+        if (! $isBs) {
             $rules['formDate'] = 'required|date';
             $rules['formDueDate'] = 'nullable|date';
         } else {
@@ -540,13 +550,13 @@ new #[Layout('components.layouts.app')] class extends Component
 
         try {
             // Normalize + de-dupe (e.g. someone ticks Instagram AND "All" — collapse to ["all"])
-            $platforms = \App\Support\ContentTags::normalize($this->formPlatforms, 'platform');
-            $types = \App\Support\ContentTags::normalize($this->formTypes, 'type');
-            if (in_array(\App\Support\ContentTags::ALL, $platforms, true)) {
-                $platforms = [\App\Support\ContentTags::ALL];
+            $platforms = ContentTags::normalize($this->formPlatforms, 'platform');
+            $types = ContentTags::normalize($this->formTypes, 'type');
+            if (in_array(ContentTags::ALL, $platforms, true)) {
+                $platforms = [ContentTags::ALL];
             }
-            if (in_array(\App\Support\ContentTags::ALL, $types, true)) {
-                $types = [\App\Support\ContentTags::ALL];
+            if (in_array(ContentTags::ALL, $types, true)) {
+                $types = [ContentTags::ALL];
             }
 
             if ($this->editingId) {
@@ -554,7 +564,7 @@ new #[Layout('components.layouts.app')] class extends Component
                 $oldContent = DB::table('contents')->where('id', $this->editingId)->first();
                 $oldAssigneeRaw = $oldContent->assignee ?? null;
                 $oldAssignee = is_string($oldAssigneeRaw) ? (json_decode($oldAssigneeRaw, true) ?? []) : (is_array($oldAssigneeRaw) ? $oldAssigneeRaw : []);
-                $newAssignee = !empty($this->formAssigneeIds) ? $this->formAssigneeIds : [];
+                $newAssignee = ! empty($this->formAssigneeIds) ? $this->formAssigneeIds : [];
 
                 DB::table('contents')->where('id', $this->editingId)->update([
                     'title' => $this->title,
@@ -573,26 +583,26 @@ new #[Layout('components.layouts.app')] class extends Component
                 ]);
 
                 // Notify new assignees (those in new list but not in old)
-                $contentModel = \App\Models\Content::find($this->editingId);
+                $contentModel = Content::find($this->editingId);
                 if ($contentModel) {
                     $actorId = Auth::id();
                     foreach ($newAssignee as $uid) {
-                        if (!in_array($uid, $oldAssignee) && (int) $uid !== $actorId) {
-                            $user = \App\Models\User::find($uid);
+                        if (! in_array($uid, $oldAssignee) && (int) $uid !== $actorId) {
+                            $user = User::find($uid);
                             if ($user) {
-                                $user->notify(new \App\Notifications\ContentAssignedNotification($contentModel, Auth::user()));
+                                $user->notify(new ContentAssignedNotification($contentModel, Auth::user()));
                             }
                         }
                     }
                 }
 
                 // Sync assignees and date to linked workflows
-                if (!static::$syncingWorkflow) {
-                    static::$syncingWorkflow = true;
-                    
+                if (! self::$syncingWorkflow) {
+                    self::$syncingWorkflow = true;
+
                     try {
                         // Map content status to workflow stage
-                        $workflowStage = match($this->formStatus) {
+                        $workflowStage = match ($this->formStatus) {
                             'draft' => 'todo',
                             'scripting' => 'scripting',
                             'in-review' => 'review',
@@ -600,7 +610,7 @@ new #[Layout('components.layouts.app')] class extends Component
                             'published' => 'published',
                             default => 'todo',
                         };
-                        
+
                         DB::table('workflows')
                             ->where('content_id', $this->editingId)
                             ->whereNull('deleted_at')
@@ -610,20 +620,20 @@ new #[Layout('components.layouts.app')] class extends Component
                                 'stage' => $workflowStage,
                                 'updated_at' => now(),
                             ]);
-                    } catch (\Exception $e) {
+                    } catch (Exception $e) {
                         // Log but don't fail the content update if workflow sync fails
                         logger()->error('Failed to sync content to workflow', [
                             'content_id' => $this->editingId,
-                            'error' => $e->getMessage()
+                            'error' => $e->getMessage(),
                         ]);
                     }
-                    
-                    static::$syncingWorkflow = false;
+
+                    self::$syncingWorkflow = false;
                 }
 
                 $this->dispatch('toast', message: 'Content updated successfully', type: 'success');
             } else {
-                $assigneeVal = !empty($this->formAssigneeIds) ? json_encode($this->formAssigneeIds) : null;
+                $assigneeVal = ! empty($this->formAssigneeIds) ? json_encode($this->formAssigneeIds) : null;
                 $newContentId = DB::table('contents')->insertGetId([
                     'title' => $this->title,
                     'client_id' => $this->formClientId ?: null,
@@ -654,7 +664,7 @@ new #[Layout('components.layouts.app')] class extends Component
                     $firstStage = DB::table('workflow_stages')->orderBy('order')->first();
 
                     // Get primary type for workflow
-                    $primaryType = \App\Support\ContentTags::primary($types, 'type');
+                    $primaryType = ContentTags::primary($types, 'type');
 
                     // Create workflow item directly (no approval needed)
                     $workflowId = DB::table('workflows')->insertGetId([
@@ -673,15 +683,15 @@ new #[Layout('components.layouts.app')] class extends Component
                     ]);
 
                     // Notify assignees about workflow creation
-                    if (!empty($this->formAssigneeIds)) {
+                    if (! empty($this->formAssigneeIds)) {
                         $actorId = Auth::id();
-                        $workflowModel = \App\Models\Workflow::find($workflowId);
+                        $workflowModel = Workflow::find($workflowId);
                         if ($workflowModel) {
                             foreach ($this->formAssigneeIds as $uid) {
                                 if ((int) $uid !== $actorId) {
-                                    $assigneeUser = \App\Models\User::find($uid);
+                                    $assigneeUser = User::find($uid);
                                     if ($assigneeUser) {
-                                        $assigneeUser->notify(new \App\Notifications\WorkflowAssignedNotification($workflowModel, Auth::user()));
+                                        $assigneeUser->notify(new WorkflowAssignedNotification($workflowModel, Auth::user()));
                                     }
                                 }
                             }
@@ -690,23 +700,23 @@ new #[Layout('components.layouts.app')] class extends Component
 
                     // Track package usage for workflow (only for client content)
                     if ($this->formClientId) {
-                        \App\Services\PackageService::recordWorkflow($this->formClientId);
+                        PackageService::recordWorkflow($this->formClientId);
                     }
 
                     app(ActivityLogger::class)->record(Auth::user(), "Content '{$this->title}' created with workflow (approval skipped)");
-                    
+
                     $this->dispatch('toast', message: 'Content and workflow created successfully (approval skipped)', type: 'success');
                 } else {
                     // Normal flow: just notify assignees about content creation
-                    if (!empty($this->formAssigneeIds)) {
-                        $contentModel = \App\Models\Content::find($newContentId);
+                    if (! empty($this->formAssigneeIds)) {
+                        $contentModel = Content::find($newContentId);
                         $actorId = Auth::id();
                         if ($contentModel) {
                             foreach ($this->formAssigneeIds as $uid) {
                                 if ((int) $uid !== $actorId) {
-                                    $user = \App\Models\User::find($uid);
+                                    $user = User::find($uid);
                                     if ($user) {
-                                        $user->notify(new \App\Notifications\ContentAssignedNotification($contentModel, Auth::user()));
+                                        $user->notify(new ContentAssignedNotification($contentModel, Auth::user()));
                                     }
                                 }
                             }
@@ -718,7 +728,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
                 // Package usage counter still bumps per selected type (expand "all" sentinel)
                 if ($this->formClientId) {
-                    foreach (\App\Support\ContentTags::expand($types, 'type') as $type) {
+                    foreach (ContentTags::expand($types, 'type') as $type) {
                         PackageService::recordContent(
                             $this->formClientId,
                             $this->formStatus === 'published' ? 'published' : 'created',
@@ -743,7 +753,7 @@ new #[Layout('components.layouts.app')] class extends Component
         // Admin / super-admin can delete any status; other roles keep the status guard
         // (and the UI hides the button for them anyway — this is the wire:call defence).
         $isPrivileged = in_array(Auth::user()->role, ['super-admin', 'admin'], true);
-        if (!$isPrivileged && in_array($content->status, ['published', 'in-review', 'scheduled'])) {
+        if (! $isPrivileged && in_array($content->status, ['published', 'in-review', 'scheduled'])) {
             $this->dispatch('toast', message: 'Cannot delete content with status: ' . $content->status, type: 'error');
 
             return;
@@ -788,7 +798,7 @@ new #[Layout('components.layouts.app')] class extends Component
             $filter = $this->platformFilter;
             $query->where(function ($q) use ($filter) {
                 $q->whereJsonContains('platform', $filter)
-                    ->orWhereJsonContains('platform', \App\Support\ContentTags::ALL);
+                    ->orWhereJsonContains('platform', ContentTags::ALL);
             });
         }
         if ($this->clientFilter) {
@@ -828,7 +838,7 @@ new #[Layout('components.layouts.app')] class extends Component
             $filter = $this->platformFilter;
             $query->where(function ($q) use ($filter) {
                 $q->whereJsonContains('contents.platform', $filter)
-                    ->orWhereJsonContains('contents.platform', \App\Support\ContentTags::ALL);
+                    ->orWhereJsonContains('contents.platform', ContentTags::ALL);
             });
         }
         if ($this->statusFilter) {
@@ -880,8 +890,8 @@ new #[Layout('components.layouts.app')] class extends Component
         $rows = DB::table('contents')->whereNull('deleted_at')->pluck($kind);
         $counts = [];
         foreach ($rows as $raw) {
-            $expanded = \App\Support\ContentTags::expand(
-                \App\Support\ContentTags::normalize($raw, $kind),
+            $expanded = ContentTags::expand(
+                ContentTags::normalize($raw, $kind),
                 $kind
             );
             foreach ($expanded as $v) {
@@ -937,16 +947,16 @@ new #[Layout('components.layouts.app')] class extends Component
                 'submitted_for_approval_at' => now(),
             ]);
 
-            $_platformArr = \App\Support\ContentTags::normalize($content->platform, 'platform');
-            $_typeArr = \App\Support\ContentTags::normalize($content->type, 'type');
-            $platform = \App\Support\ContentTags::label($_platformArr, 'platform');
-            $type = \App\Support\ContentTags::label($_typeArr, 'type');
+            $_platformArr = ContentTags::normalize($content->platform, 'platform');
+            $_typeArr = ContentTags::normalize($content->type, 'type');
+            $platform = ContentTags::label($_platformArr, 'platform');
+            $type = ContentTags::label($_typeArr, 'type');
             $contentAttachments = $content->attachments ? (is_string($content->attachments) ? $content->attachments : json_encode($content->attachments)) : null;
             DB::table('approvals')->insert([
                 'title' => $content->title . " ({$platform} / {$type})",
                 'client_id' => $content->client_id,
                 'content_id' => $contentId,
-                'type' => \App\Support\ContentTags::primary($_typeArr, 'type'),
+                'type' => ContentTags::primary($_typeArr, 'type'),
                 'status' => 'pending',
                 'approval_stage' => 'first',
                 'submitted_by' => auth()->id(),
@@ -976,6 +986,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
         if ($content->status === 'published') {
             $this->dispatch('toast', message: 'Published content cannot be changed', type: 'error');
+
             return;
         }
 
@@ -987,6 +998,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
         if ($existingWorkflow) {
             $this->dispatch('toast', message: 'Workflow already exists for this content', type: 'info');
+
             return;
         }
 
@@ -1007,8 +1019,8 @@ new #[Layout('components.layouts.app')] class extends Component
         }
 
         // Get primary type for workflow
-        $_typeArr = \App\Support\ContentTags::normalize($content->type, 'type');
-        $primaryType = \App\Support\ContentTags::primary($_typeArr, 'type');
+        $_typeArr = ContentTags::normalize($content->type, 'type');
+        $primaryType = ContentTags::primary($_typeArr, 'type');
 
         // Create workflow item directly
         $workflowId = DB::table('workflows')->insertGetId([
@@ -1027,17 +1039,17 @@ new #[Layout('components.layouts.app')] class extends Component
         ]);
 
         // Notify assignees
-        if (!empty($content->assignee)) {
+        if (! empty($content->assignee)) {
             $assigneeIds = is_string($content->assignee) ? json_decode($content->assignee, true) : $content->assignee;
             if (is_array($assigneeIds)) {
                 $actorId = Auth::id();
                 foreach ($assigneeIds as $uid) {
                     if ((int) $uid !== $actorId) {
-                        $assigneeUser = \App\Models\User::find($uid);
+                        $assigneeUser = User::find($uid);
                         if ($assigneeUser) {
-                            $workflowModel = \App\Models\Workflow::find($workflowId);
+                            $workflowModel = Workflow::find($workflowId);
                             if ($workflowModel) {
-                                $assigneeUser->notify(new \App\Notifications\WorkflowAssignedNotification($workflowModel, Auth::user()));
+                                $assigneeUser->notify(new WorkflowAssignedNotification($workflowModel, Auth::user()));
                             }
                         }
                     }
@@ -1047,11 +1059,11 @@ new #[Layout('components.layouts.app')] class extends Component
 
         // Track package usage (only for client content)
         if ($content->client_id) {
-            \App\Services\PackageService::recordWorkflow($content->client_id);
+            PackageService::recordWorkflow($content->client_id);
         }
 
         app(ActivityLogger::class)->record(Auth::user(), "Content '{$content->title}' sent directly to workflow (skipped approval)");
-        
+
         $this->dispatch('toast', message: 'Content sent directly to workflow (approval skipped)', type: 'success');
         $this->loadMonthContent();
     }
@@ -1065,15 +1077,19 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function getDiscussionAttachments(): array
     {
-        if (!$this->selectedContentId) return [];
+        if (! $this->selectedContentId) {
+            return [];
+        }
         $atts = [];
         $seenIds = [];
 
         // Helper to add attachment if not already seen
         $addAtt = function ($a) use (&$atts, &$seenIds) {
-            if (!is_array($a)) return;
+            if (! is_array($a)) {
+                return;
+            }
             $key = $a['id'] ?? ($a['url'] ?? md5(json_encode($a)));
-            if (!in_array($key, $seenIds)) {
+            if (! in_array($key, $seenIds)) {
                 $seenIds[] = $key;
                 $atts[] = $a;
             }
@@ -1081,10 +1097,12 @@ new #[Layout('components.layouts.app')] class extends Component
 
         // 1. Content's own attachments
         $raw = DB::table('contents')->where('id', $this->selectedContentId)->value('attachments');
-        if (!is_null($raw)) {
-            if (is_string($raw)) $raw = json_decode($raw, true);
+        if (! is_null($raw)) {
+            if (is_string($raw)) {
+                $raw = json_decode($raw, true);
+            }
             if (is_array($raw)) {
-                foreach (array_filter($raw, fn($a) => is_array($a)) as $a) {
+                foreach (array_filter($raw, fn ($a) => is_array($a)) as $a) {
                     $addAtt($a);
                 }
             }
@@ -1093,10 +1111,12 @@ new #[Layout('components.layouts.app')] class extends Component
         // 2. Workflow attachments linked to this content
         $wfAtts = DB::table('workflows')->where('content_id', $this->selectedContentId)->whereNotNull('attachments')->get();
         foreach ($wfAtts as $wf) {
-            if (empty($wf->attachments)) continue;
+            if (empty($wf->attachments)) {
+                continue;
+            }
             $decoded = is_string($wf->attachments) ? json_decode($wf->attachments, true) : $wf->attachments;
             if (is_array($decoded)) {
-                foreach (array_filter($decoded, fn($a) => is_array($a)) as $a) {
+                foreach (array_filter($decoded, fn ($a) => is_array($a)) as $a) {
                     $addAtt($a);
                 }
             }
@@ -1110,25 +1130,28 @@ new #[Layout('components.layouts.app')] class extends Component
             ->whereNotNull('tasks.attachments')
             ->pluck('tasks.attachments');
         foreach ($taskAtts as $rawTaskAtts) {
-            if (is_string($rawTaskAtts)) $rawTaskAtts = json_decode($rawTaskAtts, true);
+            if (is_string($rawTaskAtts)) {
+                $rawTaskAtts = json_decode($rawTaskAtts, true);
+            }
             if (is_array($rawTaskAtts)) {
-                foreach (array_filter($rawTaskAtts, fn($a) => is_array($a)) as $a) {
+                foreach (array_filter($rawTaskAtts, fn ($a) => is_array($a)) as $a) {
                     $addAtt($a);
                 }
             }
         }
 
         $atts = array_map(function ($a) {
-            if (empty($a['url']) && !empty($a['id'])) {
+            if (empty($a['url']) && ! empty($a['id'])) {
                 $file = DB::table('files')->where('id', $a['id'])->first();
                 if ($file && $file->path) {
-                    $a['url'] = \Illuminate\Support\Facades\Storage::url($file->path);
+                    $a['url'] = Storage::url($file->path);
                 }
             }
+
             return $a;
         }, $atts);
 
-        return array_values(array_filter($atts, fn($a) => !empty($a['url'])));
+        return array_values(array_filter($atts, fn ($a) => ! empty($a['url'])));
     }
 
     public function getContentDiscussionComments()
@@ -1148,20 +1171,22 @@ new #[Layout('components.layouts.app')] class extends Component
     {
         $hasText = trim($this->commentText) !== '';
         $attachments = json_decode($attachmentsJson, true) ?: [];
-        $hasFiles = !empty($attachments);
+        $hasFiles = ! empty($attachments);
 
-        if (!$hasText && !$hasFiles) {
+        if (! $hasText && ! $hasFiles) {
             return;
         }
 
-        if (!$this->selectedContentId) {
+        if (! $this->selectedContentId) {
             return;
         }
 
         $content = DB::table('contents')->where('id', $this->selectedContentId)->first();
-        if (!$content) return;
+        if (! $content) {
+            return;
+        }
 
-        if ($hasFiles && !$hasText) {
+        if ($hasFiles && ! $hasText) {
             $existingRaw = DB::table('contents')->where('id', $this->selectedContentId)->value('attachments');
             $existing = $existingRaw ? (json_decode($existingRaw, true) ?: []) : [];
             $merged = array_values(array_merge($existing, $attachments));
@@ -1172,11 +1197,11 @@ new #[Layout('components.layouts.app')] class extends Component
             ]);
 
             // Notify assigned user + admins (not self)
-            $contentModel = \App\Models\Content::find($this->selectedContentId);
+            $contentModel = Content::find($this->selectedContentId);
             if ($contentModel) {
                 $this->notifyContentRecipients(
                     $contentModel,
-                    new \App\Notifications\ContentAttachedNotification($contentModel, $attachments, Auth::user())
+                    new ContentAttachedNotification($contentModel, $attachments, Auth::user())
                 );
             }
 
@@ -1184,6 +1209,7 @@ new #[Layout('components.layouts.app')] class extends Component
             $this->loadMonthContent();
             $this->dispatch('contentUpdated');
             $this->dispatch('toast', message: 'Files attached', type: 'success');
+
             return;
         }
 
@@ -1191,6 +1217,7 @@ new #[Layout('components.layouts.app')] class extends Component
             'commentable_type' => Content::class,
             'commentable_id' => $this->selectedContentId,
             'user_id' => Auth::id(),
+            'user_type' => User::class,
             'body' => $this->commentText,
             'attachments' => $attachments ?: null,
         ]);
@@ -1201,11 +1228,11 @@ new #[Layout('components.layouts.app')] class extends Component
         );
 
         // Notify assigned user + admins (not self)
-        $contentModel = \App\Models\Content::find($this->selectedContentId);
+        $contentModel = Content::find($this->selectedContentId);
         if ($contentModel) {
             $this->notifyContentRecipients(
                 $contentModel,
-                new \App\Notifications\ContentCommentNotification($comment, $contentModel, Auth::user())
+                new ContentCommentNotification($comment, $contentModel, Auth::user())
             );
         }
 
@@ -1228,15 +1255,17 @@ new #[Layout('components.layouts.app')] class extends Component
         }
 
         // Admins/managers only (NOT super-admin)
-        $adminIds = \App\Models\User::whereIn('role', ['admin', 'manager'])
+        $adminIds = User::whereIn('role', ['admin', 'manager'])
             ->where('status', 'active')
             ->pluck('id');
         $recipientIds = $recipientIds->merge($adminIds);
-        $recipientIds = $recipientIds->filter(fn($id) => (int) $id !== (int) $actorId)->unique();
+        $recipientIds = $recipientIds->filter(fn ($id) => (int) $id !== (int) $actorId)->unique();
 
-        if ($recipientIds->isEmpty()) return;
+        if ($recipientIds->isEmpty()) {
+            return;
+        }
 
-        $recipients = \App\Models\User::whereIn('id', $recipientIds)->where('status', 'active')->get();
+        $recipients = User::whereIn('id', $recipientIds)->where('status', 'active')->get();
         foreach ($recipients as $recipient) {
             $recipient->notify($notification);
         }
@@ -1267,7 +1296,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function getPickableFolders(int $parentId = 0, ?int $clientId = null): array
     {
-        $q = \App\Models\Folder::select('id', 'name')
+        $q = Folder::select('id', 'name')
             ->orderBy('name');
 
         if ($parentId > 0) {
@@ -1278,6 +1307,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
         $folders = $q->get()->map(function ($folder) {
             $fileCount = File::where('folder_id', $folder->id)->count();
+
             return [
                 'id' => $folder->id,
                 'name' => $folder->name,
@@ -1288,7 +1318,7 @@ new #[Layout('components.layouts.app')] class extends Component
         $breadcrumbs = [];
         $current = $parentId;
         while ($current > 0) {
-            $folder = \App\Models\Folder::select('id', 'name', 'parent_id')->find($current);
+            $folder = Folder::select('id', 'name', 'parent_id')->find($current);
             if ($folder) {
                 array_unshift($breadcrumbs, ['id' => $folder->id, 'name' => $folder->name]);
                 $current = $folder->parent_id ?? 0;
@@ -1302,15 +1332,17 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function updatedNewFileUpload(): void
     {
-        if (!$this->newFileUpload) return;
+        if (! $this->newFileUpload) {
+            return;
+        }
 
         $file = $this->newFileUpload;
         $path = $file->store('files/' . now()->format('Y/m'), 'public');
 
         $ext = strtolower($file->getClientOriginalExtension());
-        $typeMap = ['jpg'=>'image','jpeg'=>'image','png'=>'image','gif'=>'image','webp'=>'image','svg'=>'image',
-            'mp4'=>'video','mov'=>'video','avi'=>'video','webm'=>'video','mkv'=>'video',
-            'mp3'=>'audio','wav'=>'audio','ogg'=>'audio','aac'=>'audio','m4a'=>'audio'];
+        $typeMap = ['jpg' => 'image', 'jpeg' => 'image', 'png' => 'image', 'gif' => 'image', 'webp' => 'image', 'svg' => 'image',
+            'mp4' => 'video', 'mov' => 'video', 'avi' => 'video', 'webm' => 'video', 'mkv' => 'video',
+            'mp3' => 'audio', 'wav' => 'audio', 'ogg' => 'audio', 'aac' => 'audio', 'm4a' => 'audio'];
         $fileType = $typeMap[$ext] ?? 'document';
 
         $fileModel = File::create([
@@ -1338,26 +1370,26 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function toggleAllPlatforms(): void
     {
-        $this->formPlatforms = in_array(\App\Support\ContentTags::ALL, $this->formPlatforms, true) ? [] : [\App\Support\ContentTags::ALL];
+        $this->formPlatforms = in_array(ContentTags::ALL, $this->formPlatforms, true) ? [] : [ContentTags::ALL];
     }
 
     public function toggleAllTypes(): void
     {
-        $this->formTypes = in_array(\App\Support\ContentTags::ALL, $this->formTypes, true) ? [] : [\App\Support\ContentTags::ALL];
+        $this->formTypes = in_array(ContentTags::ALL, $this->formTypes, true) ? [] : [ContentTags::ALL];
     }
 
     public function updatedFormPlatforms(): void
     {
         // If "All" and individual values coexist, "All" takes precedence — collapse to sentinel.
-        if (in_array(\App\Support\ContentTags::ALL, $this->formPlatforms, true) && count($this->formPlatforms) > 1) {
-            $this->formPlatforms = [\App\Support\ContentTags::ALL];
+        if (in_array(ContentTags::ALL, $this->formPlatforms, true) && count($this->formPlatforms) > 1) {
+            $this->formPlatforms = [ContentTags::ALL];
         }
     }
 
     public function updatedFormTypes(): void
     {
-        if (in_array(\App\Support\ContentTags::ALL, $this->formTypes, true) && count($this->formTypes) > 1) {
-            $this->formTypes = [\App\Support\ContentTags::ALL];
+        if (in_array(ContentTags::ALL, $this->formTypes, true) && count($this->formTypes) > 1) {
+            $this->formTypes = [ContentTags::ALL];
         }
     }
 

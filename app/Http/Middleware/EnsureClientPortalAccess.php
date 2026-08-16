@@ -14,6 +14,7 @@ class EnsureClientPortalAccess
     protected const WHITELIST = [
         'dashboard',
         'approvals', 'complaints', 'reports', 'profile',
+        'contentPlanner',
     ];
 
     public function handle(Request $request, Closure $next, ?string $feature = null): Response

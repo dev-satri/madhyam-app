@@ -265,6 +265,9 @@ Route::middleware('auth:client')->prefix('client')->group(function () {
     Route::middleware('client:reports')->group(function () {
         Volt::route('billing', 'pages.reports.index')->name('client.billing');
     });
+    Route::middleware('client:contentPlanner')->group(function () {
+        Volt::route('calendar', 'pages.calendar.client-calendar')->name('client.calendar');
+    });
     Route::middleware('client:profile')->group(function () {
         Volt::route('profile', 'pages.profile.index')->name('client.profile');
     });

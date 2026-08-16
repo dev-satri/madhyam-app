@@ -15,6 +15,7 @@ class Comment extends Model
         'commentable_type',
         'commentable_id',
         'user_id',
+        'user_type',
         'body',
         'attachments',
         'is_system',
@@ -33,5 +34,31 @@ class Comment extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    /**
+     * Get the user who made the comment (supports both User and ClientAccount)
+     */
+    public function getUserAttribute()
+    {
+        // If user_type is explicitly set, use morphTo behavior
+        if (! empty($this->attributes['user_type'])) {
+            $userType = $this->attributes['user_type'];
+            $userId = $this->attributes['user_id'];
+
+            if ($userType === 'App\\Models\\ClientAccount' || $userType === ClientAccount::class) {
+                return ClientAccount::find($userId);
+            }
+
+            return User::find($userId);
+        }
+
+        // Fallback: try User first, then ClientAccount (for backward compatibility)
+        $user = User::find($this->attributes['user_id'] ?? null);
+        if ($user) {
+            return $user;
+        }
+
+        return ClientAccount::find($this->attributes['user_id'] ?? null);
     }
 }
