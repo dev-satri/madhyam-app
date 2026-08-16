@@ -98,7 +98,8 @@ new #[Layout('components.layouts.app')] class extends Component
                 $this->formWorkflowId = $wfId;
                 $this->formTitle = request()->query('workflow_title', $wf->title);
                 $this->formClientId = (int) ($wf->client_id ?? 0);
-                $this->formType = $wf->type ?? 'task';
+                $wfType = $wf->type ?? 'task';
+                $this->formType = in_array($wfType, ['task', 'shoot', 'editing']) ? $wfType : 'task';
                 $this->showForm = true;
             }
         }
@@ -288,7 +289,7 @@ new #[Layout('components.layouts.app')] class extends Component
                 $this->editingId = $t->id;
                 $this->formTitle = $t->title;
                 $this->formDescription = $t->description ?? '';
-                $this->formType = $t->type;
+                $this->formType = in_array($t->type, ['task', 'shoot', 'editing']) ? $t->type : 'task';
                 $this->formPriority = $t->priority;
                 $this->formClientId = $t->client_id ?? 0;
                 $this->formWorkflowId = $t->workflow_id ?? null;
@@ -866,6 +867,9 @@ new #[Layout('components.layouts.app')] class extends Component
                                             <option value="shoot">Shoot</option>
                                             <option value="editing">Editing</option>
                                         </select>
+                                        @error ('formType')
+                                            <span class="text-xs text-red-500 mt-1 block">{{ $message }}</span>
+                                        @enderror
                                     </div>
                                     <div>
                                         <label class="form-label">Priority</label>
@@ -875,6 +879,9 @@ new #[Layout('components.layouts.app')] class extends Component
                                             <option value="high">High</option>
                                             <option value="urgent">Urgent</option>
                                         </select>
+                                        @error ('formPriority')
+                                            <span class="text-xs text-red-500 mt-1 block">{{ $message }}</span>
+                                        @enderror
                                     </div>
                                 </div>
 
@@ -929,7 +936,28 @@ new #[Layout('components.layouts.app')] class extends Component
                                 {{-- Description --}}
                                 <div>
                                     <label class="form-label">Description</label>
-                                    <textarea wire:model="formDescription" class="form-textarea" rows="3"></textarea>
+                                    <textarea
+                                        wire:model="formDescription"
+                                        class="form-textarea w-full"
+                                        rows="4"
+                                        placeholder="Brief description or notes..."
+                                        x-data
+                                        x-init="
+                                            $nextTick(() => { 
+                                                $el.style.height = 'auto'; 
+                                                $el.style.height = ($el.scrollHeight + 2) + 'px'; 
+                                            });
+                                            $watch('$wire.formDescription', value => {
+                                                $el.style.height = 'auto';
+                                                $el.style.height = ($el.scrollHeight + 2) + 'px';
+                                            });
+                                        "
+                                        x-on:input="
+                                            $el.style.height = 'auto';
+                                            $el.style.height = ($el.scrollHeight + 2) + 'px';
+                                        "
+                                        style="min-height: 100px; resize: vertical;"
+                                    ></textarea>
                                 </div>
                             </div>
 

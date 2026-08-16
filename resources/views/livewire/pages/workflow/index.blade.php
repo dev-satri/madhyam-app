@@ -660,7 +660,7 @@ new #[Layout('components.layouts.app')] class extends Component
         $rules = [
             'formTitle' => 'required|string|max:255',
             'formClientId' => 'nullable|exists:clients,id',
-            'formType' => 'required|string|in:reel,post,story,video,carousel,blog',
+            'formType' => 'required|string|in:reel,post,story,video,carousel,blog,all,content',
             'formPriority' => 'required|string|in:low,medium,high,urgent',
             'formStage' => 'required|string',
             'formAssigneeIds' => 'nullable|array',
@@ -1984,9 +1984,25 @@ new #[Layout('components.layouts.app')] class extends Component
                                 <label class="form-label">Description</label>
                                 <textarea
                                     wire:model="formDescription"
-                                    class="form-textarea"
-                                    rows="2"
+                                    class="form-textarea w-full"
+                                    rows="4"
                                     placeholder="Brief description or notes..."
+                                    x-data
+                                    x-init="
+                                        $nextTick(() => { 
+                                            $el.style.height = 'auto'; 
+                                            $el.style.height = ($el.scrollHeight + 2) + 'px'; 
+                                        });
+                                        $watch('$wire.formDescription', value => {
+                                            $el.style.height = 'auto';
+                                            $el.style.height = ($el.scrollHeight + 2) + 'px';
+                                        });
+                                    "
+                                    x-on:input="
+                                        $el.style.height = 'auto';
+                                        $el.style.height = ($el.scrollHeight + 2) + 'px';
+                                    "
+                                    style="min-height: 100px; resize: vertical;"
                                 ></textarea>
                             </div>
 
@@ -2031,7 +2047,12 @@ new #[Layout('components.layouts.app')] class extends Component
                                         <option value="video">Video</option>
                                         <option value="carousel">Carousel</option>
                                         <option value="blog">Blog</option>
+                                        <option value="all">All</option>
+                                        <option value="content">Content</option>
                                     </select>
+                                    @error ('formType')
+                                        <span class="text-xs text-red-500 mt-1 block">{{ $message }}</span>
+                                    @enderror
                                 </div>
                             </div>
 
@@ -2045,6 +2066,9 @@ new #[Layout('components.layouts.app')] class extends Component
                                         <option value="high">High</option>
                                         <option value="urgent">Urgent</option>
                                     </select>
+                                    @error ('formPriority')
+                                        <span class="text-xs text-red-500 mt-1 block">{{ $message }}</span>
+                                    @enderror
                                 </div>
                                 <div>
                                     <label class="form-label">Stage <span class="text-red-500">*</span></label>
