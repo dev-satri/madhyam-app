@@ -1508,6 +1508,27 @@ new #[Layout('components.layouts.app')] class extends Component
         @endforeach
     </div>
 
+    {{-- ========== TYPE LEGEND ========== --}}
+    <div class="mb-4 flex flex-wrap items-center gap-3">
+        <span class="text-xs font-semibold text-gray-500">Content Types:</span>
+        @php
+            $typeColors = [
+                'reel' => ['label' => 'Reels', 'color' => 'bg-pink-500'],
+                'post' => ['label' => 'Posts', 'color' => 'bg-blue-500'],
+                'story' => ['label' => 'Stories', 'color' => 'bg-purple-500'],
+                'video' => ['label' => 'Videos', 'color' => 'bg-red-500'],
+                'carousel' => ['label' => 'Carousels', 'color' => 'bg-amber-500'],
+                'blog' => ['label' => 'Blogs', 'color' => 'bg-green-500'],
+            ];
+        @endphp
+        @foreach ($typeColors as $type => $info)
+            <div class="inline-flex items-center gap-1.5 text-xs text-gray-600">
+                <div class="w-3 h-3 rounded {{ $info['color'] }}"></div>
+                <span>{{ $info['label'] }}</span>
+            </div>
+        @endforeach
+    </div>
+
     {{-- ========== MONTH VIEW ========== --}}
     @if ($viewMode === 'month')
         <div class="bg-white rounded-2xl border border-gray-100 overflow-hidden">
@@ -1603,6 +1624,8 @@ new #[Layout('components.layouts.app')] class extends Component
                                     @php
                                         $_platforms = \App\Support\ContentTags::normalize($item->platform, 'platform');
                                         $_primary = \App\Support\ContentTags::primary($_platforms, 'platform');
+                                        $_types = \App\Support\ContentTags::normalize($item->type, 'type');
+                                        $_primaryType = \App\Support\ContentTags::primary($_types, 'type');
                                     @endphp
                                     @php
                                         $workflowStage = null;
@@ -1616,9 +1639,9 @@ new #[Layout('components.layouts.app')] class extends Component
                                         }
                                     @endphp
                                     <div
-                                        class="cal-event {{ $_primary }} relative"
+                                        class="cal-event {{ $_primary }} type-{{ $_primaryType }}"
                                         wire:click.stop="editContent({{ $item->id }})"
-                                        title="{{ $item->title }} ({{ \App\Support\ContentTags::label($_platforms, 'platform') }}){{ $workflowStage ? ' | Stage: ' . $workflowStage : '' }}{{ $approvalStatus ? ' | Approval: ' . $approvalStatus : '' }}"
+                                        title="{{ $item->title }} ({{ \App\Support\ContentTags::label($_types, 'type') }} | {{ \App\Support\ContentTags::label($_platforms, 'platform') }}){{ $workflowStage ? ' | Stage: ' . $workflowStage : '' }}{{ $approvalStatus ? ' | Approval: ' . $approvalStatus : '' }}"
                                     >
                                         {{ Str::limit($item->title, 14) }}
                                         @if ($workflowStage)

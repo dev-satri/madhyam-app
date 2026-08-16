@@ -473,51 +473,74 @@ new #[Layout('components.layouts.app')] class extends Component
         @endforeach
     </div>
 
-    {{-- Calendar --}}
-    <div class="bg-white rounded-2xl border border-gray-100 overflow-hidden">
-        {{-- Month Navigation --}}
-        <div class="flex items-center justify-between border-b border-gray-100 px-5 py-3">
-            <div class="flex items-center gap-2">
-                <button wire:click="prevMonth" class="btn btn-ghost btn-sm" title="Previous Month">
-                    <i class="fas fa-chevron-left text-xs"></i>
-                </button>
-                <h3 class="text-sm font-bold text-gray-900 min-w-[160px] text-center">
-                    @if (\App\Support\NepaliDate::isBs())
-                        {{ \App\Support\NepaliDate::bsMonthName($this->currentMonth) }} {{ $this->currentYear }}
-                    @else
-                        {{ Carbon\Carbon::createFromDate($this->currentYear, $this->currentMonth, 1)->format('F Y') }}
-                    @endif
-                </h3>
-                <button wire:click="nextMonth" class="btn btn-ghost btn-sm" title="Next Month">
-                    <i class="fas fa-chevron-right text-xs"></i>
-                </button>
+    {{-- Type Legend --}}
+    <div class="mb-4 flex flex-wrap items-center gap-3">
+        <span class="text-xs font-semibold text-gray-500">Content Types:</span>
+        @php
+            $typeColors = [
+                'reel' => ['label' => 'Reels', 'color' => 'bg-pink-500'],
+                'post' => ['label' => 'Posts', 'color' => 'bg-blue-500'],
+                'story' => ['label' => 'Stories', 'color' => 'bg-purple-500'],
+                'video' => ['label' => 'Videos', 'color' => 'bg-red-500'],
+                'carousel' => ['label' => 'Carousels', 'color' => 'bg-amber-500'],
+                'blog' => ['label' => 'Blogs', 'color' => 'bg-green-500'],
+            ];
+        @endphp
+        @foreach ($typeColors as $type => $info)
+            <div class="inline-flex items-center gap-1.5 text-xs text-gray-600">
+                <div class="w-3 h-3 rounded {{ $info['color'] }}"></div>
+                <span>{{ $info['label'] }}</span>
             </div>
-            <button wire:click="goToday" class="btn btn-secondary btn-sm">
-                <i class="fas fa-calendar-day text-xs"></i> Today
+        @endforeach
+    </div>
+    <span class="ml-0.5 bg-white/60 rounded-full px-1.5 py-0.5 text-[10px]">{{ $stats[$key] ?? 0 }}</span>
+</div>
+@endforeach
+</div>
+
+{{-- Calendar --}}
+<div class="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+    {{-- Month Navigation --}}
+    <div class="flex items-center justify-between border-b border-gray-100 px-5 py-3">
+        <div class="flex items-center gap-2">
+            <button wire:click="prevMonth" class="btn btn-ghost btn-sm" title="Previous Month">
+                <i class="fas fa-chevron-left text-xs"></i>
+            </button>
+            <h3 class="text-sm font-bold text-gray-900 min-w-[160px] text-center">
+                @if (\App\Support\NepaliDate::isBs())
+                    {{ \App\Support\NepaliDate::bsMonthName($this->currentMonth) }} {{ $this->currentYear }}
+                @else
+                    {{ Carbon\Carbon::createFromDate($this->currentYear, $this->currentMonth, 1)->format('F Y') }}
+                @endif
+            </h3>
+            <button wire:click="nextMonth" class="btn btn-ghost btn-sm" title="Next Month">
+                <i class="fas fa-chevron-right text-xs"></i>
             </button>
         </div>
+        <button wire:click="goToday" class="btn btn-secondary btn-sm">
+            <i class="fas fa-calendar-day text-xs"></i> Today
+        </button>
+    </div>
 
-        {{-- Calendar Grid --}}
-        <div class="p-4">
-            {{-- Day Headers --}}
-            <div class="grid grid-cols-7 gap-2 mb-2">
-                @foreach (['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as $day)
-                    <div class="text-center text-xs font-bold text-gray-500 uppercase tracking-wider py-2">
-                        {{ $day }}
-                    </div>
-                @endforeach
-            </div>
+    {{-- Calendar Grid --}}
+    <div class="p-4">
+        {{-- Day Headers --}}
+        <div class="grid grid-cols-7 gap-2 mb-2">
+            @foreach (['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as $day)
+                <div class="text-center text-xs font-bold text-gray-500 uppercase tracking-wider py-2">{{ $day }}</div>
+            @endforeach
+        </div>
 
-            {{-- Calendar Days --}}
-            <div class="grid grid-cols-7 gap-2">
-                @php 
+        {{-- Calendar Days --}}
+        <div class="grid grid-cols-7 gap-2">
+            @php 
                     $isBs = \App\Support\NepaliDate::isBs();
                     $days = $this->getCalendarDays();
                     $today = now()->format('Y-m-d');
                 @endphp
 
-                @foreach ($days as $day)
-                    @php
+            @foreach ($days as $day)
+                @php
                         if ($isBs) {
                             $dayNum = $day['bs_day'];
                             $date = $day['ad_date'];
@@ -533,32 +556,32 @@ new #[Layout('components.layouts.app')] class extends Component
                         $hasContent = count($dayContent) > 0;
                     @endphp
 
-                    <div
-                        wire:click="openDayDetail('{{ $date }}')"
-                        class="min-h-[100px] rounded-lg border transition-all cursor-pointer
+                <div
+                    wire:click="openDayDetail('{{ $date }}')"
+                    class="min-h-[100px] rounded-lg border transition-all cursor-pointer
                             {{ $isCurrentMonth ? 'bg-white border-gray-200 hover:border-[var(--brand)] hover:shadow-md' : 'bg-gray-50 border-gray-100 opacity-50' }}
                             {{ $isToday ? 'ring-2 ring-[var(--brand)] ring-offset-1' : '' }}"
-                    >
-                        <div class="p-2">
-                            <div class="flex items-center justify-between mb-1">
+                >
+                    <div class="p-2">
+                        <div class="flex items-center justify-between mb-1">
+                            <span
+                                class="text-sm font-bold {{ $isToday ? 'text-[var(--brand)]' : ($isCurrentMonth ? 'text-gray-900' : 'text-gray-400') }}"
+                            >
+                                {{ $dayNum ?: '' }}
+                            </span>
+                            @if ($hasContent)
                                 <span
-                                    class="text-sm font-bold {{ $isToday ? 'text-[var(--brand)]' : ($isCurrentMonth ? 'text-gray-900' : 'text-gray-400') }}"
+                                    class="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-[var(--brand)] text-white"
                                 >
-                                    {{ $dayNum ?: '' }}
+                                    {{ count($dayContent) }}
                                 </span>
-                                @if ($hasContent)
-                                    <span
-                                        class="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-[var(--brand)] text-white"
-                                    >
-                                        {{ count($dayContent) }}
-                                    </span>
-                                @endif
-                            </div>
+                            @endif
+                        </div>
 
-                            @if ($hasContent && $isCurrentMonth)
-                                <div class="space-y-1 mt-2">
-                                    @foreach (array_slice($dayContent, 0, 3) as $content)
-                                        @php
+                        @if ($hasContent && $isCurrentMonth)
+                            <div class="space-y-1 mt-2">
+                                @foreach (array_slice($dayContent, 0, 3) as $content)
+                                    @php
                                             $statusColor = match($content->status) {
                                                 'published' => 'bg-green-500',
                                                 'in-review' => 'bg-amber-500',
@@ -566,40 +589,51 @@ new #[Layout('components.layouts.app')] class extends Component
                                                 'scripting' => 'bg-purple-500',
                                                 default => 'bg-gray-400'
                                             };
+                                            $_types = \App\Support\ContentTags::normalize($content->type, 'type');
+                                            $_primaryType = \App\Support\ContentTags::primary($_types, 'type');
+                                            $typeColor = match($_primaryType) {
+                                                'reel' => 'border-pink-500',
+                                                'post' => 'border-blue-500',
+                                                'story' => 'border-purple-500',
+                                                'video' => 'border-red-500',
+                                                'carousel' => 'border-amber-500',
+                                                'blog' => 'border-green-500',
+                                                'all' => 'border-indigo-500',
+                                                default => 'border-gray-400'
+                                            };
                                         @endphp
-                                        <div
-                                            class="flex items-center gap-1.5 text-xs p-1.5 rounded bg-gray-50 hover:bg-gray-100"
+                                    <div
+                                        class="flex items-center gap-1.5 text-xs p-1.5 rounded bg-gray-50 hover:bg-gray-100 border-l-2 {{ $typeColor }}"
+                                        title="{{ \App\Support\ContentTags::label($_types, 'type') }}: {{ $content->title }}"
+                                    >
+                                        <div class="w-1.5 h-1.5 rounded-full {{ $statusColor }} flex-shrink-0"></div>
+                                        <span
+                                            class="truncate flex-1 text-gray-700"
+                                            >{{ Str::limit($content->title, 20) }}</span
                                         >
-                                            <div
-                                                class="w-1.5 h-1.5 rounded-full {{ $statusColor }} flex-shrink-0"
-                                            ></div>
-                                            <span
-                                                class="truncate flex-1 text-gray-700"
-                                                >{{ Str::limit($content->title, 20) }}</span
-                                            >
-                                        </div>
-                                    @endforeach
-                                    @if (count($dayContent) > 3)
-                                        <div class="text-[10px] text-gray-400 text-center py-0.5">
-                                            +{{ count($dayContent) - 3 }} more
-                                        </div>
-                                    @endif
-                                </div>
-                            @endif
-                        </div>
+                                    </div>
+                                @endforeach
+                                @if (count($dayContent) > 3)
+                                    <div class="text-[10px] text-gray-400 text-center py-0.5">
+                                        +{{ count($dayContent) - 3 }} more
+                                    </div>
+                                @endif
+                            </div>
+                        @endif
                     </div>
-                @endforeach
-            </div>
+                </div>
+            @endforeach
         </div>
     </div>
+</div>
 
-    {{-- Content Preview Modal --}}
-    @if ($showContentPreview && $selectedContentId)
-        @php 
+{{-- Content Preview Modal --}}
+@if ($showContentPreview && $selectedContentId)
+    @php 
             $previewContent = $this->getSelectedContent();
         @endphp
-        @if ($previewContent)
-            @php
+    @if ($previewContent)
+        @php
                 $_previewTypes = \App\Support\ContentTags::normalize($previewContent->type, 'type');
                 $_previewPlatforms = \App\Support\ContentTags::normalize($previewContent->platform, 'platform');
                 $_previewPrimaryType = \App\Support\ContentTags::primary($_previewTypes, 'type');
@@ -621,213 +655,205 @@ new #[Layout('components.layouts.app')] class extends Component
                     default      => 'bg-gray-50 text-gray-600 border-gray-200',
                 };
             @endphp
-            <div
-                class="modal-overlay z-50"
-                wire:click.self="closeContentPreview"
-                x-data
-                x-on:keydown.escape.window="$wire.closeContentPreview()"
-            >
-                <div class="modal-box max-w-2xl" x-on:click.stop>
-                    {{-- Header --}}
-                    <div class="modal-header border-b border-gray-100 pb-3">
-                        <div class="flex-1 min-w-0">
-                            <div class="flex flex-wrap items-center gap-1.5 mb-1.5">
-                                <span
-                                    class="inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-semibold border {{ $typeBadge }}"
-                                >
-                                    {{ \App\Support\ContentTags::label($_previewTypes, 'type') }}
-                                </span>
-                                <span
-                                    class="inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-semibold border {{ $statusBadge }}"
-                                >
-                                    {{ ucwords(str_replace('-', ' ', $previewContent->status)) }}
-                                </span>
-                            </div>
-                            <h3 class="text-lg font-bold text-gray-900 leading-snug">{{ $previewContent->title }}</h3>
+        <div
+            class="modal-overlay z-50"
+            wire:click.self="closeContentPreview"
+            x-data
+            x-on:keydown.escape.window="$wire.closeContentPreview()"
+        >
+            <div class="modal-box max-w-2xl" x-on:click.stop>
+                {{-- Header --}}
+                <div class="modal-header border-b border-gray-100 pb-3">
+                    <div class="flex-1 min-w-0">
+                        <div class="flex flex-wrap items-center gap-1.5 mb-1.5">
+                            <span
+                                class="inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-semibold border {{ $typeBadge }}"
+                            >
+                                {{ \App\Support\ContentTags::label($_previewTypes, 'type') }}
+                            </span>
+                            <span
+                                class="inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-semibold border {{ $statusBadge }}"
+                            >
+                                {{ ucwords(str_replace('-', ' ', $previewContent->status)) }}
+                            </span>
                         </div>
-                        <button
-                            wire:click="closeContentPreview"
-                            class="btn btn-ghost btn-icon btn-sm"
-                            aria-label="Close"
-                        >
-                            <i class="fas fa-times"></i>
-                        </button>
+                        <h3 class="text-lg font-bold text-gray-900 leading-snug">{{ $previewContent->title }}</h3>
+                    </div>
+                    <button wire:click="closeContentPreview" class="btn btn-ghost btn-icon btn-sm" aria-label="Close">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+
+                <div class="modal-body space-y-4 max-h-[70vh] overflow-y-auto">
+                    {{-- Caption --}}
+                    @if ($previewContent->caption)
+                        <div>
+                            <p class="text-[11px] uppercase tracking-wide font-semibold text-gray-400 mb-1">Caption</p>
+                            <p class="text-sm text-gray-700 whitespace-pre-line leading-relaxed">{{ $previewContent->caption }}</p>
+                        </div>
+                    @endif
+
+                    {{-- Metadata --}}
+                    <div class="grid grid-cols-2 sm:grid-cols-3 gap-4 text-sm">
+                        <div>
+                            <p class="text-[11px] uppercase tracking-wide font-semibold text-gray-400 mb-1">Platform</p>
+                            <p class="text-gray-800 text-xs flex items-center gap-1.5">
+                                <i class="fas fa-share-nodes text-gray-400"></i>
+                                {{ \App\Support\ContentTags::label($_previewPlatforms, 'platform') }}
+                            </p>
+                        </div>
+                        <div>
+                            <p class="text-[11px] uppercase tracking-wide font-semibold text-gray-400 mb-1">Date</p>
+                            <p class="text-gray-800 text-xs flex items-center gap-1.5">
+                                <i class="fas fa-calendar-alt text-gray-400"></i>
+                                {{ $previewContent->date ? \App\Support\NepaliDate::display($previewContent->date) : '—' }}
+                            </p>
+                        </div>
+                        @if ($previewContent->due_date)
+                            <div>
+                                <p class="text-[11px] uppercase tracking-wide font-semibold text-gray-400 mb-1">Due Date</p>
+                                <p class="text-gray-800 text-xs flex items-center gap-1.5">
+                                    <i class="fas fa-clock text-gray-400"></i>
+                                    {{ \App\Support\NepaliDate::display($previewContent->due_date) }}
+                                </p>
+                            </div>
+                        @endif
                     </div>
 
-                    <div class="modal-body space-y-4 max-h-[70vh] overflow-y-auto">
-                        {{-- Caption --}}
-                        @if ($previewContent->caption)
-                            <div>
-                                <p class="text-[11px] uppercase tracking-wide font-semibold text-gray-400 mb-1">Caption</p>
-                                <p class="text-sm text-gray-700 whitespace-pre-line leading-relaxed">{{ $previewContent->caption }}</p>
+                    {{-- Hashtags --}}
+                    @if ($previewContent->hashtags && trim($previewContent->hashtags) !== '')
+                        <div>
+                            <p class="text-[11px] uppercase tracking-wide font-semibold text-gray-400 mb-1.5">Hashtags</p>
+                            <div class="flex flex-wrap gap-1.5">
+                                @foreach (array_filter(array_map('trim', explode(' ', $previewContent->hashtags))) as $tag)
+                                    @if ($tag !== '')
+                                        <span
+                                            class="inline-flex items-center rounded-md bg-gray-100 text-gray-700 px-2 py-0.5 text-xs"
+                                        >
+                                            <i class="fas fa-hashtag text-gray-400 text-[9px] mr-1"></i
+                                            >{{ ltrim($tag, '#') }}
+                                        </span>
+                                    @endif
+                                @endforeach
                             </div>
-                        @endif
+                        </div>
+                    @endif
 
-                        {{-- Metadata --}}
-                        <div class="grid grid-cols-2 sm:grid-cols-3 gap-4 text-sm">
-                            <div>
-                                <p class="text-[11px] uppercase tracking-wide font-semibold text-gray-400 mb-1">Platform</p>
-                                <p class="text-gray-800 text-xs flex items-center gap-1.5">
-                                    <i class="fas fa-share-nodes text-gray-400"></i>
-                                    {{ \App\Support\ContentTags::label($_previewPlatforms, 'platform') }}
-                                </p>
-                            </div>
-                            <div>
-                                <p class="text-[11px] uppercase tracking-wide font-semibold text-gray-400 mb-1">Date</p>
-                                <p class="text-gray-800 text-xs flex items-center gap-1.5">
-                                    <i class="fas fa-calendar-alt text-gray-400"></i>
-                                    {{ $previewContent->date ? \App\Support\NepaliDate::display($previewContent->date) : '—' }}
-                                </p>
-                            </div>
-                            @if ($previewContent->due_date)
-                                <div>
-                                    <p class="text-[11px] uppercase tracking-wide font-semibold text-gray-400 mb-1">Due Date</p>
-                                    <p class="text-gray-800 text-xs flex items-center gap-1.5">
-                                        <i class="fas fa-clock text-gray-400"></i>
-                                        {{ \App\Support\NepaliDate::display($previewContent->due_date) }}
-                                    </p>
+                    {{-- Reference File --}}
+                    @if ($previewContent->reference_file)
+                        <div>
+                            <p class="text-[11px] uppercase tracking-wide font-semibold text-gray-400 mb-1.5">Reference</p>
+                            <a
+                                href="{{ $previewContent->reference_file }}"
+                                target="_blank"
+                                class="inline-flex items-center gap-2 text-sm text-[var(--brand)] hover:underline font-medium"
+                            >
+                                <i class="fas fa-external-link-alt text-xs"></i>
+                                View Reference Material
+                            </a>
+                        </div>
+                    @endif
+
+                    {{-- Attachments --}}
+                    @php $contentAtts = $this->getContentAttachments(); @endphp
+                    @if (count($contentAtts) > 0)
+                        <div>
+                            @include ('livewire.partials.attachment-display', ['attachments' => $contentAtts, 'label' => 'Attachments'])
+                        </div>
+                    @endif
+
+                    {{-- Discussion --}}
+                    <div class="border-t border-gray-100 pt-4">
+                        <h4 class="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                            <i class="fas fa-comments text-gray-400"></i> Discussion
+                        </h4>
+
+                        <div class="space-y-3 max-h-48 overflow-y-auto mb-3">
+                            @php $comments = $this->getContentComments(); @endphp
+                            @forelse ($comments as $comment)
+                                <div class="flex gap-2.5">
+                                    <div
+                                        class="flex-shrink-0 w-6 h-6 rounded-full bg-[rgba(var(--brand-rgb),0.1)] flex items-center justify-center text-[9px] font-bold text-[var(--brand)]"
+                                    >
+                                        {{ strtoupper(substr($comment->user->name ?? '?', 0, 1)) }}
+                                    </div>
+                                    <div class="flex-1 min-w-0">
+                                        <div class="flex items-center gap-2 mb-0.5">
+                                            <span
+                                                class="text-xs font-semibold text-gray-800"
+                                                >{{ $comment->user->name ?? 'Unknown' }}</span
+                                            >
+                                            <span
+                                                class="text-[10px] text-gray-400"
+                                                >{{ $comment->created_at->diffForHumans() }}</span
+                                            >
+                                        </div>
+                                        <div class="comment-body text-sm text-gray-600">{!! $comment->body !!}</div>
+                                        @if ($comment->attachments)
+                                            <div class="flex flex-wrap gap-1 mt-1">
+                                                @foreach ($comment->attachments as $att)
+                                                    @if (($att['type'] ?? '') === 'image')
+                                                        <a href="{{ $att['url'] }}" target="_blank" class="block"
+                                                            ><img
+                                                                src="{{ $att['url'] }}"
+                                                                class="rounded-lg max-h-20 border border-gray-100"
+                                                        /></a>
+                                                    @else
+                                                        <a
+                                                            href="{{ $att['url'] }}"
+                                                            target="_blank"
+                                                            class="inline-flex items-center gap-1 bg-gray-100 rounded-lg px-2 py-1 text-xs text-gray-600 hover:bg-gray-200"
+                                                        >
+                                                            <i
+                                                                class="fas {{ ($att['type'] ?? '') === 'drive' ? 'fa-google-drive text-blue-500' : 'fa-file text-gray-400' }}"
+                                                            ></i>
+                                                            {{ $att['name'] ?? 'File' }}
+                                                        </a>
+                                                    @endif
+                                                @endforeach
+                                            </div>
+                                        @endif
+                                    </div>
                                 </div>
-                            @endif
+                            @empty
+                                <p class="text-xs text-gray-400 text-center py-2">No comments yet. Start the discussion.</p>
+                            @endforelse
                         </div>
 
-                        {{-- Hashtags --}}
-                        @if ($previewContent->hashtags && trim($previewContent->hashtags) !== '')
-                            <div>
-                                <p class="text-[11px] uppercase tracking-wide font-semibold text-gray-400 mb-1.5">Hashtags</p>
-                                <div class="flex flex-wrap gap-1.5">
-                                    @foreach (array_filter(array_map('trim', explode(' ', $previewContent->hashtags))) as $tag)
-                                        @if ($tag !== '')
-                                            <span
-                                                class="inline-flex items-center rounded-md bg-gray-100 text-gray-700 px-2 py-0.5 text-xs"
-                                            >
-                                                <i class="fas fa-hashtag text-gray-400 text-[9px] mr-1"></i
-                                                >{{ ltrim($tag, '#') }}
-                                            </span>
-                                        @endif
-                                    @endforeach
-                                </div>
-                            </div>
-                        @endif
-
-                        {{-- Reference File --}}
-                        @if ($previewContent->reference_file)
-                            <div>
-                                <p class="text-[11px] uppercase tracking-wide font-semibold text-gray-400 mb-1.5">Reference</p>
-                                <a
-                                    href="{{ $previewContent->reference_file }}"
-                                    target="_blank"
-                                    class="inline-flex items-center gap-2 text-sm text-[var(--brand)] hover:underline font-medium"
+                        {{-- Comment form --}}
+                        <div class="border-t border-gray-100 pt-3">
+                            <textarea
+                                wire:model="commentText"
+                                placeholder="Add a comment..."
+                                class="form-input w-full resize-none text-sm"
+                                rows="3"
+                            ></textarea>
+                            <div class="flex justify-end mt-2">
+                                <button
+                                    wire:click="addComment"
+                                    wire:loading.attr="disabled"
+                                    class="btn btn-primary btn-sm"
                                 >
-                                    <i class="fas fa-external-link-alt text-xs"></i>
-                                    View Reference Material
-                                </a>
-                            </div>
-                        @endif
-
-                        {{-- Attachments --}}
-                        @php $contentAtts = $this->getContentAttachments(); @endphp
-                        @if (count($contentAtts) > 0)
-                            <div>
-                                @include ('livewire.partials.attachment-display', ['attachments' => $contentAtts, 'label' => 'Attachments'])
-                            </div>
-                        @endif
-
-                        {{-- Discussion --}}
-                        <div class="border-t border-gray-100 pt-4">
-                            <h4 class="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
-                                <i class="fas fa-comments text-gray-400"></i> Discussion
-                            </h4>
-
-                            <div class="space-y-3 max-h-48 overflow-y-auto mb-3">
-                                @php $comments = $this->getContentComments(); @endphp
-                                @forelse ($comments as $comment)
-                                    <div class="flex gap-2.5">
-                                        <div
-                                            class="flex-shrink-0 w-6 h-6 rounded-full bg-[rgba(var(--brand-rgb),0.1)] flex items-center justify-center text-[9px] font-bold text-[var(--brand)]"
-                                        >
-                                            {{ strtoupper(substr($comment->user->name ?? '?', 0, 1)) }}
-                                        </div>
-                                        <div class="flex-1 min-w-0">
-                                            <div class="flex items-center gap-2 mb-0.5">
-                                                <span
-                                                    class="text-xs font-semibold text-gray-800"
-                                                    >{{ $comment->user->name ?? 'Unknown' }}</span
-                                                >
-                                                <span
-                                                    class="text-[10px] text-gray-400"
-                                                    >{{ $comment->created_at->diffForHumans() }}</span
-                                                >
-                                            </div>
-                                            <div class="comment-body text-sm text-gray-600">{!! $comment->body !!}</div>
-                                            @if ($comment->attachments)
-                                                <div class="flex flex-wrap gap-1 mt-1">
-                                                    @foreach ($comment->attachments as $att)
-                                                        @if (($att['type'] ?? '') === 'image')
-                                                            <a href="{{ $att['url'] }}" target="_blank" class="block"
-                                                                ><img
-                                                                    src="{{ $att['url'] }}"
-                                                                    class="rounded-lg max-h-20 border border-gray-100"
-                                                            /></a>
-                                                        @else
-                                                            <a
-                                                                href="{{ $att['url'] }}"
-                                                                target="_blank"
-                                                                class="inline-flex items-center gap-1 bg-gray-100 rounded-lg px-2 py-1 text-xs text-gray-600 hover:bg-gray-200"
-                                                            >
-                                                                <i
-                                                                    class="fas {{ ($att['type'] ?? '') === 'drive' ? 'fa-google-drive text-blue-500' : 'fa-file text-gray-400' }}"
-                                                                ></i>
-                                                                {{ $att['name'] ?? 'File' }}
-                                                            </a>
-                                                        @endif
-                                                    @endforeach
-                                                </div>
-                                            @endif
-                                        </div>
-                                    </div>
-                                @empty
-                                    <p class="text-xs text-gray-400 text-center py-2">No comments yet. Start the discussion.</p>
-                                @endforelse
-                            </div>
-
-                            {{-- Comment form --}}
-                            <div class="border-t border-gray-100 pt-3">
-                                <textarea
-                                    wire:model="commentText"
-                                    placeholder="Add a comment..."
-                                    class="form-input w-full resize-none text-sm"
-                                    rows="3"
-                                ></textarea>
-                                <div class="flex justify-end mt-2">
-                                    <button
-                                        wire:click="addComment"
-                                        wire:loading.attr="disabled"
-                                        class="btn btn-primary btn-sm"
-                                    >
-                                        <i
-                                            class="fas fa-paper-plane text-xs"
-                                            wire:loading.remove
-                                            wire:target="addComment"
-                                        ></i>
-                                        <i
-                                            class="fas fa-spinner fa-spin text-xs"
-                                            wire:loading
-                                            wire:target="addComment"
-                                        ></i>
-                                        Send
-                                    </button>
-                                </div>
+                                    <i
+                                        class="fas fa-paper-plane text-xs"
+                                        wire:loading.remove
+                                        wire:target="addComment"
+                                    ></i>
+                                    <i class="fas fa-spinner fa-spin text-xs" wire:loading wire:target="addComment"></i>
+                                    Send
+                                </button>
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
-        @endif
+        </div>
     @endif
+@endif
 
-    {{-- Day Detail Modal --}}
-    @if ($showDayDetail)
-        @php
+{{-- Day Detail Modal --}}
+@if ($showDayDetail)
+    @php
             $detailDate = $selectedDate ? \Carbon\Carbon::parse($selectedDate) : null;
             $detailItems = $this->getDayContent();
             
@@ -847,104 +873,102 @@ new #[Layout('components.layouts.app')] class extends Component
                 'linkedin' => 'briefcase',
             ];
         @endphp
+    <div
+        class="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm"
+        wire:click.self="$set('showDayDetail', false)"
+        x-data
+        x-on:keydown.escape.window="$wire.set('showDayDetail', false)"
+    >
         <div
-            class="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm"
-            wire:click.self="$set('showDayDetail', false)"
-            x-data
-            x-on:keydown.escape.window="$wire.set('showDayDetail', false)"
+            class="relative bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl w-full sm:max-w-lg max-h-[85vh] flex flex-col mx-0 sm:mx-4 overflow-hidden"
         >
-            <div
-                class="relative bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl w-full sm:max-w-lg max-h-[85vh] flex flex-col mx-0 sm:mx-4 overflow-hidden"
-            >
-                {{-- Header --}}
-                <div class="flex-shrink-0 px-6 py-4 border-b border-gray-100 bg-white">
-                    <div class="flex items-center justify-between">
-                        <div>
-                            <h3 class="text-base font-bold text-gray-900">
-                                {{ $detailDate ? \App\Support\NepaliDate::display($detailDate) : '' }}
-                            </h3>
-                            <p class="text-xs text-gray-400 mt-0.5">
-                                @if (count($detailItems) > 0)
-                                    {{ count($detailItems) }} {{ Str::plural('content', count($detailItems)) }} scheduled
-                                @else
-                                    No items scheduled
-                                @endif
-                            </p>
-                        </div>
-                        <button
-                            wire:click="$set('showDayDetail', false)"
-                            class="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition"
-                        >
-                            <i class="fas fa-times text-sm"></i>
-                        </button>
+            {{-- Header --}}
+            <div class="flex-shrink-0 px-6 py-4 border-b border-gray-100 bg-white">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h3 class="text-base font-bold text-gray-900">
+                            {{ $detailDate ? \App\Support\NepaliDate::display($detailDate) : '' }}
+                        </h3>
+                        <p class="text-xs text-gray-400 mt-0.5">
+                            @if (count($detailItems) > 0)
+                                {{ count($detailItems) }} {{ Str::plural('content', count($detailItems)) }} scheduled
+                            @else
+                                No items scheduled
+                            @endif
+                        </p>
                     </div>
+                    <button
+                        wire:click="$set('showDayDetail', false)"
+                        class="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition"
+                    >
+                        <i class="fas fa-times text-sm"></i>
+                    </button>
                 </div>
+            </div>
 
-                {{-- Content List --}}
-                <div class="flex-1 overflow-y-auto">
-                    @if (count($detailItems) === 0)
-                        <div class="flex flex-col items-center justify-center py-16 text-center px-6">
-                            <div class="w-14 h-14 rounded-full bg-gray-50 flex items-center justify-center mb-3">
-                                <i class="fas fa-calendar-plus text-xl text-gray-300"></i>
-                            </div>
-                            <p class="text-sm font-medium text-gray-400">Nothing scheduled</p>
-                            <p class="text-xs text-gray-300 mt-1">No content planned for this day</p>
+            {{-- Content List --}}
+            <div class="flex-1 overflow-y-auto">
+                @if (count($detailItems) === 0)
+                    <div class="flex flex-col items-center justify-center py-16 text-center px-6">
+                        <div class="w-14 h-14 rounded-full bg-gray-50 flex items-center justify-center mb-3">
+                            <i class="fas fa-calendar-plus text-xl text-gray-300"></i>
                         </div>
-                    @else
-                        <div class="divide-y divide-gray-50">
-                            @foreach ($detailItems as $item)
-                                @php
+                        <p class="text-sm font-medium text-gray-400">Nothing scheduled</p>
+                        <p class="text-xs text-gray-300 mt-1">No content planned for this day</p>
+                    </div>
+                @else
+                    <div class="divide-y divide-gray-50">
+                        @foreach ($detailItems as $item)
+                            @php
                                     $_platforms = \App\Support\ContentTags::normalize($item->platform, 'platform');
                                     $_primary = \App\Support\ContentTags::primary($_platforms, 'platform');
                                     $_typeLabel = \App\Support\ContentTags::label(\App\Support\ContentTags::normalize($item->type, 'type'), 'type');
                                 @endphp
+                            <div
+                                class="flex items-start gap-3 px-6 py-3.5 hover:bg-gray-50/50 cursor-pointer transition-colors"
+                                wire:click="viewContent({{ $item->id }})"
+                            >
                                 <div
-                                    class="flex items-start gap-3 px-6 py-3.5 hover:bg-gray-50/50 cursor-pointer transition-colors"
-                                    wire:click="viewContent({{ $item->id }})"
+                                    class="w-8 h-8 rounded-lg bg-{{ $_primary }}-500/10 flex items-center justify-center flex-shrink-0 mt-0.5"
                                 >
-                                    <div
-                                        class="w-8 h-8 rounded-lg bg-{{ $_primary }}-500/10 flex items-center justify-center flex-shrink-0 mt-0.5"
-                                    >
-                                        <i
-                                            class="fas fa-{{ $platformIcons[$_primary] ?? 'globe' }} text-{{ $_primary }}-500 text-xs"
-                                        ></i>
+                                    <i
+                                        class="fas fa-{{ $platformIcons[$_primary] ?? 'globe' }} text-{{ $_primary }}-500 text-xs"
+                                    ></i>
+                                </div>
+                                <div class="flex-1 min-w-0">
+                                    <div class="flex items-center gap-2">
+                                        <h4 class="text-sm font-semibold text-gray-800 truncate">{{ $item->title }}</h4>
+                                        <span
+                                            class="flex-shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded-md {{ $statusColors[$item->status] ?? 'bg-gray-100 text-gray-600' }}"
+                                        >
+                                            {{ str_replace('-', ' ', ucfirst($item->status)) }}
+                                        </span>
                                     </div>
-                                    <div class="flex-1 min-w-0">
-                                        <div class="flex items-center gap-2">
-                                            <h4 class="text-sm font-semibold text-gray-800 truncate">
-                                                {{ $item->title }}
-                                            </h4>
-                                            <span
-                                                class="flex-shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded-md {{ $statusColors[$item->status] ?? 'bg-gray-100 text-gray-600' }}"
-                                            >
-                                                {{ str_replace('-', ' ', ucfirst($item->status)) }}
-                                            </span>
-                                        </div>
-                                        <div class="flex items-center gap-1.5 mt-1 text-xs text-gray-400">
-                                            <span>{{ $_typeLabel }}</span>
-                                            @if ($item->caption)
-                                                <span>·</span>
-                                                <span class="truncate">{{ Str::limit($item->caption, 30) }}</span>
-                                            @endif
-                                        </div>
-                                    </div>
-                                    <div class="flex-shrink-0 ml-2">
-                                        <i class="fas fa-chevron-right text-xs text-gray-300"></i>
+                                    <div class="flex items-center gap-1.5 mt-1 text-xs text-gray-400">
+                                        <span>{{ $_typeLabel }}</span>
+                                        @if ($item->caption)
+                                            <span>·</span>
+                                            <span class="truncate">{{ Str::limit($item->caption, 30) }}</span>
+                                        @endif
                                     </div>
                                 </div>
-                            @endforeach
-                        </div>
-                    @endif
-                </div>
+                                <div class="flex-shrink-0 ml-2">
+                                    <i class="fas fa-chevron-right text-xs text-gray-300"></i>
+                                </div>
+                            </div>
+                        @endforeach
+                    </div>
+                @endif
             </div>
         </div>
-    @endif
+    </div>
+@endif
 
-    {{-- Content Detail Modal --}}
-    @if ($showContentDetail)
-        @php $selectedContent = $this->getSelectedContent(); @endphp
-        @if ($selectedContent)
-            @php
+{{-- Content Detail Modal --}}
+@if ($showContentDetail)
+    @php $selectedContent = $this->getSelectedContent(); @endphp
+    @if ($selectedContent)
+        @php
                 $platforms = \App\Support\ContentTags::normalize($selectedContent->platform, 'platform');
                 $types = \App\Support\ContentTags::normalize($selectedContent->type, 'type');
                 $statusBadge = match($selectedContent->status) {
@@ -956,199 +980,192 @@ new #[Layout('components.layouts.app')] class extends Component
                     default => 'bg-gray-100 text-gray-600'
                 };
             @endphp
+        <div
+            class="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm"
+            wire:click.self="closeContentDetail"
+            x-data
+            x-on:keydown.escape.window="$wire.closeContentDetail()"
+        >
             <div
-                class="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm"
-                wire:click.self="closeContentDetail"
-                x-data
-                x-on:keydown.escape.window="$wire.closeContentDetail()"
+                class="relative bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl w-full sm:max-w-2xl max-h-[90vh] flex flex-col mx-0 sm:mx-4 overflow-hidden"
             >
-                <div
-                    class="relative bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl w-full sm:max-w-2xl max-h-[90vh] flex flex-col mx-0 sm:mx-4 overflow-hidden"
-                >
-                    {{-- Header --}}
-                    <div class="flex-shrink-0 px-6 py-4 border-b border-gray-100 bg-white">
-                        <div class="flex items-start justify-between gap-4">
-                            <div class="flex-1 min-w-0">
-                                <h3 class="text-base font-bold text-gray-900 line-clamp-2">
-                                    {{ $selectedContent->title }}
-                                </h3>
-                                <div class="flex items-center gap-2 mt-2 text-xs text-gray-500">
-                                    <i class="fas fa-calendar-alt"></i>
-                                    <span>{{ \App\Support\NepaliDate::display($selectedContent->date) }}</span>
-                                    @if ($selectedContent->due_date)
-                                        <span>·</span>
-                                        <span
-                                            >Due: {{ \App\Support\NepaliDate::display($selectedContent->due_date) }}</span
-                                        >
-                                    @endif
-                                </div>
-                            </div>
-                            <button
-                                wire:click="closeContentDetail"
-                                class="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition flex-shrink-0"
-                            >
-                                <i class="fas fa-times text-sm"></i>
-                            </button>
-                        </div>
-
-                        {{-- Status & Tags --}}
-                        <div class="flex flex-wrap items-center gap-2 mt-3">
-                            <span class="text-[10px] font-semibold px-2 py-1 rounded-md {{ $statusBadge }}">
-                                {{ str_replace('-', ' ', ucfirst($selectedContent->status)) }}
-                            </span>
-                            @foreach (\App\Support\ContentTags::expand($platforms, 'platform') as $platform)
-                                <span class="text-[10px] font-medium px-2 py-1 rounded-md bg-gray-100 text-gray-600">
-                                    {{ ucfirst($platform) }}
-                                </span>
-                            @endforeach
-                            @foreach (\App\Support\ContentTags::expand($types, 'type') as $type)
-                                <span class="text-[10px] font-medium px-2 py-1 rounded-md bg-gray-100 text-gray-600">
-                                    {{ ucfirst($type) }}
-                                </span>
-                            @endforeach
-                        </div>
-                    </div>
-
-                    {{-- Content Body --}}
-                    <div class="flex-1 overflow-y-auto">
-                        <div class="p-6 space-y-4">
-                            {{-- Caption --}}
-                            @if ($selectedContent->caption)
-                                <div>
-                                    <label
-                                        class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 block"
-                                        >Caption</label
-                                    >
-                                    <div class="p-4 rounded-lg bg-gray-50 border border-gray-100">
-                                        <p class="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{{ $selectedContent->caption }}</p>
-                                    </div>
-                                </div>
-                            @endif
-
-                            {{-- Hashtags --}}
-                            @if ($selectedContent->hashtags)
-                                <div>
-                                    <label
-                                        class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 block"
-                                        >Hashtags</label
-                                    >
-                                    <div class="p-4 rounded-lg bg-blue-50 border border-blue-100">
-                                        <p class="text-sm text-blue-700 font-medium">{{ $selectedContent->hashtags }}</p>
-                                    </div>
-                                </div>
-                            @endif
-
-                            {{-- Reference File --}}
-                            @if ($selectedContent->reference_file)
-                                <div>
-                                    <label
-                                        class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 block"
-                                        >Reference</label
-                                    >
-                                    <a
-                                        href="{{ $selectedContent->reference_file }}"
-                                        target="_blank"
-                                        class="inline-flex items-center gap-2 text-sm text-[var(--brand)] hover:underline font-medium"
-                                    >
-                                        <i class="fas fa-external-link-alt text-xs"></i>
-                                        View Reference Material
-                                    </a>
-                                </div>
-                            @endif
-
-                            {{-- Attachments --}}
-                            @if ($selectedContent->attachments && count($selectedContent->attachments) > 0)
-                                <div>
-                                    <label
-                                        class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 block"
-                                    >
-                                        Attachments ({{ count($selectedContent->attachments) }})
-                                    </label>
-                                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                        @foreach ($selectedContent->attachments as $att)
-                                            <div
-                                                class="flex items-center gap-3 p-3 rounded-lg border border-gray-200 bg-white hover:shadow-sm transition"
-                                            >
-                                                <div
-                                                    class="w-8 h-8 bg-gray-100 rounded-lg flex items-center justify-center flex-shrink-0"
-                                                >
-                                                    <i class="fas fa-file text-gray-400 text-xs"></i>
-                                                </div>
-                                                <div class="flex-1 min-w-0">
-                                                    <p class="text-xs font-medium text-gray-700 truncate">{{ $att['name'] ?? 'Attachment' }}</p>
-                                                    @if (isset($att['size']))
-                                                        <p class="text-[10px] text-gray-400">{{ number_format($att['size'] / 1024, 1) }} KB</p>
-                                                    @endif
-                                                </div>
-                                            </div>
-                                        @endforeach
-                                    </div>
-                                </div>
-                            @endif
-
-                            {{-- Comments Section --}}
-                            <div class="border-t border-gray-100 pt-4">
-                                <h4 class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
-                                    <i class="fas fa-comments mr-1"></i>Comments
-                                </h4>
-
-                                {{-- Add Comment --}}
-                                <div class="mb-4">
-                                    <textarea
-                                        wire:model="commentText"
-                                        placeholder="Add your feedback or questions..."
-                                        class="form-input w-full resize-none text-sm"
-                                        rows="3"
-                                    ></textarea>
-                                    <div class="flex justify-end mt-2">
-                                        <button wire:click="addComment" class="btn btn-primary btn-sm">
-                                            <i class="fas fa-paper-plane mr-1 text-xs"></i>Post
-                                        </button>
-                                    </div>
-                                </div>
-
-                                {{-- Comments List --}}
-                                @php $comments = $this->getContentComments(); @endphp
-                                @if ($comments->isEmpty())
-                                    <div class="text-center py-8">
-                                        <div
-                                            class="w-12 h-12 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-2"
-                                        >
-                                            <i class="fas fa-comment-slash text-xl text-gray-300"></i>
-                                        </div>
-                                        <p class="text-xs text-gray-400">No comments yet</p>
-                                    </div>
-                                @else
-                                    <div class="space-y-3">
-                                        @foreach ($comments as $comment)
-                                            <div class="flex gap-3 p-3 rounded-lg bg-gray-50">
-                                                <div
-                                                    class="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-gray-600 text-xs font-bold flex-shrink-0"
-                                                >
-                                                    {{ strtoupper(substr($comment->user->name ?? 'U', 0, 2)) }}
-                                                </div>
-                                                <div class="flex-1 min-w-0">
-                                                    <div class="flex items-center gap-2 mb-1">
-                                                        <span
-                                                            class="text-xs font-semibold text-gray-900"
-                                                            >{{ $comment->user->name ?? 'Unknown' }}</span
-                                                        >
-                                                        <span
-                                                            class="text-[10px] text-gray-400"
-                                                            >{{ $comment->created_at->diffForHumans() }}</span
-                                                        >
-                                                    </div>
-                                                    <p class="text-sm text-gray-700 leading-relaxed">{{ $comment->body }}</p>
-                                                </div>
-                                            </div>
-                                        @endforeach
-                                    </div>
+                {{-- Header --}}
+                <div class="flex-shrink-0 px-6 py-4 border-b border-gray-100 bg-white">
+                    <div class="flex items-start justify-between gap-4">
+                        <div class="flex-1 min-w-0">
+                            <h3 class="text-base font-bold text-gray-900 line-clamp-2">
+                                {{ $selectedContent->title }}
+                            </h3>
+                            <div class="flex items-center gap-2 mt-2 text-xs text-gray-500">
+                                <i class="fas fa-calendar-alt"></i>
+                                <span>{{ \App\Support\NepaliDate::display($selectedContent->date) }}</span>
+                                @if ($selectedContent->due_date)
+                                    <span>·</span>
+                                    <span>Due: {{ \App\Support\NepaliDate::display($selectedContent->due_date) }}</span>
                                 @endif
                             </div>
+                        </div>
+                        <button
+                            wire:click="closeContentDetail"
+                            class="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition flex-shrink-0"
+                        >
+                            <i class="fas fa-times text-sm"></i>
+                        </button>
+                    </div>
+
+                    {{-- Status & Tags --}}
+                    <div class="flex flex-wrap items-center gap-2 mt-3">
+                        <span class="text-[10px] font-semibold px-2 py-1 rounded-md {{ $statusBadge }}">
+                            {{ str_replace('-', ' ', ucfirst($selectedContent->status)) }}
+                        </span>
+                        @foreach (\App\Support\ContentTags::expand($platforms, 'platform') as $platform)
+                            <span class="text-[10px] font-medium px-2 py-1 rounded-md bg-gray-100 text-gray-600">
+                                {{ ucfirst($platform) }}
+                            </span>
+                        @endforeach
+                        @foreach (\App\Support\ContentTags::expand($types, 'type') as $type)
+                            <span class="text-[10px] font-medium px-2 py-1 rounded-md bg-gray-100 text-gray-600">
+                                {{ ucfirst($type) }}
+                            </span>
+                        @endforeach
+                    </div>
+                </div>
+
+                {{-- Content Body --}}
+                <div class="flex-1 overflow-y-auto">
+                    <div class="p-6 space-y-4">
+                        {{-- Caption --}}
+                        @if ($selectedContent->caption)
+                            <div>
+                                <label class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 block"
+                                    >Caption</label
+                                >
+                                <div class="p-4 rounded-lg bg-gray-50 border border-gray-100">
+                                    <p class="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{{ $selectedContent->caption }}</p>
+                                </div>
+                            </div>
+                        @endif
+
+                        {{-- Hashtags --}}
+                        @if ($selectedContent->hashtags)
+                            <div>
+                                <label class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 block"
+                                    >Hashtags</label
+                                >
+                                <div class="p-4 rounded-lg bg-blue-50 border border-blue-100">
+                                    <p class="text-sm text-blue-700 font-medium">{{ $selectedContent->hashtags }}</p>
+                                </div>
+                            </div>
+                        @endif
+
+                        {{-- Reference File --}}
+                        @if ($selectedContent->reference_file)
+                            <div>
+                                <label class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 block"
+                                    >Reference</label
+                                >
+                                <a
+                                    href="{{ $selectedContent->reference_file }}"
+                                    target="_blank"
+                                    class="inline-flex items-center gap-2 text-sm text-[var(--brand)] hover:underline font-medium"
+                                >
+                                    <i class="fas fa-external-link-alt text-xs"></i>
+                                    View Reference Material
+                                </a>
+                            </div>
+                        @endif
+
+                        {{-- Attachments --}}
+                        @if ($selectedContent->attachments && count($selectedContent->attachments) > 0)
+                            <div>
+                                <label class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 block">
+                                    Attachments ({{ count($selectedContent->attachments) }})
+                                </label>
+                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                    @foreach ($selectedContent->attachments as $att)
+                                        <div
+                                            class="flex items-center gap-3 p-3 rounded-lg border border-gray-200 bg-white hover:shadow-sm transition"
+                                        >
+                                            <div
+                                                class="w-8 h-8 bg-gray-100 rounded-lg flex items-center justify-center flex-shrink-0"
+                                            >
+                                                <i class="fas fa-file text-gray-400 text-xs"></i>
+                                            </div>
+                                            <div class="flex-1 min-w-0">
+                                                <p class="text-xs font-medium text-gray-700 truncate">{{ $att['name'] ?? 'Attachment' }}</p>
+                                                @if (isset($att['size']))
+                                                    <p class="text-[10px] text-gray-400">{{ number_format($att['size'] / 1024, 1) }} KB</p>
+                                                @endif
+                                            </div>
+                                        </div>
+                                    @endforeach
+                                </div>
+                            </div>
+                        @endif
+
+                        {{-- Comments Section --}}
+                        <div class="border-t border-gray-100 pt-4">
+                            <h4 class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
+                                <i class="fas fa-comments mr-1"></i>Comments
+                            </h4>
+
+                            {{-- Add Comment --}}
+                            <div class="mb-4">
+                                <textarea
+                                    wire:model="commentText"
+                                    placeholder="Add your feedback or questions..."
+                                    class="form-input w-full resize-none text-sm"
+                                    rows="3"
+                                ></textarea>
+                                <div class="flex justify-end mt-2">
+                                    <button wire:click="addComment" class="btn btn-primary btn-sm">
+                                        <i class="fas fa-paper-plane mr-1 text-xs"></i>Post
+                                    </button>
+                                </div>
+                            </div>
+
+                            {{-- Comments List --}}
+                            @php $comments = $this->getContentComments(); @endphp
+                            @if ($comments->isEmpty())
+                                <div class="text-center py-8">
+                                    <div
+                                        class="w-12 h-12 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-2"
+                                    >
+                                        <i class="fas fa-comment-slash text-xl text-gray-300"></i>
+                                    </div>
+                                    <p class="text-xs text-gray-400">No comments yet</p>
+                                </div>
+                            @else
+                                <div class="space-y-3">
+                                    @foreach ($comments as $comment)
+                                        <div class="flex gap-3 p-3 rounded-lg bg-gray-50">
+                                            <div
+                                                class="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-gray-600 text-xs font-bold flex-shrink-0"
+                                            >
+                                                {{ strtoupper(substr($comment->user->name ?? 'U', 0, 2)) }}
+                                            </div>
+                                            <div class="flex-1 min-w-0">
+                                                <div class="flex items-center gap-2 mb-1">
+                                                    <span
+                                                        class="text-xs font-semibold text-gray-900"
+                                                        >{{ $comment->user->name ?? 'Unknown' }}</span
+                                                    >
+                                                    <span
+                                                        class="text-[10px] text-gray-400"
+                                                        >{{ $comment->created_at->diffForHumans() }}</span
+                                                    >
+                                                </div>
+                                                <p class="text-sm text-gray-700 leading-relaxed">{{ $comment->body }}</p>
+                                            </div>
+                                        </div>
+                                    @endforeach
+                                </div>
+                            @endif
                         </div>
                     </div>
                 </div>
             </div>
-        @endif
+        </div>
     @endif
+@endif
 </div>
