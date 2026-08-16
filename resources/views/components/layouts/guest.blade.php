@@ -18,7 +18,15 @@
         rel="stylesheet"
     />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+    <style id="brand-color-vars">
+        :root {
+            --brand: {{ config('app.brand_color', '#4f46e5') }};
+            --brand-rgb: {{ config('app.brand_color_rgb', '79, 70, 229') }};
+        }
+    </style>
+
     @vite (['resources/css/app.css', 'resources/js/app.js'])
+    @livewireStyles
 </head>
 <body class="font-sans antialiased">
     {{ $slot }}

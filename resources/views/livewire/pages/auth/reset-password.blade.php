@@ -85,12 +85,22 @@ new #[Layout('components.layouts.guest')] class extends Component
     ></div>
 
     <div class="relative z-10 w-full max-w-md">
-        <div class="text-center mb-6">
-            <div
-                class="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-600 text-white shadow-lg shadow-brand-600/25 mb-3"
-            >
-                <i class="fas fa-lock-open text-2xl"></i>
-            </div>
+        {{-- Logo --}}
+        <div class="text-center mb-6 flex flex-col items-center">
+            @if (config('app.logo_path'))
+                <img
+                    src="{{ Storage::disk('public')->url(config('app.logo_path')) }}"
+                    alt="{{ config('app.name', 'Madhyam') }} Logo"
+                    class="h-16 w-auto object-contain mb-3 max-h-16"
+                />
+            @else
+                <div
+                    class="inline-flex h-14 w-14 items-center justify-center rounded-2xl text-white shadow-lg mb-3"
+                    style="background-color: var(--brand); box-shadow: 0 10px 15px -3px rgba(var(--brand-rgb), 0.25);"
+                >
+                    <i class="fas fa-lock-open text-2xl"></i>
+                </div>
+            @endif
             <h1 class="text-2xl font-bold text-gray-900 tracking-tight">Set a new password</h1>
             <p class="text-sm text-gray-500 mt-1">
                 {{ $mode === 'client' ? 'Client Portal account' : 'Staff account' }}
@@ -104,7 +114,7 @@ new #[Layout('components.layouts.guest')] class extends Component
                 wire:target="resetPassword"
                 aria-hidden="true"
             >
-                <div class="h-full w-1/3 bg-brand-600 login-progress-bar"></div>
+                <div class="h-full w-1/3 login-progress-bar" style="background-color: var(--brand);"></div>
             </div>
 
             <div
@@ -171,7 +181,7 @@ new #[Layout('components.layouts.guest')] class extends Component
                                 autocomplete="new-password"
                                 autofocus
                                 placeholder="At least 8 characters"
-                                class="block w-full rounded-xl border-gray-200 bg-gray-50 py-2.5 pl-10 pr-11 text-sm text-gray-900 placeholder:text-gray-400 shadow-sm transition-colors focus:border-brand-500 focus:bg-white focus:ring-2 focus:ring-brand-500/20 @error('password') border-red-300 focus:border-red-500 focus:ring-red-500/20 @enderror"
+                                class="block w-full rounded-xl border-gray-200 bg-gray-50 py-2.5 pl-10 pr-11 text-sm text-gray-900 placeholder:text-gray-400 shadow-sm transition-colors focus:bg-white focus:ring-2 brand-input-focus @error('password') border-red-300 focus:border-red-500 focus:ring-red-500/20 @enderror"
                             />
                             <button
                                 type="button"
@@ -207,7 +217,7 @@ new #[Layout('components.layouts.guest')] class extends Component
                                 required
                                 autocomplete="new-password"
                                 placeholder="Type it again"
-                                class="block w-full rounded-xl border-gray-200 bg-gray-50 py-2.5 pl-10 pr-3.5 text-sm text-gray-900 placeholder:text-gray-400 shadow-sm transition-colors focus:border-brand-500 focus:bg-white focus:ring-2 focus:ring-brand-500/20"
+                                class="block w-full rounded-xl border-gray-200 bg-gray-50 py-2.5 pl-10 pr-3.5 text-sm text-gray-900 placeholder:text-gray-400 shadow-sm transition-colors focus:bg-white focus:ring-2 brand-input-focus"
                             />
                         </div>
                     </div>
@@ -216,7 +226,8 @@ new #[Layout('components.layouts.guest')] class extends Component
                         type="submit"
                         wire:loading.attr="disabled"
                         wire:target="resetPassword"
-                        class="group flex w-full items-center justify-center gap-2 rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-brand-600/25 transition-all hover:bg-brand-700 active:scale-[0.98] active:shadow-md focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-80"
+                        class="group flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-white shadow-lg transition-all hover:opacity-90 active:scale-[0.98] active:shadow-md focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-80"
+                        style="background-color: var(--brand); --tw-ring-color: var(--brand); box-shadow: 0 10px 15px -3px rgba(var(--brand-rgb), 0.25);"
                     >
                         <span wire:loading.remove wire:target="resetPassword" class="flex items-center gap-2">
                             Save new password
@@ -264,6 +275,11 @@ new #[Layout('components.layouts.guest')] class extends Component
         }
         .login-progress-bar {
             animation: login-progress-slide 1.1s ease-in-out infinite;
+        }
+        .brand-input-focus:focus {
+            border-color: var(--brand) !important;
+            --tw-ring-color: rgba(var(--brand-rgb), 0.2) !important;
+            background-color: #fff !important;
         }
     </style>
 </div>

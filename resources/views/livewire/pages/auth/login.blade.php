@@ -161,13 +161,22 @@ new #[Layout('components.layouts.guest')] class extends Component
 
     <div class="relative z-10 w-full max-w-md">
         {{-- Logo / brand --}}
-        <div class="text-center mb-6">
-            <div
-                class="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-600 text-white shadow-lg shadow-brand-600/25 mb-3"
-            >
-                <i class="fas fa-layer-group text-2xl"></i>
-            </div>
-            <h1 class="text-2xl font-bold text-gray-900 tracking-tight">Madhyam</h1>
+        <div class="text-center mb-6 flex flex-col items-center">
+            @if (config('app.logo_path'))
+                <img
+                    src="{{ Storage::disk('public')->url(config('app.logo_path')) }}"
+                    alt="{{ config('app.name', 'Madhyam') }} Logo"
+                    class="h-16 w-auto object-contain mb-3 max-h-16"
+                />
+            @else
+                <div
+                    class="inline-flex h-14 w-14 items-center justify-center rounded-2xl text-white shadow-lg mb-3 animate-fade-in"
+                    style="background-color: var(--brand); box-shadow: 0 10px 15px -3px rgba(var(--brand-rgb), 0.25);"
+                >
+                    <i class="fas fa-layer-group text-2xl"></i>
+                </div>
+            @endif
+            <h1 class="text-2xl font-bold text-gray-900 tracking-tight">{{ config('app.name', 'Madhyam') }}</h1>
             <p class="text-sm text-gray-500 mt-1">Agency Management System</p>
         </div>
 
@@ -180,7 +189,7 @@ new #[Layout('components.layouts.guest')] class extends Component
                 wire:target="login"
                 aria-hidden="true"
             >
-                <div class="h-full w-1/3 bg-brand-600 login-progress-bar"></div>
+                <div class="h-full w-1/3 login-progress-bar" style="background-color: var(--brand);"></div>
             </div>
 
             {{-- Tabs (underline style) --}}
@@ -190,11 +199,12 @@ new #[Layout('components.layouts.guest')] class extends Component
                     role="tab"
                     aria-selected="{{ $loginMode === 'staff' ? 'true' : 'false' }}"
                     wire:click="switchMode('staff')"
-                    class="relative px-4 py-3.5 text-sm font-semibold transition-colors {{ $loginMode === 'staff' ? 'text-brand-600' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50' }}"
+                    class="relative px-4 py-3.5 text-sm font-semibold transition-colors {{ $loginMode === 'staff' ? '' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50' }}"
+                    style="{{ $loginMode === 'staff' ? 'color: var(--brand);' : '' }}"
                 >
                     <i class="fas fa-user-tie mr-1.5"></i>Staff Login
                     @if ($loginMode === 'staff')
-                        <span class="absolute inset-x-6 bottom-0 h-0.5 bg-brand-600 rounded-t"></span>
+                        <span class="absolute inset-x-6 bottom-0 h-0.5 rounded-t" style="background-color: var(--brand);"></span>
                     @endif
                 </button>
                 <button
@@ -202,11 +212,12 @@ new #[Layout('components.layouts.guest')] class extends Component
                     role="tab"
                     aria-selected="{{ $loginMode === 'client' ? 'true' : 'false' }}"
                     wire:click="switchMode('client')"
-                    class="relative px-4 py-3.5 text-sm font-semibold transition-colors {{ $loginMode === 'client' ? 'text-brand-600' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50' }}"
+                    class="relative px-4 py-3.5 text-sm font-semibold transition-colors {{ $loginMode === 'client' ? '' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50' }}"
+                    style="{{ $loginMode === 'client' ? 'color: var(--brand);' : '' }}"
                 >
                     <i class="fas fa-building mr-1.5"></i>Client Portal
                     @if ($loginMode === 'client')
-                        <span class="absolute inset-x-6 bottom-0 h-0.5 bg-brand-600 rounded-t"></span>
+                        <span class="absolute inset-x-6 bottom-0 h-0.5 rounded-t" style="background-color: var(--brand);"></span>
                     @endif
                 </button>
             </div>
@@ -266,7 +277,7 @@ new #[Layout('components.layouts.guest')] class extends Component
                                 autocomplete="username"
                                 autofocus
                                 placeholder="you@example.com"
-                                class="block w-full rounded-xl border-gray-200 bg-gray-50 py-2.5 pl-10 pr-3.5 text-sm text-gray-900 placeholder:text-gray-400 shadow-sm transition-colors focus:border-brand-500 focus:bg-white focus:ring-2 focus:ring-brand-500/20 @error('email') border-red-300 focus:border-red-500 focus:ring-red-500/20 @enderror"
+                                class="block w-full rounded-xl border-gray-200 bg-gray-50 py-2.5 pl-10 pr-3.5 text-sm text-gray-900 placeholder:text-gray-400 shadow-sm transition-colors focus:bg-white focus:ring-2 brand-input-focus @error('email') border-red-300 focus:border-red-500 focus:ring-red-500/20 @enderror"
                             />
                         </div>
                         @error ('email')
@@ -294,7 +305,7 @@ new #[Layout('components.layouts.guest')] class extends Component
                                 required
                                 autocomplete="current-password"
                                 placeholder="Enter your password"
-                                class="block w-full rounded-xl border-gray-200 bg-gray-50 py-2.5 pl-10 pr-11 text-sm text-gray-900 placeholder:text-gray-400 shadow-sm transition-colors focus:border-brand-500 focus:bg-white focus:ring-2 focus:ring-brand-500/20 @error('password') border-red-300 focus:border-red-500 focus:ring-red-500/20 @enderror"
+                                class="block w-full rounded-xl border-gray-200 bg-gray-50 py-2.5 pl-10 pr-11 text-sm text-gray-900 placeholder:text-gray-400 shadow-sm transition-colors focus:bg-white focus:ring-2 brand-input-focus @error('password') border-red-300 focus:border-red-500 focus:ring-red-500/20 @enderror"
                             />
                             <button
                                 type="button"
@@ -318,14 +329,16 @@ new #[Layout('components.layouts.guest')] class extends Component
                             <input
                                 type="checkbox"
                                 wire:model="remember"
-                                class="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500 focus:ring-offset-0"
+                                class="h-4 w-4 rounded border-gray-300 focus:ring-offset-0 brand-checkbox"
+                                style="color: var(--brand);"
                             />
                             <span class="text-sm text-gray-600">Remember me</span>
                         </label>
                         <a
                             href="{{ route('password.request', ['mode' => $loginMode === 'client' ? 'client' : 'staff']) }}"
                             wire:navigate
-                            class="text-sm font-medium text-brand-600 hover:text-brand-700 hover:underline underline-offset-2 transition-colors"
+                            class="text-sm font-medium hover:underline underline-offset-2 transition-colors"
+                            style="color: var(--brand);"
                         >
                             Forgot password?
                         </a>
@@ -336,7 +349,8 @@ new #[Layout('components.layouts.guest')] class extends Component
                         type="submit"
                         wire:loading.attr="disabled"
                         wire:target="login"
-                        class="group flex w-full items-center justify-center gap-2 rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-brand-600/25 transition-all hover:bg-brand-700 active:scale-[0.98] active:shadow-md focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-80"
+                        class="group flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-white shadow-lg transition-all hover:opacity-90 active:scale-[0.98] active:shadow-md focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-80"
+                        style="background-color: var(--brand); --tw-ring-color: var(--brand); box-shadow: 0 10px 15px -3px rgba(var(--brand-rgb), 0.25);"
                     >
                         <span wire:loading.remove wire:target="login" class="flex items-center gap-2">
                             Sign In
@@ -393,7 +407,7 @@ new #[Layout('components.layouts.guest')] class extends Component
                                         <button
                                             type="button"
                                             wire:click="fillDemo('{{ $account['email'] }}', '{{ $account['password'] }}')"
-                                            class="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 text-left transition-colors hover:border-brand-200 hover:bg-brand-50"
+                                            class="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 text-left transition-colors demo-account-btn"
                                         >
                                             <p class="text-xs font-semibold text-gray-700">{{ $account['label'] }}</p>
                                             <p class="text-[10px] text-gray-500 truncate">{{ $account['email'] }}</p>
@@ -409,7 +423,7 @@ new #[Layout('components.layouts.guest')] class extends Component
                                         <button
                                             type="button"
                                             wire:click="fillDemo('{{ $account['email'] }}', '{{ $account['password'] }}')"
-                                            class="w-full rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 text-left transition-colors hover:border-brand-200 hover:bg-brand-50"
+                                            class="w-full rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 text-left transition-colors demo-account-btn"
                                         >
                                             <p class="text-xs font-semibold text-gray-700">{{ $account['label'] }}</p>
                                             <p class="text-[10px] text-gray-500 truncate">{{ $account['email'] }}</p>
@@ -455,6 +469,18 @@ new #[Layout('components.layouts.guest')] class extends Component
         }
         .login-progress-bar {
             animation: login-progress-slide 1.1s ease-in-out infinite;
+        }
+        .brand-input-focus:focus {
+            border-color: var(--brand) !important;
+            --tw-ring-color: rgba(var(--brand-rgb), 0.2) !important;
+            background-color: #fff !important;
+        }
+        .demo-account-btn:hover {
+            border-color: rgba(var(--brand-rgb), 0.3) !important;
+            background-color: rgba(var(--brand-rgb), 0.04) !important;
+        }
+        .brand-checkbox:focus {
+            --tw-ring-color: var(--brand) !important;
         }
     </style>
 </div>
