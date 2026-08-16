@@ -500,12 +500,11 @@ new #[Layout('components.layouts.app')] class extends Component
             'needs_approval' => false,
         ]);
 
-        // Send notifications to managers and admins (all, not client-specific)
+        // Send notifications to managers and admins only (not super-admin)
         $notifiableUsers = User::query()
             ->where(function ($q) {
                 $q->where('role', 'manager')
-                    ->orWhere('role', 'admin')
-                    ->orWhere('role', 'super-admin');
+                    ->orWhere('role', 'admin');
             })
             ->get();
 

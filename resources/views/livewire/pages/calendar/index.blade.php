@@ -93,6 +93,14 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public bool $showContentDiscussion = false;
 
+    public bool $showWorkflowForm = false;
+
+    public bool $showPriorityForm = false;
+
+    public ?int $workflowContentId = null;
+
+    public string $workflowPriority = 'medium';
+
     public array $clients = [];
 
     public const PLATFORMS = ['instagram', 'facebook', 'tiktok', 'youtube', 'twitter', 'linkedin'];
@@ -524,6 +532,7 @@ new #[Layout('components.layouts.app')] class extends Component
         $this->formAttachmentsJson = json_encode($this->formAttachments);
         $this->showForm = true;
         $this->showDayDetail = false;
+        $this->showContentDiscussion = false; // Close discussion modal when editing
     }
 
     public function save(): void
@@ -769,6 +778,93 @@ new #[Layout('components.layouts.app')] class extends Component
         $this->loadMonthContent();
         $this->dispatch('contentUpdated');
         $this->dispatch('toast', message: 'Content moved to trash', type: 'success');
+    }
+
+    public function openWorkflowForm(int $contentId): void
+    {
+        $this->workflowContentId = $contentId;
+        $this->workflowPriority = 'medium'; // Reset to default
+        $this->showWorkflowForm = true;
+        $this->showContentDiscussion = false;
+    }
+
+    public function createWorkflowFromContent(): void
+    {
+        $this->validate([
+            'workflowPriority' => 'required|in:low,medium,high,urgent',
+        ]);
+
+        $content = Content::findOrFail($this->workflowContentId);
+
+        // Check if workflow already exists for this content
+        $existing = Workflow::where('content_id', $content->id)->whereNull('deleted_at')->first();
+        if ($existing) {
+            $this->dispatch('toast', message: 'Workflow already exists for this content!', type: 'warning');
+            $this->showWorkflowForm = false;
+            $this->workflowContentId = null;
+            $this->workflowPriority = 'medium';
+
+            return;
+        }
+
+        // Get primary type for workflow
+        $types = is_array($content->type) ? $content->type : json_decode($content->type ?? '[]', true);
+        $primaryType = !empty($types) ? $types[0] : 'content';
+
+        // Get assignee from content
+        $assignee = is_array($content->assignee) ? $content->assignee : json_decode($content->assignee ?? '[]', true);
+
+        Workflow::create([
+            'title' => $content->title,
+            'client_id' => $content->client_id,
+            'content_id' => $content->id,
+            'type' => $primaryType,
+            'stage' => 'todo',
+            'priority' => $this->workflowPriority,
+            'deadline' => $content->date,
+            'assignee' => $assignee ?: null,
+            'description_html' => $content->caption,
+            'status' => 'active',
+            'submitted_by' => Auth::id(),
+        ]);
+
+        $this->showWorkflowForm = false;
+        $this->workflowContentId = null;
+        $this->workflowPriority = 'medium';
+        $this->loadMonthContent(); // Reload to update calendar
+        $this->dispatch('toast', message: 'Workflow created successfully!', type: 'success');
+        $this->dispatch('contentUpdated');
+    }
+
+    public function openPriorityForm(int $contentId): void
+    {
+        $this->workflowContentId = $contentId;
+        $workflow = Workflow::where('content_id', $contentId)->whereNull('deleted_at')->first();
+        $this->workflowPriority = $workflow?->priority ?? 'medium';
+        $this->showPriorityForm = true;
+        $this->showContentDiscussion = false;
+    }
+
+    public function updateContentPriority(): void
+    {
+        $this->validate([
+            'workflowPriority' => 'required|in:low,medium,high,urgent',
+        ]);
+
+        $workflow = Workflow::where('content_id', $this->workflowContentId)->whereNull('deleted_at')->first();
+
+        if ($workflow) {
+            $workflow->update(['priority' => $this->workflowPriority]);
+            $this->dispatch('toast', message: 'Priority updated successfully!', type: 'success');
+        } else {
+            $this->dispatch('toast', message: 'No workflow found for this content!', type: 'error');
+        }
+
+        $this->showPriorityForm = false;
+        $this->workflowContentId = null;
+        $this->workflowPriority = 'medium';
+        $this->loadMonthContent(); // Reload to update calendar
+        $this->dispatch('contentUpdated');
     }
 
     public function getStats(): array
@@ -2672,7 +2768,9 @@ new #[Layout('components.layouts.app')] class extends Component
                                         </svg>
                                         <span class="font-semibold text-amber-600">Client Request</span>
                                         @if ($discContent->submittedByClient)
-                                            <span class="text-gray-500">({{ $discContent->submittedByClient->name }})</span>
+                                            <span class="text-gray-500"
+                                                >({{ $discContent->submittedByClient->name }})</span
+                                            >
                                         @endif
                                     </p>
                                 </div>
@@ -2681,6 +2779,54 @@ new #[Layout('components.layouts.app')] class extends Component
                                     <p class="text-[11px] uppercase tracking-wide font-semibold text-gray-400 mb-1">Created By</p>
                                     <p class="text-gray-800 text-xs flex items-center gap-1.5"><i class="fas fa-user text-gray-400"></i> {{ $discContent->creator->name ?? '—' }}</p>
                                 </div>
+                            @endif
+                        </div>
+
+                        {{-- Quick Actions --}}
+                        <div class="flex flex-wrap gap-2 pt-2 border-t border-gray-100">
+                            <button wire:click="editContent({{ $discContent->id }})" class="btn btn-secondary btn-sm">
+                                <svg class="w-3.5 h-3.5 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                        stroke-width="2"
+                                        d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                                    />
+                                </svg>
+                                Edit
+                            </button>
+
+                            @php
+                                $hasWorkflow = \App\Models\Workflow::where('content_id', $discContent->id)->whereNull('deleted_at')->exists();
+                            @endphp
+
+                            @if (!$hasWorkflow)
+                                <button
+                                    wire:click="openWorkflowForm({{ $discContent->id }})"
+                                    class="btn btn-primary btn-sm"
+                                >
+                                    <svg class="w-3.5 h-3.5 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path
+                                            stroke-linecap="round"
+                                            stroke-linejoin="round"
+                                            stroke-width="2"
+                                            d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"
+                                        />
+                                    </svg>
+                                    Add to Workflow
+                                </button>
+                            @else
+                                <button
+                                    wire:click="openPriorityForm({{ $discContent->id }})"
+                                    class="btn btn-secondary btn-sm"
+                                >
+                                    <svg class="w-3.5 h-3.5 mr-1.5" fill="currentColor" viewBox="0 0 20 20">
+                                        <path
+                                            d="M3 6a3 3 0 013-3h10a1 1 0 01.8 1.6L14.25 8l2.55 3.4A1 1 0 0116 13H6a1 1 0 00-1 1v3a1 1 0 11-2 0V6z"
+                                        />
+                                    </svg>
+                                    Change Priority
+                                </button>
                             @endif
                         </div>
 
@@ -2811,4 +2957,209 @@ new #[Layout('components.layouts.app')] class extends Component
             });
         </script>
     @endscript
+
+    {{-- Workflow Priority Modal --}}
+    @if ($showWorkflowForm && $workflowContentId)
+        <div class="modal-overlay z-[60]" x-data x-on:keydown.escape.window="$wire.set('showWorkflowForm', false)">
+            <div class="modal-box max-w-md" x-on:click.stop>
+                <div class="modal-header">
+                    <h3 class="text-lg font-bold text-gray-900">Add to Workflow</h3>
+                    <button wire:click="$set('showWorkflowForm', false)" class="btn btn-ghost btn-icon btn-sm">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                    </button>
+                </div>
+
+                <div class="modal-body space-y-3">
+                    <p class="text-sm text-gray-600">Choose priority level:</p>
+
+                    <div class="space-y-2">
+                        {{-- Low Priority --}}
+                        <label
+                            class="flex items-center gap-3 p-3 rounded-lg border-2 cursor-pointer transition-all {{ $workflowPriority === 'low' ? 'border-gray-400 bg-gray-50' : 'border-gray-200 hover:border-gray-300' }}"
+                        >
+                            <input
+                                type="radio"
+                                wire:model.live="workflowPriority"
+                                value="low"
+                                class="w-4 h-4 text-gray-500 focus:ring-2 focus:ring-gray-400"
+                            />
+                            <svg class="w-5 h-5 text-gray-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                                <path d="M3 6a3 3 0 013-3h10a1 1 0 01.8 1.6L14.25 8l2.55 3.4A1 1 0 0116 13H6a1 1 0 00-1 1v3a1 1 0 11-2 0V6z" />
+                            </svg>
+                            <span class="text-sm font-semibold text-gray-900">Low</span>
+                        </label>
+
+                        {{-- Medium Priority --}}
+                        <label
+                            class="flex items-center gap-3 p-3 rounded-lg border-2 cursor-pointer transition-all {{ $workflowPriority === 'medium' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-blue-300' }}"
+                        >
+                            <input
+                                type="radio"
+                                wire:model.live="workflowPriority"
+                                value="medium"
+                                class="w-4 h-4 text-blue-500 focus:ring-2 focus:ring-blue-400"
+                            />
+                            <svg class="w-5 h-5 text-blue-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                                <path d="M3 6a3 3 0 013-3h10a1 1 0 01.8 1.6L14.25 8l2.55 3.4A1 1 0 0116 13H6a1 1 0 00-1 1v3a1 1 0 11-2 0V6z" />
+                            </svg>
+                            <span class="text-sm font-semibold text-gray-900 flex-1">Medium</span>
+                            <span class="text-xs font-medium text-blue-600 bg-blue-100 px-2 py-0.5 rounded-full">Default</span>
+                        </label>
+
+                        {{-- High Priority --}}
+                        <label
+                            class="flex items-center gap-3 p-3 rounded-lg border-2 cursor-pointer transition-all {{ $workflowPriority === 'high' ? 'border-orange-500 bg-orange-50' : 'border-gray-200 hover:border-orange-300' }}"
+                        >
+                            <input
+                                type="radio"
+                                wire:model.live="workflowPriority"
+                                value="high"
+                                class="w-4 h-4 text-orange-500 focus:ring-2 focus:ring-orange-400"
+                            />
+                            <svg class="w-5 h-5 text-orange-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                                <path d="M3 6a3 3 0 013-3h10a1 1 0 01.8 1.6L14.25 8l2.55 3.4A1 1 0 0116 13H6a1 1 0 00-1 1v3a1 1 0 11-2 0V6z" />
+                            </svg>
+                            <span class="text-sm font-semibold text-gray-900">High</span>
+                        </label>
+
+                        {{-- Urgent Priority --}}
+                        <label
+                            class="flex items-center gap-3 p-3 rounded-lg border-2 cursor-pointer transition-all {{ $workflowPriority === 'urgent' ? 'border-red-500 bg-red-50' : 'border-gray-200 hover:border-red-300' }}"
+                        >
+                            <input
+                                type="radio"
+                                wire:model.live="workflowPriority"
+                                value="urgent"
+                                class="w-4 h-4 text-red-500 focus:ring-2 focus:ring-red-400"
+                            />
+                            <svg class="w-5 h-5 text-red-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                                <path d="M3 6a3 3 0 013-3h10a1 1 0 01.8 1.6L14.25 8l2.55 3.4A1 1 0 0116 13H6a1 1 0 00-1 1v3a1 1 0 11-2 0V6z" />
+                            </svg>
+                            <span class="text-sm font-semibold text-gray-900">Urgent</span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="modal-footer flex items-center justify-end gap-2">
+                    <button wire:click="$set('showWorkflowForm', false)" class="btn btn-secondary btn-sm">
+                        Cancel
+                    </button>
+                    <button wire:click="createWorkflowFromContent" class="btn btn-primary btn-sm">
+                        <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+                        </svg>
+                        Create Workflow
+                    </button>
+                </div>
+            </div>
+        </div>
+    @endif
+
+    {{-- Priority Change Modal --}}
+    @if ($showPriorityForm && $workflowContentId)
+        <div class="modal-overlay z-[60]" x-data x-on:keydown.escape.window="$wire.set('showPriorityForm', false)">
+            <div class="modal-box max-w-md" x-on:click.stop>
+                <div class="modal-header">
+                    <h3 class="text-lg font-bold text-gray-900">Change Priority</h3>
+                    <button wire:click="$set('showPriorityForm', false)" class="btn btn-ghost btn-icon btn-sm">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                    </button>
+                </div>
+
+                <div class="modal-body space-y-3">
+                    <p class="text-sm text-gray-600">Select new priority level:</p>
+
+                    <div class="space-y-2">
+                        {{-- Low Priority --}}
+                        <label
+                            class="flex items-center gap-3 p-3 rounded-lg border-2 cursor-pointer transition-all {{ $workflowPriority === 'low' ? 'border-gray-400 bg-gray-50' : 'border-gray-200 hover:border-gray-300' }}"
+                        >
+                            <input
+                                type="radio"
+                                wire:model.live="workflowPriority"
+                                value="low"
+                                class="w-4 h-4 text-gray-500 focus:ring-2 focus:ring-gray-400"
+                            />
+                            <svg class="w-5 h-5 text-gray-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                                <path d="M3 6a3 3 0 013-3h10a1 1 0 01.8 1.6L14.25 8l2.55 3.4A1 1 0 0116 13H6a1 1 0 00-1 1v3a1 1 0 11-2 0V6z" />
+                            </svg>
+                            <span class="text-sm font-semibold text-gray-900">Low</span>
+                        </label>
+
+                        {{-- Medium Priority --}}
+                        <label
+                            class="flex items-center gap-3 p-3 rounded-lg border-2 cursor-pointer transition-all {{ $workflowPriority === 'medium' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-blue-300' }}"
+                        >
+                            <input
+                                type="radio"
+                                wire:model.live="workflowPriority"
+                                value="medium"
+                                class="w-4 h-4 text-blue-500 focus:ring-2 focus:ring-blue-400"
+                            />
+                            <svg class="w-5 h-5 text-blue-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                                <path d="M3 6a3 3 0 013-3h10a1 1 0 01.8 1.6L14.25 8l2.55 3.4A1 1 0 0116 13H6a1 1 0 00-1 1v3a1 1 0 11-2 0V6z" />
+                            </svg>
+                            <span class="text-sm font-semibold text-gray-900">Medium</span>
+                        </label>
+
+                        {{-- High Priority --}}
+                        <label
+                            class="flex items-center gap-3 p-3 rounded-lg border-2 cursor-pointer transition-all {{ $workflowPriority === 'high' ? 'border-orange-500 bg-orange-50' : 'border-gray-200 hover:border-orange-300' }}"
+                        >
+                            <input
+                                type="radio"
+                                wire:model.live="workflowPriority"
+                                value="high"
+                                class="w-4 h-4 text-orange-500 focus:ring-2 focus:ring-orange-400"
+                            />
+                            <svg class="w-5 h-5 text-orange-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                                <path d="M3 6a3 3 0 013-3h10a1 1 0 01.8 1.6L14.25 8l2.55 3.4A1 1 0 0116 13H6a1 1 0 00-1 1v3a1 1 0 11-2 0V6z" />
+                            </svg>
+                            <span class="text-sm font-semibold text-gray-900">High</span>
+                        </label>
+
+                        {{-- Urgent Priority --}}
+                        <label
+                            class="flex items-center gap-3 p-3 rounded-lg border-2 cursor-pointer transition-all {{ $workflowPriority === 'urgent' ? 'border-red-500 bg-red-50' : 'border-gray-200 hover:border-red-300' }}"
+                        >
+                            <input
+                                type="radio"
+                                wire:model.live="workflowPriority"
+                                value="urgent"
+                                class="w-4 h-4 text-red-500 focus:ring-2 focus:ring-red-400"
+                            />
+                            <svg class="w-5 h-5 text-red-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                                <path d="M3 6a3 3 0 013-3h10a1 1 0 01.8 1.6L14.25 8l2.55 3.4A1 1 0 0116 13H6a1 1 0 00-1 1v3a1 1 0 11-2 0V6z" />
+                            </svg>
+                            <span class="text-sm font-semibold text-gray-900">Urgent</span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="modal-footer flex items-center justify-end gap-2">
+                    <button wire:click="$set('showPriorityForm', false)" class="btn btn-secondary btn-sm">
+                        Cancel
+                    </button>
+                    <button wire:click="updateContentPriority" class="btn btn-primary btn-sm">
+                        <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                        </svg>
+                        Update Priority
+                    </button>
+                </div>
+                    </button>
+                    <button wire:click="updateContentPriority" class="btn btn-primary px-6">
+                        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                        </svg>
+                        Update Priority
+                    </button>
+                </div>
+            </div>
+        </div>
+    @endif
 </div>
