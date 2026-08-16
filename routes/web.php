@@ -94,7 +94,7 @@ Route::middleware('auth:web')->group(function () {
             $file = DB::table('files')->where('id', $id)->first();
             abort_unless($file, 404);
 
-            return Storage::download($file->path, $file->name);
+            return Storage::disk('public')->download($file->path, $file->name);
         })->name('files.download');
 
         // XHR file upload endpoint — provides real-time progress via XMLHttpRequest

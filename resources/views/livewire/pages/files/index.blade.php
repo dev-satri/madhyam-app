@@ -949,8 +949,8 @@ new #[Layout('components.layouts.app')] class extends Component
                     ]);
                 }
             }
-            if ($file->path && Storage::exists($file->path)) {
-                Storage::delete($file->path);
+            if ($file->path && Storage::disk('public')->exists($file->path)) {
+                Storage::disk('public')->delete($file->path);
             }
         }
         $this->dispatch('toast', message: 'File deleted', type: 'success');
@@ -960,14 +960,14 @@ new #[Layout('components.layouts.app')] class extends Component
     {
         $file = DB::table('files')->where('id', $id)->first();
         abort_unless($file, 404);
-        return Storage::download($file->path, $file->name);
+        return Storage::disk('public')->download($file->path, $file->name);
     }
 
     public function getFileUrl(int $id): ?string
     {
         $file = DB::table('files')->where('id', $id)->first();
         if (!$file) return null;
-        return Storage::url($file->path);
+        return Storage::disk('public')->url($file->path);
     }
 
     public function moveFileToFolder(int $fileId, int $folderId): void
