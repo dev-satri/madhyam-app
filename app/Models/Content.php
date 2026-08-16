@@ -19,7 +19,7 @@ class Content extends Model
     protected $fillable = [
         'title', 'client_id', 'platform', 'type', 'date', 'due_date', 'status',
         'caption', 'hashtags', 'reference_file', 'attachments', 'needs_approval', 'created_by',
-        'submitted_for_approval_at', 'assignee',
+        'submitted_by_client_id', 'submitted_for_approval_at', 'assignee',
     ];
 
     protected $casts = [
@@ -41,6 +41,11 @@ class Content extends Model
     public function creator(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function submittedByClient(): BelongsTo
+    {
+        return $this->belongsTo(ClientAccount::class, 'submitted_by_client_id');
     }
 
     public function getAssigneeUsers()

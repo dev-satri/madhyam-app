@@ -1626,6 +1626,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                         $_primary = \App\Support\ContentTags::primary($_platforms, 'platform');
                                         $_types = \App\Support\ContentTags::normalize($item->type, 'type');
                                         $_primaryType = \App\Support\ContentTags::primary($_types, 'type');
+                                        $isClientSubmitted = !empty($item->submitted_by_client_id);
                                     @endphp
                                     @php
                                         $workflowStage = null;
@@ -1639,10 +1640,19 @@ new #[Layout('components.layouts.app')] class extends Component
                                         }
                                     @endphp
                                     <div
-                                        class="cal-event {{ $_primary }} type-{{ $_primaryType }}"
+                                        class="cal-event {{ $_primary }} type-{{ $_primaryType }} {{ $isClientSubmitted ? 'client-submitted' : '' }}"
                                         wire:click.stop="editContent({{ $item->id }})"
-                                        title="{{ $item->title }} ({{ \App\Support\ContentTags::label($_types, 'type') }} | {{ \App\Support\ContentTags::label($_platforms, 'platform') }}){{ $workflowStage ? ' | Stage: ' . $workflowStage : '' }}{{ $approvalStatus ? ' | Approval: ' . $approvalStatus : '' }}"
+                                        title="{{ $item->title }} ({{ \App\Support\ContentTags::label($_types, 'type') }} | {{ \App\Support\ContentTags::label($_platforms, 'platform') }}){{ $isClientSubmitted ? ' • Client Request' : '' }}{{ $workflowStage ? ' | Stage: ' . $workflowStage : '' }}{{ $approvalStatus ? ' | Approval: ' . $approvalStatus : '' }}"
                                     >
+                                        @if ($isClientSubmitted)
+                                            <svg class="w-2.5 h-2.5 inline-block mr-0.5" fill="currentColor" viewBox="0 0 20 20">
+                                                <path
+                                                    fill-rule="evenodd"
+                                                    d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
+                                                    clip-rule="evenodd"
+                                                />
+                                            </svg>
+                                        @endif
                                         {{ Str::limit($item->title, 14) }}
                                         @if ($workflowStage)
                                             <span
@@ -2649,10 +2659,29 @@ new #[Layout('components.layouts.app')] class extends Component
                                     <p class="text-gray-800 text-xs flex items-center gap-1.5"><i class="fas fa-clock text-gray-400"></i> {{ \App\Support\NepaliDate::display($discContent->due_date) }}</p>
                                 </div>
                             @endif
-                            <div>
-                                <p class="text-[11px] uppercase tracking-wide font-semibold text-gray-400 mb-1">Created By</p>
-                                <p class="text-gray-800 text-xs flex items-center gap-1.5"><i class="fas fa-user text-gray-400"></i> {{ $discContent->creator->name ?? '—' }}</p>
-                            </div>
+                            @if ($discContent->submitted_by_client_id)
+                                <div>
+                                    <p class="text-[11px] uppercase tracking-wide font-semibold text-gray-400 mb-1">Submitted By</p>
+                                    <p class="text-gray-800 text-xs flex items-center gap-1.5">
+                                        <svg class="w-3.5 h-3.5 text-amber-500" fill="currentColor" viewBox="0 0 20 20">
+                                            <path
+                                                fill-rule="evenodd"
+                                                d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
+                                                clip-rule="evenodd"
+                                            />
+                                        </svg>
+                                        <span class="font-semibold text-amber-600">Client Request</span>
+                                        @if ($discContent->submittedByClient)
+                                            <span class="text-gray-500">({{ $discContent->submittedByClient->name }})</span>
+                                        @endif
+                                    </p>
+                                </div>
+                            @else
+                                <div>
+                                    <p class="text-[11px] uppercase tracking-wide font-semibold text-gray-400 mb-1">Created By</p>
+                                    <p class="text-gray-800 text-xs flex items-center gap-1.5"><i class="fas fa-user text-gray-400"></i> {{ $discContent->creator->name ?? '—' }}</p>
+                                </div>
+                            @endif
                         </div>
 
                         {{-- Hashtags --}}

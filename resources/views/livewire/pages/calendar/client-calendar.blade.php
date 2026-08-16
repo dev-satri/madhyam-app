@@ -5,6 +5,8 @@ use Anuzpandey\LaravelNepaliDate\LaravelNepaliDate;
 use App\Models\ClientAccount;
 use App\Models\Comment;
 use App\Models\Content;
+use App\Models\User;
+use App\Notifications\ClientContentRequestNotification;
 use App\Support\ContentTags;
 use App\Support\NepaliDate;
 use Carbon\Carbon;
@@ -13,9 +15,12 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Attributes\Layout;
 use Livewire\Volt\Component;
+use Livewire\WithFileUploads;
 
 new #[Layout('components.layouts.app')] class extends Component
 {
+    use WithFileUploads;
+
     public string $viewMode = 'month';
 
     public int $currentMonth;
@@ -41,6 +46,25 @@ new #[Layout('components.layouts.app')] class extends Component
     public string $commentText = '';
 
     public array $contentByDate = [];
+
+    // Content Form Properties
+    public bool $showContentForm = false;
+
+    public string $formTitle = '';
+
+    public array $formTypes = [];
+
+    public array $formPlatforms = [];
+
+    public string $formDate = '';
+
+    public string $formCaption = '';
+
+    public string $formHashtags = '';
+
+    public string $formReferenceFile = '';
+
+    public $formUploadedFiles = [];
 
     public function mount(): void
     {
@@ -409,6 +433,90 @@ new #[Layout('components.layouts.app')] class extends Component
             'draft' => (clone $query)->where('status', 'draft')->count(),
         ];
     }
+
+    public function openContentForm(?string $date = null): void
+    {
+        $this->formTitle = '';
+        $this->formTypes = [];
+        $this->formPlatforms = [];
+        $this->formDate = $date ?? ''; // Pre-fill with selected date or empty
+        $this->formCaption = '';
+        $this->formHashtags = '';
+        $this->formReferenceFile = '';
+        $this->formUploadedFiles = [];
+        $this->showContentForm = true;
+        $this->showDayDetail = false;
+    }
+
+    public function submitContentRequest(): void
+    {
+        $this->validate([
+            'formTitle' => 'required|string|max:255',
+            'formTypes' => 'required|array|min:1',
+            'formPlatforms' => 'required|array|min:1',
+            'formDate' => 'required|date|after_or_equal:today',
+            'formCaption' => 'required|string',
+            'formUploadedFiles.*' => 'nullable|file|max:10240', // 10MB max per file
+        ]);
+
+        $account = Auth::guard('client')->user();
+        if (! $account) {
+            return;
+        }
+
+        // Handle file uploads
+        $attachments = [];
+        if (! empty($this->formUploadedFiles)) {
+            foreach ($this->formUploadedFiles as $file) {
+                if ($file) {
+                    $path = $file->store('client-uploads', 'public');
+                    $attachments[] = [
+                        'id' => uniqid(),
+                        'name' => $file->getClientOriginalName(),
+                        'url' => Storage::url($path),
+                        'type' => str_starts_with($file->getMimeType(), 'image/') ? 'image' : 'file',
+                        'size' => $file->getSize(),
+                    ];
+                }
+            }
+        }
+
+        // Normalize tags
+        $platforms = ContentTags::normalize($this->formPlatforms, 'platform');
+        $types = ContentTags::normalize($this->formTypes, 'type');
+
+        $content = Content::create([
+            'title' => $this->formTitle,
+            'client_id' => $account->client_id,
+            'submitted_by_client_id' => $account->id,
+            'platform' => $platforms,
+            'type' => $types,
+            'date' => $this->formDate,
+            'status' => 'draft',
+            'caption' => $this->formCaption,
+            'hashtags' => $this->formHashtags,
+            'reference_file' => $this->formReferenceFile ?: null,
+            'attachments' => ! empty($attachments) ? $attachments : null,
+            'needs_approval' => false,
+        ]);
+
+        // Send notifications to managers and admins (all, not client-specific)
+        $notifiableUsers = User::query()
+            ->where(function ($q) {
+                $q->where('role', 'manager')
+                    ->orWhere('role', 'admin')
+                    ->orWhere('role', 'super-admin');
+            })
+            ->get();
+
+        foreach ($notifiableUsers as $user) {
+            $user->notify(new ClientContentRequestNotification($content, $account));
+        }
+
+        $this->showContentForm = false;
+        $this->loadMonthContent();
+        $this->dispatch('toast', message: 'Content request submitted successfully!', type: 'success');
+    }
 }; ?>
 
 <div>
@@ -418,6 +526,12 @@ new #[Layout('components.layouts.app')] class extends Component
             <h1 class="text-2xl font-extrabold text-gray-900">Content Calendar</h1>
             <p class="text-sm text-gray-500 mt-1">View your scheduled content and deliverables</p>
         </div>
+        <button wire:click="openContentForm" class="btn btn-primary">
+            <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+            </svg>
+            Request Content
+        </button>
     </div>
 
     {{-- Filters Bar --}}
@@ -893,7 +1007,7 @@ new #[Layout('components.layouts.app')] class extends Component
                 {{-- Header --}}
                 <div class="flex-shrink-0 px-6 py-4 border-b border-gray-100 bg-white">
                     <div class="flex items-center justify-between">
-                        <div>
+                        <div class="flex-1">
                             <h3 class="text-base font-bold text-gray-900">
                                 {{ $detailDate ? \App\Support\NepaliDate::display($detailDate) : '' }}
                             </h3>
@@ -905,12 +1019,23 @@ new #[Layout('components.layouts.app')] class extends Component
                                 @endif
                             </p>
                         </div>
-                        <button
-                            wire:click="$set('showDayDetail', false)"
-                            class="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition"
-                        >
-                            <i class="fas fa-times text-sm"></i>
-                        </button>
+                        <div class="flex items-center gap-2">
+                            <button
+                                wire:click="openContentForm('{{ $selectedDate }}')"
+                                class="btn btn-primary btn-sm"
+                                title="Request content for this date"
+                            >
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+                                </svg>
+                            </button>
+                            <button
+                                wire:click="$set('showDayDetail', false)"
+                                class="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition"
+                            >
+                                <i class="fas fa-times text-sm"></i>
+                            </button>
+                        </div>
                     </div>
                 </div>
 
@@ -1184,5 +1309,307 @@ new #[Layout('components.layouts.app')] class extends Component
                 </div>
             </div>
         @endif
+    @endif
+
+    {{-- Content Request Form Modal --}}
+    @if ($showContentForm)
+        <div class="modal-overlay z-50" x-data x-on:keydown.escape.window="$wire.set('showContentForm', false)">
+            <div class="modal-box max-w-2xl" x-on:click.stop>
+                {{-- Header --}}
+                <div class="modal-header">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 rounded-xl bg-[var(--brand)]/10 flex items-center justify-center">
+                            <svg class="w-5 h-5 text-[var(--brand)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    stroke-width="2"
+                                    d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                                />
+                            </svg>
+                        </div>
+                        <div>
+                            <h3 class="text-lg font-bold text-gray-900">Request Content</h3>
+                            <p class="text-xs text-gray-500 mt-0.5">Tell us what you need</p>
+                        </div>
+                    </div>
+                    <button
+                        wire:click="$set('showContentForm', false)"
+                        class="flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors"
+                    >
+                        <i class="fas fa-times text-sm"></i>
+                    </button>
+                </div>
+
+                <div class="modal-body">
+                    <form wire:submit.prevent="submitContentRequest" class="flex flex-col max-h-[70vh]">
+                        <div class="flex-1 overflow-y-auto space-y-4 pr-1 -mr-1">
+                            {{-- Title --}}
+                            <div>
+                                <label class="block text-sm font-semibold text-gray-700 mb-2">
+                                    Content Title <span class="text-red-500">*</span>
+                                </label>
+                                <input
+                                    type="text"
+                                    wire:model="formTitle"
+                                    class="form-input"
+                                    placeholder="e.g., Summer Sale Campaign"
+                                    required
+                                />
+                            </div>
+
+                            {{-- Date --}}
+                            <div>
+                                <label class="block text-sm font-semibold text-gray-700 mb-2">
+                                    Preferred Date <span class="text-red-500">*</span>
+                                </label>
+                                @if (\App\Support\NepaliDate::isBs())
+                                    <x-date-input model="formDate" required />
+                                @else
+                                    <input
+                                        type="date"
+                                        wire:model="formDate"
+                                        class="form-input"
+                                        min="{{ now()->format('Y-m-d') }}"
+                                        required
+                                    />
+                                @endif
+                                @error ('formDate')
+                                    <span class="text-xs text-red-500 mt-1 block">{{ $message }}</span>
+                                @enderror
+                            </div>
+
+                            {{-- Content Type --}}
+                            <div>
+                                <label class="block text-sm font-semibold text-gray-700 mb-2">
+                                    Content Type <span class="text-red-500">*</span>
+                                </label>
+                                <div class="flex flex-wrap gap-2">
+                                    <label
+                                        class="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 cursor-pointer transition-colors hover:border-gray-300 {{ in_array('all', $formTypes) ? 'border-[var(--brand)] bg-[var(--brand)] text-white' : 'border-gray-200 bg-white' }}"
+                                    >
+                                        <input
+                                            type="checkbox"
+                                            wire:model.live="formTypes"
+                                            value="all"
+                                            class="rounded border-gray-300 focus:ring-[var(--brand)] w-3.5 h-3.5 {{ in_array('all', $formTypes) ? 'text-white' : 'text-[var(--brand)]' }}"
+                                        />
+                                        <span class="text-[10px] font-bold uppercase tracking-wide whitespace-nowrap"
+                                            >All</span
+                                        >
+                                    </label>
+                                    @foreach (['reel', 'post', 'story', 'video', 'carousel', 'blog'] as $t)
+                                        <label
+                                            class="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 cursor-pointer transition-colors hover:border-gray-300 {{ in_array($t, $formTypes) ? 'border-[var(--brand)] bg-[rgba(var(--brand-rgb),0.05)]' : 'border-gray-200 bg-white' }}"
+                                        >
+                                            <input
+                                                type="checkbox"
+                                                wire:model.live="formTypes"
+                                                value="{{ $t }}"
+                                                class="rounded border-gray-300 text-[var(--brand)] focus:ring-[var(--brand)] w-3.5 h-3.5"
+                                            />
+                                            <span class="badge badge-{{ $t }} text-[10px]">{{ ucfirst($t) }}</span>
+                                        </label>
+                                    @endforeach
+                                </div>
+                                @error ('formTypes')
+                                    <span class="text-xs text-red-500 mt-1 block">{{ $message }}</span>
+                                @enderror
+                            </div>
+
+                            {{-- Platform --}}
+                            <div>
+                                <label class="block text-sm font-semibold text-gray-700 mb-2">
+                                    Platform <span class="text-red-500">*</span>
+                                </label>
+                                <div class="flex flex-wrap gap-2">
+                                    <label
+                                        class="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 cursor-pointer transition-colors hover:border-gray-300 {{ in_array('all', $formPlatforms) ? 'border-[var(--brand)] bg-[var(--brand)] text-white' : 'border-gray-200 bg-white' }}"
+                                    >
+                                        <input
+                                            type="checkbox"
+                                            wire:model.live="formPlatforms"
+                                            value="all"
+                                            class="rounded border-gray-300 focus:ring-[var(--brand)] w-3.5 h-3.5 {{ in_array('all', $formPlatforms) ? 'text-white' : 'text-[var(--brand)]' }}"
+                                        />
+                                        <span class="text-[10px] font-bold uppercase tracking-wide whitespace-nowrap"
+                                            >All</span
+                                        >
+                                    </label>
+                                    @foreach (['instagram', 'facebook', 'tiktok', 'youtube', 'twitter', 'linkedin'] as $p)
+                                        <label
+                                            class="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 cursor-pointer transition-colors hover:border-gray-300 {{ in_array($p, $formPlatforms) ? 'border-[var(--brand)] bg-[rgba(var(--brand-rgb),0.05)]' : 'border-gray-200 bg-white' }}"
+                                        >
+                                            <input
+                                                type="checkbox"
+                                                wire:model.live="formPlatforms"
+                                                value="{{ $p }}"
+                                                class="rounded border-gray-300 text-[var(--brand)] focus:ring-[var(--brand)] w-3.5 h-3.5"
+                                            />
+                                            <span class="badge badge-{{ $p }} text-[10px]">{{ ucfirst($p) }}</span>
+                                        </label>
+                                    @endforeach
+                                </div>
+                                @error ('formPlatforms')
+                                    <span class="text-xs text-red-500 mt-1 block">{{ $message }}</span>
+                                @enderror
+                            </div>
+
+                            {{-- Caption/Description --}}
+                            <div>
+                                <label class="block text-sm font-semibold text-gray-700 mb-2">
+                                    Caption / Description <span class="text-red-500">*</span>
+                                </label>
+                                <textarea
+                                    wire:model="formCaption"
+                                    class="form-input resize-none"
+                                    rows="3"
+                                    placeholder="Describe your content idea, message, or any specific requirements..."
+                                    required
+                                ></textarea>
+                                <p class="text-xs text-gray-500 mt-1">Be as detailed as possible</p>
+                            </div>
+
+                            {{-- Hashtags --}}
+                            <div>
+                                <label class="block text-sm font-semibold text-gray-700 mb-2">Hashtags</label>
+                                <input
+                                    type="text"
+                                    wire:model="formHashtags"
+                                    class="form-input"
+                                    placeholder="#marketing #sale #summer"
+                                />
+                            </div>
+
+                            {{-- Reference File --}}
+                            <div>
+                                <label class="block text-sm font-semibold text-gray-700 mb-2">Reference URL</label>
+                                <input
+                                    type="url"
+                                    wire:model="formReferenceFile"
+                                    class="form-input"
+                                    placeholder="https://example.com/reference or Google Drive link"
+                                />
+                            </div>
+
+                            {{-- Attachments Note --}}
+                            <div>
+                                <label class="block text-sm font-semibold text-gray-700 mb-2">Upload Files</label>
+                                <div
+                                    x-data="{ uploading: false, progress: 0 }"
+                                    x-on:livewire-upload-start="uploading = true"
+                                    x-on:livewire-upload-finish="uploading = false"
+                                    x-on:livewire-upload-error="uploading = false"
+                                    x-on:livewire-upload-progress="progress = $event.detail.progress"
+                                >
+                                    <label
+                                        class="flex flex-col items-center justify-center w-full rounded-lg border-2 border-dashed border-gray-300 bg-gray-50 px-4 py-6 cursor-pointer hover:border-[var(--brand)] hover:bg-[var(--brand)]/5 transition"
+                                    >
+                                        <svg class="w-10 h-10 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path
+                                                stroke-linecap="round"
+                                                stroke-linejoin="round"
+                                                stroke-width="2"
+                                                d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
+                                            />
+                                        </svg>
+                                        <p class="mt-2 text-sm font-medium text-gray-700">Click to upload files</p>
+                                        <p class="mt-1 text-xs text-gray-500">Images, PDFs, or any reference files</p>
+                                        <input
+                                            type="file"
+                                            wire:model="formUploadedFiles"
+                                            multiple
+                                            class="hidden"
+                                            accept="image/*,.pdf,.doc,.docx"
+                                        />
+                                    </label>
+
+                                    <div x-show="uploading" class="mt-2">
+                                        <div class="w-full bg-gray-200 rounded-full h-2">
+                                            <div
+                                                class="bg-[var(--brand)] h-2 rounded-full transition-all"
+                                                :style="`width: ${progress}%`"
+                                            ></div>
+                                        </div>
+                                        <p class="text-xs text-gray-600 mt-1">Uploading... <span x-text="progress"></span>%</p>
+                                    </div>
+
+                                    @if (!empty($formUploadedFiles))
+                                        <div class="mt-3 space-y-2">
+                                            @foreach ($formUploadedFiles as $index => $file)
+                                                <div
+                                                    class="flex items-center justify-between p-2 bg-white rounded-lg border border-gray-200"
+                                                >
+                                                    <div class="flex items-center gap-2 flex-1 min-w-0">
+                                                        <svg class="w-5 h-5 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                                        </svg>
+                                                        <span
+                                                            class="text-sm text-gray-700 truncate"
+                                                            >{{ $file->getClientOriginalName() }}</span
+                                                        >
+                                                        <span class="text-xs text-gray-500"
+                                                            >({{ number_format($file->getSize() / 1024, 1) }} KB)</span
+                                                        >
+                                                    </div>
+                                                    <button
+                                                        type="button"
+                                                        wire:click="$set('formUploadedFiles.{{ $index }}', null)"
+                                                        class="text-red-500 hover:text-red-700 ml-2"
+                                                    >
+                                                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                                                        </svg>
+                                                    </button>
+                                                </div>
+                                            @endforeach
+                                        </div>
+                                    @endif
+                                </div>
+                                <p class="text-xs text-gray-500 mt-2">Or add links in Reference URL above for cloud storage files</p>
+                            </div>
+                        </div>
+
+                        {{-- Footer --}}
+                        <div
+                            class="flex items-center justify-end gap-3 border-t border-gray-100 bg-gray-50 px-6 py-4 mt-4 -mx-6 -mb-6"
+                        >
+                            <button type="button" wire:click="$set('showContentForm', false)" class="btn btn-secondary">
+                                Cancel
+                            </button>
+                            <button
+                                type="submit"
+                                class="btn btn-primary"
+                                wire:loading.attr="disabled"
+                                wire:target="submitContentRequest"
+                            >
+                                <svg
+                                    class="w-4 h-4 mr-1.5"
+                                    wire:loading.remove
+                                    wire:target="submitContentRequest"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    viewBox="0 0 24 24"
+                                >
+                                    <path
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                        stroke-width="2"
+                                        d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
+                                    />
+                                </svg>
+                                <i
+                                    class="fas fa-spinner fa-spin text-xs mr-1.5"
+                                    wire:loading
+                                    wire:target="submitContentRequest"
+                                ></i>
+                                <span wire:loading.remove wire:target="submitContentRequest">Submit Request</span>
+                                <span wire:loading wire:target="submitContentRequest">Submitting...</span>
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
     @endif
 </div>
