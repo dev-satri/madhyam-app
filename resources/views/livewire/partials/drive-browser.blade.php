@@ -232,7 +232,9 @@
 
         {{-- Selection Footer --}}
         @if ($this->selectedFile)
-            <div class="sticky bottom-0 left-0 right-0 bg-white/95 backdrop-blur-sm border-t border-gray-100 py-3.5 mt-4 z-20 shadow-[0_-8px_20px_-6px_rgba(0,0,0,0.1)] -mx-4 px-4 sm:-mx-6 sm:px-6">
+            <div
+                class="sticky bottom-0 left-0 right-0 bg-white/95 backdrop-blur-sm border-t border-gray-100 py-3.5 mt-4 z-20 shadow-[0_-8px_20px_-6px_rgba(0,0,0,0.1)] -mx-4 px-4 sm:-mx-6 sm:px-6"
+            >
                 <div class="flex items-center justify-between">
                     <div class="flex items-center gap-3 min-w-0">
                         <div class="w-9 h-9 rounded-lg bg-blue-50 flex items-center justify-center flex-shrink-0">

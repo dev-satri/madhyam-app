@@ -2,9 +2,9 @@
 
 namespace App\Notifications;
 
+use App\Models\ClientAccount;
 use App\Models\Comment;
 use App\Models\Content;
-use App\Models\User;
 use App\Notifications\Channels\InAppDatabaseChannel;
 use App\Notifications\Concerns\SkipsSelfActor;
 use Illuminate\Bus\Queueable;
@@ -17,7 +17,7 @@ class ContentCommentNotification extends Notification implements ShouldQueue
 {
     use Queueable, SkipsSelfActor;
 
-    public function __construct(public Comment $comment, public Content $content, ?User $actor = null)
+    public function __construct(public Comment $comment, public Content $content, mixed $actor = null)
     {
         $this->actor = $actor;
     }
@@ -29,6 +29,8 @@ class ContentCommentNotification extends Notification implements ShouldQueue
 
     public function toMail(object $notifiable): MailMessage
     {
+        $url = $this->recipientUrl($notifiable);
+
         return (new MailMessage)
             ->subject('New comment on: ' . $this->content->title)
             ->markdown('emails.content-comment', [
@@ -36,7 +38,7 @@ class ContentCommentNotification extends Notification implements ShouldQueue
                 'content' => $this->content,
                 'comment' => $this->comment,
                 'actor' => $this->actor,
-                'url' => route('content-planner') . '#content-' . $this->content->id,
+                'url' => $url,
             ]);
     }
 
@@ -45,10 +47,23 @@ class ContentCommentNotification extends Notification implements ShouldQueue
         $actorName = $this->actor?->name ?? 'Someone';
         $preview = Str::limit(trim($this->comment->body ?? $this->comment->text ?? ''), 80);
 
+        $link = $notifiable instanceof ClientAccount
+            ? route('client.calendar', absolute: false)
+            : route('content-planner', absolute: false) . '#content-' . $this->content->id;
+
         return [
             'text' => $actorName . ' commented on "' . $this->content->title . '": ' . $preview,
             'type' => 'info',
-            'link' => route('content-planner', absolute: false) . '#content-' . $this->content->id,
+            'link' => $link,
         ];
+    }
+
+    private function recipientUrl(object $notifiable): string
+    {
+        if ($notifiable instanceof ClientAccount) {
+            return route('client.calendar');
+        }
+
+        return route('content-planner') . '#content-' . $this->content->id;
     }
 }

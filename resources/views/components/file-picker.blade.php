@@ -394,8 +394,6 @@
                     <div x-show="activeTab === 'drive'" class="h-full">
                         @livewire ('partials.drive-browser')
                     </div>
-
-
                 </div>
 
                 {{-- Selected Items --}}

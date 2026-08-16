@@ -175,7 +175,6 @@ body {
 }
 
 @keyframes pulse {
-
     0%,
     100% {
         opacity: 1;
@@ -187,7 +186,6 @@ body {
 }
 
 @keyframes float {
-
     0%,
     100% {
         transform: translateY(0);
@@ -222,7 +220,6 @@ body {
    Upload Progress
    ============================================================ */
 @keyframes upload-icon-bounce {
-
     0%,
     100% {
         transform: translateY(0);
@@ -314,7 +311,6 @@ body {
    Print Styles
    ============================================================ */
 @media print {
-
     .no-print,
     aside.sidebar,
     header.topbar {
@@ -397,10 +393,12 @@ body {
    Login Page (guest layout)
    ============================================================ */
 .login-bg {
-    background: linear-gradient(135deg,
-            color-mix(in srgb, var(--brand) 80%, black) 0%,
-            var(--brand) 50%,
-            color-mix(in srgb, var(--brand) 70%, white) 100%);
+    background: linear-gradient(
+        135deg,
+        color-mix(in srgb, var(--brand) 80%, black) 0%,
+        var(--brand) 50%,
+        color-mix(in srgb, var(--brand) 70%, white) 100%
+    );
     min-height: 100vh;
 }
 
@@ -453,7 +451,7 @@ body {
     transition: color 0.2s;
 }
 
-.input-group input:focus~i {
+.input-group input:focus ~ i {
     color: var(--brand);
 }
 
@@ -1632,10 +1630,7 @@ body {
 
 /* Client-submitted content indicator */
 .cal-event.client-submitted {
-    background: linear-gradient(135deg,
-            rgba(251, 191, 36, 0.15) 0%,
-            transparent 100%),
-        var(--cal-event-bg, #f3f4f6);
+    background: linear-gradient(135deg, rgba(251, 191, 36, 0.15) 0%, transparent 100%), var(--cal-event-bg, #f3f4f6);
     position: relative;
 }
 
@@ -2013,7 +2008,6 @@ body {
 }
 
 @keyframes upload-icon-spin {
-
     0%,
     100% {
         transform: scale(1);
@@ -2031,7 +2025,6 @@ body {
 }
 
 @keyframes upload-progress-pulse {
-
     0%,
     100% {
         opacity: 1;

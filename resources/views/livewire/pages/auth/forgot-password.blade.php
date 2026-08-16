@@ -96,7 +96,7 @@ new #[Layout('components.layouts.guest')] class extends Component
             @else
                 <div
                     class="inline-flex h-14 w-14 items-center justify-center rounded-2xl text-white shadow-lg mb-3"
-                    style="background-color: var(--brand); box-shadow: 0 10px 15px -3px rgba(var(--brand-rgb), 0.25);"
+                    style="background-color: var(--brand); box-shadow: 0 10px 15px -3px rgba(var(--brand-rgb), 0.25)"
                 >
                     <i class="fas fa-key text-2xl"></i>
                 </div>
@@ -115,7 +115,7 @@ new #[Layout('components.layouts.guest')] class extends Component
                 wire:target="sendResetLink"
                 aria-hidden="true"
             >
-                <div class="h-full w-1/3 login-progress-bar" style="background-color: var(--brand);"></div>
+                <div class="h-full w-1/3 login-progress-bar" style="background-color: var(--brand)"></div>
             </div>
 
             <div
@@ -133,7 +133,9 @@ new #[Layout('components.layouts.guest')] class extends Component
                         </div>
                         <h2 class="text-lg font-bold text-gray-900">Check your inbox</h2>
                         <p class="text-sm text-gray-600 mt-2 leading-relaxed">If an account exists for <span class="font-semibold text-gray-800">{{ $email }}</span>, we've sent a password reset link. It expires in 60 minutes.</p>
-                        <p class="text-xs text-gray-400 mt-4">Didn't get it? Check spam, or <button type="button" wire:click="$set('sent', false)" class="font-medium hover:underline underline-offset-2" style="color: var(--brand);">try again</button>.</p>
+                        <p class="text-xs text-gray-400 mt-4">Didn't get it? Check spam, or <button type="button" wire:click="$set('sent', false)" class="font-medium hover:underline underline-offset-2" style="color: var(
+                                    --brand
+                                );">try again</button>.</p>
                         <a
                             href="{{ route('login') }}"
                             wire:navigate
@@ -191,7 +193,11 @@ new #[Layout('components.layouts.guest')] class extends Component
                             wire:loading.attr="disabled"
                             wire:target="sendResetLink"
                             class="group flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-white shadow-lg transition-all hover:opacity-90 active:scale-[0.98] active:shadow-md focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-80"
-                            style="background-color: var(--brand); --tw-ring-color: var(--brand); box-shadow: 0 10px 15px -3px rgba(var(--brand-rgb), 0.25);"
+                            style="
+                                background-color: var(--brand);
+                                --tw-ring-color: var(--brand);
+                                box-shadow: 0 10px 15px -3px rgba(var(--brand-rgb), 0.25);
+                            "
                         >
                             <span wire:loading.remove wire:target="sendResetLink" class="flex items-center gap-2">
                                 Send reset link

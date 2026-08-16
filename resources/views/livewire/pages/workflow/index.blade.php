@@ -1989,20 +1989,20 @@ new #[Layout('components.layouts.app')] class extends Component
                                     placeholder="Brief description or notes..."
                                     x-data
                                     x-init="
-                                        $nextTick(() => { 
-                                            $el.style.height = 'auto'; 
-                                            $el.style.height = ($el.scrollHeight + 2) + 'px'; 
-                                        });
-                                        $watch('$wire.formDescription', value => {
+                                        $nextTick(() => {
                                             $el.style.height = 'auto';
-                                            $el.style.height = ($el.scrollHeight + 2) + 'px';
+                                            $el.style.height = $el.scrollHeight + 2 + 'px';
+                                        });
+                                        $watch('$wire.formDescription', (value) => {
+                                            $el.style.height = 'auto';
+                                            $el.style.height = $el.scrollHeight + 2 + 'px';
                                         });
                                     "
                                     x-on:input="
                                         $el.style.height = 'auto';
-                                        $el.style.height = ($el.scrollHeight + 2) + 'px';
+                                        $el.style.height = $el.scrollHeight + 2 + 'px';
                                     "
-                                    style="min-height: 100px; resize: vertical;"
+                                    style="min-height: 100px; resize: vertical"
                                 ></textarea>
                             </div>
 

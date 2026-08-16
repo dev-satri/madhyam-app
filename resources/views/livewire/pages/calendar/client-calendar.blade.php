@@ -7,6 +7,7 @@ use App\Models\Comment;
 use App\Models\Content;
 use App\Models\User;
 use App\Notifications\ClientContentRequestNotification;
+use App\Notifications\ContentCommentNotification;
 use App\Support\ContentTags;
 use App\Support\NepaliDate;
 use Carbon\Carbon;
@@ -403,13 +404,36 @@ new #[Layout('components.layouts.app')] class extends Component
             return;
         }
 
-        Comment::create([
+        $comment = Comment::create([
             'commentable_type' => Content::class,
             'commentable_id' => $this->selectedContentId,
             'user_id' => $account->id,
             'user_type' => ClientAccount::class,
             'body' => $this->commentText,
         ]);
+
+        // Notify assigned staff + admins/managers
+        $recipientIds = collect();
+
+        if ($content->assignee) {
+            $assigneeIds = is_array($content->assignee) ? $content->assignee : json_decode($content->assignee, true);
+            if (is_array($assigneeIds)) {
+                $recipientIds = $recipientIds->merge($assigneeIds);
+            }
+        }
+
+        $adminIds = User::whereIn('role', ['admin', 'manager'])
+            ->where('status', 'active')
+            ->pluck('id');
+        $recipientIds = $recipientIds->merge($adminIds)->unique();
+
+        if ($recipientIds->isNotEmpty()) {
+            $notification = new ContentCommentNotification($comment, $content, $account);
+            $recipients = User::whereIn('id', $recipientIds)->where('status', 'active')->get();
+            foreach ($recipients as $recipient) {
+                $recipient->notify($notification);
+            }
+        }
 
         $this->commentText = '';
         $this->dispatch('toast', message: 'Comment added successfully', type: 'success');

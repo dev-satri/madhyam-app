@@ -96,7 +96,7 @@ new #[Layout('components.layouts.guest')] class extends Component
             @else
                 <div
                     class="inline-flex h-14 w-14 items-center justify-center rounded-2xl text-white shadow-lg mb-3"
-                    style="background-color: var(--brand); box-shadow: 0 10px 15px -3px rgba(var(--brand-rgb), 0.25);"
+                    style="background-color: var(--brand); box-shadow: 0 10px 15px -3px rgba(var(--brand-rgb), 0.25)"
                 >
                     <i class="fas fa-lock-open text-2xl"></i>
                 </div>
@@ -114,7 +114,7 @@ new #[Layout('components.layouts.guest')] class extends Component
                 wire:target="resetPassword"
                 aria-hidden="true"
             >
-                <div class="h-full w-1/3 login-progress-bar" style="background-color: var(--brand);"></div>
+                <div class="h-full w-1/3 login-progress-bar" style="background-color: var(--brand)"></div>
             </div>
 
             <div
@@ -227,7 +227,11 @@ new #[Layout('components.layouts.guest')] class extends Component
                         wire:loading.attr="disabled"
                         wire:target="resetPassword"
                         class="group flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-white shadow-lg transition-all hover:opacity-90 active:scale-[0.98] active:shadow-md focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-80"
-                        style="background-color: var(--brand); --tw-ring-color: var(--brand); box-shadow: 0 10px 15px -3px rgba(var(--brand-rgb), 0.25);"
+                        style="
+                            background-color: var(--brand);
+                            --tw-ring-color: var(--brand);
+                            box-shadow: 0 10px 15px -3px rgba(var(--brand-rgb), 0.25);
+                        "
                     >
                         <span wire:loading.remove wire:target="resetPassword" class="flex items-center gap-2">
                             Save new password

@@ -11,7 +11,7 @@
   <tr><td style="padding:32px;">
     <h2 style="margin:0 0 16px;color:#111;font-size:18px;">New comment on: {{ $content->title }}</h2>
     <p style="margin:0 0 8px;color:#333;font-size:14px;">Hi {{ $recipient->name }},</p>
-    <p style="margin:0 0 20px;color:#555;font-size:14px;">{{ $actor->name }} commented on content "{{ $content->title }}".</p>
+    <p style="margin:0 0 20px;color:#555;font-size:14px;">{{ $actor?->name ?? 'Someone' }} commented on content "{{ $content->title }}".</p>
     <table width="100%" cellpadding="12" cellspacing="0" style="background:#f9fafb;border-radius:8px;border:1px solid #eee;">
       <tr><td style="font-size:13px;color:#555;"><strong>Comment</strong><br>{!! \Illuminate\Support\Str::limit(strip_tags($comment->body ?? $comment->text ?? ''), 300) !!}</td></tr>
       @if(!empty($comment->attachments))

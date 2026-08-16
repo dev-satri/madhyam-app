@@ -171,7 +171,7 @@ new #[Layout('components.layouts.guest')] class extends Component
             @else
                 <div
                     class="inline-flex h-14 w-14 items-center justify-center rounded-2xl text-white shadow-lg mb-3 animate-fade-in"
-                    style="background-color: var(--brand); box-shadow: 0 10px 15px -3px rgba(var(--brand-rgb), 0.25);"
+                    style="background-color: var(--brand); box-shadow: 0 10px 15px -3px rgba(var(--brand-rgb), 0.25)"
                 >
                     <i class="fas fa-layer-group text-2xl"></i>
                 </div>
@@ -189,7 +189,7 @@ new #[Layout('components.layouts.guest')] class extends Component
                 wire:target="login"
                 aria-hidden="true"
             >
-                <div class="h-full w-1/3 login-progress-bar" style="background-color: var(--brand);"></div>
+                <div class="h-full w-1/3 login-progress-bar" style="background-color: var(--brand)"></div>
             </div>
 
             {{-- Tabs (underline style) --}}
@@ -204,7 +204,10 @@ new #[Layout('components.layouts.guest')] class extends Component
                 >
                     <i class="fas fa-user-tie mr-1.5"></i>Staff Login
                     @if ($loginMode === 'staff')
-                        <span class="absolute inset-x-6 bottom-0 h-0.5 rounded-t" style="background-color: var(--brand);"></span>
+                        <span
+                            class="absolute inset-x-6 bottom-0 h-0.5 rounded-t"
+                            style="background-color: var(--brand)"
+                        ></span>
                     @endif
                 </button>
                 <button
@@ -217,7 +220,10 @@ new #[Layout('components.layouts.guest')] class extends Component
                 >
                     <i class="fas fa-building mr-1.5"></i>Client Portal
                     @if ($loginMode === 'client')
-                        <span class="absolute inset-x-6 bottom-0 h-0.5 rounded-t" style="background-color: var(--brand);"></span>
+                        <span
+                            class="absolute inset-x-6 bottom-0 h-0.5 rounded-t"
+                            style="background-color: var(--brand)"
+                        ></span>
                     @endif
                 </button>
             </div>
@@ -330,7 +336,7 @@ new #[Layout('components.layouts.guest')] class extends Component
                                 type="checkbox"
                                 wire:model="remember"
                                 class="h-4 w-4 rounded border-gray-300 focus:ring-offset-0 brand-checkbox"
-                                style="color: var(--brand);"
+                                style="color: var(--brand)"
                             />
                             <span class="text-sm text-gray-600">Remember me</span>
                         </label>
@@ -338,7 +344,7 @@ new #[Layout('components.layouts.guest')] class extends Component
                             href="{{ route('password.request', ['mode' => $loginMode === 'client' ? 'client' : 'staff']) }}"
                             wire:navigate
                             class="text-sm font-medium hover:underline underline-offset-2 transition-colors"
-                            style="color: var(--brand);"
+                            style="color: var(--brand)"
                         >
                             Forgot password?
                         </a>
@@ -350,7 +356,11 @@ new #[Layout('components.layouts.guest')] class extends Component
                         wire:loading.attr="disabled"
                         wire:target="login"
                         class="group flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-white shadow-lg transition-all hover:opacity-90 active:scale-[0.98] active:shadow-md focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-80"
-                        style="background-color: var(--brand); --tw-ring-color: var(--brand); box-shadow: 0 10px 15px -3px rgba(var(--brand-rgb), 0.25);"
+                        style="
+                            background-color: var(--brand);
+                            --tw-ring-color: var(--brand);
+                            box-shadow: 0 10px 15px -3px rgba(var(--brand-rgb), 0.25);
+                        "
                     >
                         <span wire:loading.remove wire:target="login" class="flex items-center gap-2">
                             Sign In
