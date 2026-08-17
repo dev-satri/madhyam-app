@@ -1421,18 +1421,24 @@ new #[Layout('components.layouts.app')] class extends Component
     x-data="{
         handleGlobalKeys(e) {
             const target = e.target;
-            const isInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable;
-            
+            const isInput =
+                target.tagName === 'INPUT' ||
+                target.tagName === 'TEXTAREA' ||
+                target.tagName === 'SELECT' ||
+                target.isContentEditable;
+
             // Focus Search on '/' or 'Ctrl+K' / 'Cmd+K'
             if ((e.key === '/' && !isInput) || ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k')) {
                 e.preventDefault();
-                const searchInput = document.getElementById('workflow-search-input') || document.querySelector('input[placeholder*=\'Search\']');
+                const searchInput =
+                    document.getElementById('workflow-search-input') ||
+                    document.querySelector('input[placeholder*=\'Search\']');
                 if (searchInput) {
                     searchInput.focus();
                     if (searchInput.select) searchInput.select();
                 }
             }
-            
+
             // Open Add Item modal on 'Alt+N' or 'Cmd+N'
             if ((e.altKey || e.metaKey) && e.key.toLowerCase() === 'n' && !isInput) {
                 e.preventDefault();
@@ -1455,19 +1461,36 @@ new #[Layout('components.layouts.app')] class extends Component
             <p class="text-sm text-gray-500 mt-1">Manage your content workflow pipeline</p>
         </div>
         <div class="flex items-center gap-2">
-            <button wire:click="toggleShortcutsModal" type="button" class="btn btn-secondary text-xs px-3 py-2 inline-flex items-center gap-1.5" title="Keyboard Shortcuts (?)">
+            <button
+                wire:click="toggleShortcutsModal"
+                type="button"
+                class="btn btn-secondary text-xs px-3 py-2 inline-flex items-center gap-1.5"
+                title="Keyboard Shortcuts (?)"
+            >
                 <svg class="w-3.5 h-3.5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"></path></svg>
                 <span class="hidden sm:inline font-medium">Shortcuts</span>
-                <kbd class="px-1.5 py-0.5 text-[10px] font-mono bg-gray-100 text-gray-600 rounded border border-gray-300">?</kbd>
+                <kbd
+                    class="px-1.5 py-0.5 text-[10px] font-mono bg-gray-100 text-gray-600 rounded border border-gray-300"
+                    >?</kbd
+                >
             </button>
-            <button wire:click="openStageManager" class="btn btn-secondary text-xs px-3 py-2 inline-flex items-center gap-1.5">
-                <svg class="w-3.5 h-3.5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+            <button
+                wire:click="openStageManager"
+                class="btn btn-secondary text-xs px-3 py-2 inline-flex items-center gap-1.5"
+            >
+                <svg class="w-3.5 h-3.5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                </svg>
                 <span>Manage Stages</span>
             </button>
             <button wire:click="create" class="btn btn-primary text-xs px-3 py-2 inline-flex items-center gap-1.5">
                 <svg class="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
                 <span>Add Item</span>
-                <kbd class="hidden sm:inline-block ml-0.5 px-1.5 py-0.5 text-[10px] font-mono bg-indigo-500 text-white rounded opacity-90">Alt+N</kbd>
+                <kbd
+                    class="hidden sm:inline-block ml-0.5 px-1.5 py-0.5 text-[10px] font-mono bg-indigo-500 text-white rounded opacity-90"
+                    >Alt+N</kbd
+                >
             </button>
         </div>
     </div>
@@ -1477,7 +1500,10 @@ new #[Layout('components.layouts.app')] class extends Component
         <div>
             <div class="flex items-center justify-between mb-1">
                 <label class="form-label mb-0">Search</label>
-                <kbd class="px-1.5 py-0.5 text-[10px] font-mono bg-gray-100 text-gray-500 rounded border border-gray-200">/ or Ctrl+K</kbd>
+                <kbd
+                    class="px-1.5 py-0.5 text-[10px] font-mono bg-gray-100 text-gray-500 rounded border border-gray-200"
+                    >/ or Ctrl+K</kbd
+                >
             </div>
             <x-search-input id="workflow-search-input" wire="search" placeholder="Search workflows..." />
         </div>
@@ -1519,7 +1545,10 @@ new #[Layout('components.layouts.app')] class extends Component
                     Sort By
                 </span>
             </label>
-            <select wire:model.live="sortBy" class="form-select font-medium text-gray-800 bg-white border-gray-300 focus:border-indigo-500 focus:ring-indigo-500">
+            <select
+                wire:model.live="sortBy"
+                class="form-select font-medium text-gray-800 bg-white border-gray-300 focus:border-indigo-500 focus:ring-indigo-500"
+            >
                 <option value="priority_desc">Priority: High → Low</option>
                 <option value="priority_asc">Priority: Low → High</option>
                 <option value="created_desc">Date Created: Newest First</option>
@@ -2597,7 +2626,9 @@ new #[Layout('components.layouts.app')] class extends Component
             <div class="modal-box max-w-lg">
                 <div class="modal-header">
                     <div class="flex items-center gap-2.5">
-                        <div class="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold text-sm">
+                        <div
+                            class="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold text-sm"
+                        >
                             <svg class="w-4 h-4 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"></path></svg>
                         </div>
                         <div>
@@ -2620,9 +2651,15 @@ new #[Layout('components.layouts.app')] class extends Component
                             <span class="text-sm text-gray-700 font-medium">Focus Search Input</span>
                         </div>
                         <div class="flex items-center gap-1.5">
-                            <kbd class="px-2 py-1 text-xs font-mono font-semibold text-gray-800 bg-gray-100 border border-gray-200 rounded">/</kbd>
+                            <kbd
+                                class="px-2 py-1 text-xs font-mono font-semibold text-gray-800 bg-gray-100 border border-gray-200 rounded"
+                                >/</kbd
+                            >
                             <span class="text-xs text-gray-400">or</span>
-                            <kbd class="px-2 py-1 text-xs font-mono font-semibold text-gray-800 bg-gray-100 border border-gray-200 rounded">Ctrl + K</kbd>
+                            <kbd
+                                class="px-2 py-1 text-xs font-mono font-semibold text-gray-800 bg-gray-100 border border-gray-200 rounded"
+                                >Ctrl + K</kbd
+                            >
                         </div>
                     </div>
                     <div class="flex items-center justify-between py-2.5 border-b border-gray-100">
@@ -2630,21 +2667,30 @@ new #[Layout('components.layouts.app')] class extends Component
                             <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
                             <span class="text-sm text-gray-700 font-medium">Create New Workflow Item</span>
                         </div>
-                        <kbd class="px-2 py-1 text-xs font-mono font-semibold text-gray-800 bg-gray-100 border border-gray-200 rounded">Alt + N</kbd>
+                        <kbd
+                            class="px-2 py-1 text-xs font-mono font-semibold text-gray-800 bg-gray-100 border border-gray-200 rounded"
+                            >Alt + N</kbd
+                        >
                     </div>
                     <div class="flex items-center justify-between py-2.5 border-b border-gray-100">
                         <div class="flex items-center gap-2.5">
                             <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                             <span class="text-sm text-gray-700 font-medium">Toggle Shortcuts Help</span>
                         </div>
-                        <kbd class="px-2 py-1 text-xs font-mono font-semibold text-gray-800 bg-gray-100 border border-gray-200 rounded">?</kbd>
+                        <kbd
+                            class="px-2 py-1 text-xs font-mono font-semibold text-gray-800 bg-gray-100 border border-gray-200 rounded"
+                            >?</kbd
+                        >
                     </div>
                     <div class="flex items-center justify-between py-2.5">
                         <div class="flex items-center gap-2.5">
                             <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
                             <span class="text-sm text-gray-700 font-medium">Close Active Modal / Cancel</span>
                         </div>
-                        <kbd class="px-2 py-1 text-xs font-mono font-semibold text-gray-800 bg-gray-100 border border-gray-200 rounded">Esc</kbd>
+                        <kbd
+                            class="px-2 py-1 text-xs font-mono font-semibold text-gray-800 bg-gray-100 border border-gray-200 rounded"
+                            >Esc</kbd
+                        >
                     </div>
                 </div>
                 <div class="flex items-center justify-end border-t border-gray-100 pt-3">
