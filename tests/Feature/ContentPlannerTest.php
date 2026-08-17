@@ -195,4 +195,28 @@ class ContentPlannerTest extends TestCase
         $component->assertSet('formPlatforms', ['youtube', 'linkedin']);
         $component->assertSet('formTypes', ['video']);
     }
+
+    public function test_create_workflow_immediately_with_selected_priority(): void
+    {
+        Livewire::test('pages.calendar.index')
+            ->call('openForm', now()->format('Y-m-d'))
+            ->set('title', 'Direct Workflow Item')
+            ->set('formClientId', $this->clientId)
+            ->set('formDate', now()->format('Y-m-d'))
+            ->set('formPlatforms', ['instagram'])
+            ->set('formTypes', ['post'])
+            ->set('formStatus', 'draft')
+            ->set('skipApproval', true)
+            ->set('workflowPriority', 'high')
+            ->call('save')
+            ->assertHasNoErrors();
+
+        $this->assertDatabaseCount('contents', 1);
+        $content = DB::table('contents')->where('title', 'Direct Workflow Item')->first();
+        $this->assertEquals('in-review', $content->status);
+
+        $this->assertDatabaseCount('workflows', 1);
+        $workflow = DB::table('workflows')->where('content_id', $content->id)->first();
+        $this->assertEquals('high', $workflow->priority);
+    }
 }

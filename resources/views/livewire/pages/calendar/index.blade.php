@@ -664,6 +664,10 @@ new #[Layout('components.layouts.app')] class extends Component
 
                 // If "Create Workflow Immediately" is checked, create workflow and skip approval
                 if ($this->skipApproval && $newContentId) {
+                    $this->validate([
+                        'workflowPriority' => 'required|in:low,medium,high,urgent',
+                    ]);
+
                     // Update content status to in-review (it's now in workflow)
                     DB::table('contents')->where('id', $newContentId)->update([
                         'status' => 'in-review',
@@ -683,7 +687,7 @@ new #[Layout('components.layouts.app')] class extends Component
                         'content_id' => $newContentId,
                         'type' => $primaryType,
                         'stage' => $firstStage->key ?? 'todo',
-                        'priority' => 'medium',
+                        'priority' => $this->workflowPriority ?: 'medium',
                         'assignee' => $assigneeVal,
                         'deadline' => $this->formDate,
                         'attachments' => $this->formAttachments ? json_encode(array_values($this->formAttachments)) : null,
@@ -1522,6 +1526,7 @@ new #[Layout('components.layouts.app')] class extends Component
         $this->formAttachments = [];
         $this->formAttachmentsJson = '[]';
         $this->skipApproval = false;
+        $this->workflowPriority = 'medium';
     }
 
     #[On('confirm-resolved')]
@@ -2323,7 +2328,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                     <label class="flex items-start gap-3 cursor-pointer group">
                                         <input
                                             type="checkbox"
-                                            wire:model="skipApproval"
+                                            wire:model.live="skipApproval"
                                             class="mt-0.5 rounded border-gray-300 text-[var(--brand)] focus:ring-[var(--brand)]"
                                         />
                                         <div class="flex-1">
@@ -2345,6 +2350,159 @@ new #[Layout('components.layouts.app')] class extends Component
                                             </p>
                                         </div>
                                     </label>
+
+                                    @if ($skipApproval)
+                                        <div class="mt-4 pt-4 border-t border-gray-200/80">
+                                            <label
+                                                class="block text-xs font-bold uppercase tracking-wider text-gray-600 mb-2.5 flex items-center justify-between"
+                                            >
+                                                <span class="flex items-center gap-1.5">
+                                                    <i class="fas fa-flag text-gray-400 text-xs"></i> Workflow Priority
+                                                    <span class="text-red-500">*</span>
+                                                </span>
+                                                <span class="text-[11px] font-normal text-gray-400 capitalize"
+                                                    >Selected:
+                                                    <strong
+                                                        class="text-gray-800 font-semibold"
+                                                        >{{ $workflowPriority }}</strong
+                                                    ></span
+                                                >
+                                            </label>
+
+                                            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                                                {{-- Low --}}
+                                                <label
+                                                    class="relative flex flex-col p-3 rounded-xl border-2 cursor-pointer transition-all duration-150 select-none group {{ $workflowPriority === 'low' ? 'border-slate-400 bg-slate-50 shadow-sm ring-2 ring-slate-400/20' : 'border-gray-200 hover:border-slate-300 hover:bg-slate-50/50' }}"
+                                                >
+                                                    <input
+                                                        type="radio"
+                                                        wire:model.live="workflowPriority"
+                                                        value="low"
+                                                        class="sr-only"
+                                                    />
+                                                    <div class="flex items-center justify-between w-full mb-1.5">
+                                                        <span
+                                                            class="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-slate-100 text-slate-600 group-hover:scale-105 transition-transform"
+                                                        >
+                                                            <i class="fas fa-arrow-down text-xs"></i>
+                                                        </span>
+                                                        <span
+                                                            class="w-4 h-4 rounded-full border border-slate-300 flex items-center justify-center {{ $workflowPriority === 'low' ? 'bg-slate-600 border-slate-600' : '' }}"
+                                                        >
+                                                            @if ($workflowPriority === 'low')
+                                                                <span class="w-1.5 h-1.5 rounded-full bg-white"></span>
+                                                            @endif
+                                                        </span>
+                                                    </div>
+                                                    <span class="text-xs font-bold text-gray-900">Low</span>
+                                                    <span class="text-[10px] text-gray-500 mt-0.5 leading-tight"
+                                                        >Standard line</span
+                                                    >
+                                                </label>
+
+                                                {{-- Medium --}}
+                                                <label
+                                                    class="relative flex flex-col p-3 rounded-xl border-2 cursor-pointer transition-all duration-150 select-none group {{ $workflowPriority === 'medium' ? 'border-blue-500 bg-blue-50/90 shadow-sm ring-2 ring-blue-500/20' : 'border-gray-200 hover:border-blue-300 hover:bg-blue-50/40' }}"
+                                                >
+                                                    <input
+                                                        type="radio"
+                                                        wire:model.live="workflowPriority"
+                                                        value="medium"
+                                                        class="sr-only"
+                                                    />
+                                                    <div class="flex items-center justify-between w-full mb-1.5">
+                                                        <span
+                                                            class="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-blue-100 text-blue-600 group-hover:scale-105 transition-transform"
+                                                        >
+                                                            <i class="fas fa-minus text-xs"></i>
+                                                        </span>
+                                                        <span
+                                                            class="w-4 h-4 rounded-full border border-blue-300 flex items-center justify-center {{ $workflowPriority === 'medium' ? 'bg-blue-600 border-blue-600' : '' }}"
+                                                        >
+                                                            @if ($workflowPriority === 'medium')
+                                                                <span class="w-1.5 h-1.5 rounded-full bg-white"></span>
+                                                            @endif
+                                                        </span>
+                                                    </div>
+                                                    <div class="flex items-center justify-between">
+                                                        <span class="text-xs font-bold text-gray-900">Medium</span>
+                                                        <span
+                                                            class="text-[9px] font-bold text-blue-600 bg-blue-100 px-1.5 py-0.2 rounded-full"
+                                                            >Default</span
+                                                        >
+                                                    </div>
+                                                    <span class="text-[10px] text-gray-500 mt-0.5 leading-tight"
+                                                        >Normal queue</span
+                                                    >
+                                                </label>
+
+                                                {{-- High --}}
+                                                <label
+                                                    class="relative flex flex-col p-3 rounded-xl border-2 cursor-pointer transition-all duration-150 select-none group {{ $workflowPriority === 'high' ? 'border-amber-500 bg-amber-50/90 shadow-sm ring-2 ring-amber-500/20' : 'border-gray-200 hover:border-amber-300 hover:bg-amber-50/40' }}"
+                                                >
+                                                    <input
+                                                        type="radio"
+                                                        wire:model.live="workflowPriority"
+                                                        value="high"
+                                                        class="sr-only"
+                                                    />
+                                                    <div class="flex items-center justify-between w-full mb-1.5">
+                                                        <span
+                                                            class="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-amber-100 text-amber-600 group-hover:scale-105 transition-transform"
+                                                        >
+                                                            <i class="fas fa-arrow-up text-xs"></i>
+                                                        </span>
+                                                        <span
+                                                            class="w-4 h-4 rounded-full border border-amber-300 flex items-center justify-center {{ $workflowPriority === 'high' ? 'bg-amber-600 border-amber-600' : '' }}"
+                                                        >
+                                                            @if ($workflowPriority === 'high')
+                                                                <span class="w-1.5 h-1.5 rounded-full bg-white"></span>
+                                                            @endif
+                                                        </span>
+                                                    </div>
+                                                    <span class="text-xs font-bold text-gray-900">High</span>
+                                                    <span class="text-[10px] text-gray-500 mt-0.5 leading-tight"
+                                                        >Fast track</span
+                                                    >
+                                                </label>
+
+                                                {{-- Urgent --}}
+                                                <label
+                                                    class="relative flex flex-col p-3 rounded-xl border-2 cursor-pointer transition-all duration-150 select-none group {{ $workflowPriority === 'urgent' ? 'border-red-500 bg-red-50/90 shadow-sm ring-2 ring-red-500/20' : 'border-gray-200 hover:border-red-300 hover:bg-red-50/40' }}"
+                                                >
+                                                    <input
+                                                        type="radio"
+                                                        wire:model.live="workflowPriority"
+                                                        value="urgent"
+                                                        class="sr-only"
+                                                    />
+                                                    <div class="flex items-center justify-between w-full mb-1.5">
+                                                        <span
+                                                            class="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-red-100 text-red-600 group-hover:scale-105 transition-transform"
+                                                        >
+                                                            <i class="fas fa-bolt text-xs animate-pulse"></i>
+                                                        </span>
+                                                        <span
+                                                            class="w-4 h-4 rounded-full border border-red-300 flex items-center justify-center {{ $workflowPriority === 'urgent' ? 'bg-red-600 border-red-600' : '' }}"
+                                                        >
+                                                            @if ($workflowPriority === 'urgent')
+                                                                <span class="w-1.5 h-1.5 rounded-full bg-white"></span>
+                                                            @endif
+                                                        </span>
+                                                    </div>
+                                                    <span class="text-xs font-bold text-gray-900">Urgent</span>
+                                                    <span class="text-[10px] text-gray-500 mt-0.5 leading-tight"
+                                                        >Immediate</span
+                                                    >
+                                                </label>
+                                            </div>
+                                            @error ('workflowPriority')
+                                                <p class="text-xs text-red-500 mt-2 flex items-center gap-1">
+                                                    <i class="fas fa-exclamation-circle text-[10px]"></i> {{ $message }}
+                                                </p>
+                                            @enderror
+                                        </div>
+                                    @endif
                                 </div>
                             @endif
                         </div>
@@ -2966,109 +3124,172 @@ new #[Layout('components.layouts.app')] class extends Component
         @endif
     @endif
 
-    @script
-        <script>
-            document.addEventListener('livewire:initialized', () => {
-                Livewire.on('contentUpdated', () => {});
-            });
-        </script>
-    @endscript
-
     {{-- Workflow Priority Modal --}}
     @if ($showWorkflowForm && $workflowContentId)
         <div class="modal-overlay z-[60]" x-data x-on:keydown.escape.window="$wire.set('showWorkflowForm', false)">
-            <div class="modal-box max-w-md" x-on:click.stop>
-                <div class="modal-header">
-                    <h3 class="text-lg font-bold text-gray-900">Add to Workflow</h3>
-                    <button wire:click="$set('showWorkflowForm', false)" class="btn btn-ghost btn-icon btn-sm">
+            <div
+                class="modal-box max-w-lg overflow-hidden rounded-2xl shadow-2xl border border-gray-100"
+                x-on:click.stop
+            >
+                <div class="modal-header px-6 py-5 flex items-center justify-between border-b border-gray-100 bg-white">
+                    <div class="flex items-center gap-3">
+                        <div
+                            class="w-10 h-10 rounded-xl bg-amber-50 text-amber-500 flex items-center justify-center font-bold shrink-0"
+                        >
+                            <i class="fas fa-bolt text-lg"></i>
+                        </div>
+                        <div>
+                            <h3 class="text-lg font-bold text-gray-900 leading-snug">Add to Workflow</h3>
+                            <p class="text-xs text-gray-500 font-normal">Set initial priority level for this workflow task</p>
+                        </div>
+                    </div>
+                    <button
+                        wire:click="$set('showWorkflowForm', false)"
+                        class="btn btn-ghost btn-icon btn-sm text-gray-400 hover:text-gray-600"
+                    >
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
                         </svg>
                     </button>
                 </div>
 
-                <div class="modal-body space-y-3">
-                    <p class="text-sm text-gray-600">Choose priority level:</p>
+                <div class="modal-body p-6 space-y-4">
+                    <p class="text-xs font-bold uppercase tracking-wider text-gray-400 mb-3 block">Select Priority Level</p>
 
-                    <div class="space-y-2">
+                    <div class="grid grid-cols-1 gap-3">
                         {{-- Low Priority --}}
                         <label
-                            class="flex items-center gap-3 p-3 rounded-lg border-2 cursor-pointer transition-all {{ $workflowPriority === 'low' ? 'border-gray-400 bg-gray-50' : 'border-gray-200 hover:border-gray-300' }}"
+                            class="flex items-center justify-between p-4 rounded-xl border-2 cursor-pointer transition-all duration-150 group select-none {{ $workflowPriority === 'low' ? 'border-slate-400 bg-slate-50 shadow-sm ring-2 ring-slate-400/20' : 'border-gray-200/90 hover:border-slate-300 hover:bg-slate-50/50' }}"
                         >
+                            <div class="flex items-center gap-3.5">
+                                <div
+                                    class="w-10 h-10 rounded-xl bg-slate-100 text-slate-600 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform"
+                                >
+                                    <i class="fas fa-arrow-down text-sm"></i>
+                                </div>
+                                <div>
+                                    <div class="flex items-center gap-2">
+                                        <span class="text-sm font-bold text-gray-900">Low Priority</span>
+                                        <span
+                                            class="px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 text-[10px] font-bold uppercase tracking-wider"
+                                            >Low</span
+                                        >
+                                    </div>
+                                    <p class="text-xs text-gray-500 mt-0.5">Standard turnaround time, non-critical task</p>
+                                </div>
+                            </div>
                             <input
                                 type="radio"
                                 wire:model.live="workflowPriority"
                                 value="low"
-                                class="w-4 h-4 text-gray-500 focus:ring-2 focus:ring-gray-400"
+                                class="w-4 h-4 text-slate-600 focus:ring-slate-400"
                             />
-                            <svg class="w-5 h-5 text-gray-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                                <path d="M3 6a3 3 0 013-3h10a1 1 0 01.8 1.6L14.25 8l2.55 3.4A1 1 0 0116 13H6a1 1 0 00-1 1v3a1 1 0 11-2 0V6z" />
-                            </svg>
-                            <span class="text-sm font-semibold text-gray-900">Low</span>
                         </label>
 
                         {{-- Medium Priority --}}
                         <label
-                            class="flex items-center gap-3 p-3 rounded-lg border-2 cursor-pointer transition-all {{ $workflowPriority === 'medium' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-blue-300' }}"
+                            class="flex items-center justify-between p-4 rounded-xl border-2 cursor-pointer transition-all duration-150 group select-none {{ $workflowPriority === 'medium' ? 'border-blue-500 bg-blue-50/90 shadow-sm ring-2 ring-blue-500/20' : 'border-gray-200/90 hover:border-blue-300 hover:bg-blue-50/40' }}"
                         >
+                            <div class="flex items-center gap-3.5">
+                                <div
+                                    class="w-10 h-10 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform"
+                                >
+                                    <i class="fas fa-minus text-sm"></i>
+                                </div>
+                                <div>
+                                    <div class="flex items-center gap-2">
+                                        <span class="text-sm font-bold text-gray-900">Medium Priority</span>
+                                        <span
+                                            class="px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 text-[10px] font-bold uppercase tracking-wider"
+                                            >Default</span
+                                        >
+                                    </div>
+                                    <p class="text-xs text-gray-500 mt-0.5">Normal production queue & standard pipeline</p>
+                                </div>
+                            </div>
                             <input
                                 type="radio"
                                 wire:model.live="workflowPriority"
                                 value="medium"
-                                class="w-4 h-4 text-blue-500 focus:ring-2 focus:ring-blue-400"
+                                class="w-4 h-4 text-blue-600 focus:ring-blue-400"
                             />
-                            <svg class="w-5 h-5 text-blue-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                                <path d="M3 6a3 3 0 013-3h10a1 1 0 01.8 1.6L14.25 8l2.55 3.4A1 1 0 0116 13H6a1 1 0 00-1 1v3a1 1 0 11-2 0V6z" />
-                            </svg>
-                            <span class="text-sm font-semibold text-gray-900 flex-1">Medium</span>
-                            <span class="text-xs font-medium text-blue-600 bg-blue-100 px-2 py-0.5 rounded-full"
-                                >Default</span
-                            >
                         </label>
 
                         {{-- High Priority --}}
                         <label
-                            class="flex items-center gap-3 p-3 rounded-lg border-2 cursor-pointer transition-all {{ $workflowPriority === 'high' ? 'border-orange-500 bg-orange-50' : 'border-gray-200 hover:border-orange-300' }}"
+                            class="flex items-center justify-between p-4 rounded-xl border-2 cursor-pointer transition-all duration-150 group select-none {{ $workflowPriority === 'high' ? 'border-amber-500 bg-amber-50/90 shadow-sm ring-2 ring-amber-500/20' : 'border-gray-200/90 hover:border-amber-300 hover:bg-amber-50/40' }}"
                         >
+                            <div class="flex items-center gap-3.5">
+                                <div
+                                    class="w-10 h-10 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform"
+                                >
+                                    <i class="fas fa-arrow-up text-sm"></i>
+                                </div>
+                                <div>
+                                    <div class="flex items-center gap-2">
+                                        <span class="text-sm font-bold text-gray-900">High Priority</span>
+                                        <span
+                                            class="px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 text-[10px] font-bold uppercase tracking-wider"
+                                            >Fast Track</span
+                                        >
+                                    </div>
+                                    <p class="text-xs text-gray-500 mt-0.5">Expedited review and fast team assignment</p>
+                                </div>
+                            </div>
                             <input
                                 type="radio"
                                 wire:model.live="workflowPriority"
                                 value="high"
-                                class="w-4 h-4 text-orange-500 focus:ring-2 focus:ring-orange-400"
+                                class="w-4 h-4 text-amber-600 focus:ring-amber-400"
                             />
-                            <svg class="w-5 h-5 text-orange-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                                <path d="M3 6a3 3 0 013-3h10a1 1 0 01.8 1.6L14.25 8l2.55 3.4A1 1 0 0116 13H6a1 1 0 00-1 1v3a1 1 0 11-2 0V6z" />
-                            </svg>
-                            <span class="text-sm font-semibold text-gray-900">High</span>
                         </label>
 
                         {{-- Urgent Priority --}}
                         <label
-                            class="flex items-center gap-3 p-3 rounded-lg border-2 cursor-pointer transition-all {{ $workflowPriority === 'urgent' ? 'border-red-500 bg-red-50' : 'border-gray-200 hover:border-red-300' }}"
+                            class="flex items-center justify-between p-4 rounded-xl border-2 cursor-pointer transition-all duration-150 group select-none {{ $workflowPriority === 'urgent' ? 'border-red-500 bg-red-50/90 shadow-sm ring-2 ring-red-500/20' : 'border-gray-200/90 hover:border-red-300 hover:bg-red-50/40' }}"
                         >
+                            <div class="flex items-center gap-3.5">
+                                <div
+                                    class="w-10 h-10 rounded-xl bg-red-100 text-red-600 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform"
+                                >
+                                    <i class="fas fa-bolt text-sm animate-pulse"></i>
+                                </div>
+                                <div>
+                                    <div class="flex items-center gap-2">
+                                        <span class="text-sm font-bold text-gray-900">Urgent Priority</span>
+                                        <span
+                                            class="px-2 py-0.5 rounded-full bg-red-100 text-red-700 text-[10px] font-bold uppercase tracking-wider"
+                                            >Immediate</span
+                                        >
+                                    </div>
+                                    <p class="text-xs text-gray-500 mt-0.5">Requires immediate attention and action</p>
+                                </div>
+                            </div>
                             <input
                                 type="radio"
                                 wire:model.live="workflowPriority"
                                 value="urgent"
-                                class="w-4 h-4 text-red-500 focus:ring-2 focus:ring-red-400"
+                                class="w-4 h-4 text-red-600 focus:ring-red-400"
                             />
-                            <svg class="w-5 h-5 text-red-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                                <path d="M3 6a3 3 0 013-3h10a1 1 0 01.8 1.6L14.25 8l2.55 3.4A1 1 0 0116 13H6a1 1 0 00-1 1v3a1 1 0 11-2 0V6z" />
-                            </svg>
-                            <span class="text-sm font-semibold text-gray-900">Urgent</span>
                         </label>
                     </div>
                 </div>
 
-                <div class="modal-footer flex items-center justify-end gap-2">
-                    <button wire:click="$set('showWorkflowForm', false)" class="btn btn-secondary btn-sm">
+                <div
+                    class="modal-footer bg-gray-50/70 border-t border-gray-100 px-6 py-4 flex items-center justify-end gap-3 rounded-b-2xl"
+                >
+                    <button
+                        wire:click="$set('showWorkflowForm', false)"
+                        class="btn btn-secondary px-5 py-2.5 text-xs font-semibold rounded-xl"
+                    >
                         Cancel
                     </button>
-                    <button wire:click="createWorkflowFromContent" class="btn btn-primary btn-sm">
-                        <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
-                        </svg>
-                        Create Workflow
+                    <button
+                        wire:click="createWorkflowFromContent"
+                        class="btn btn-primary px-5 py-2.5 text-xs font-semibold rounded-xl flex items-center gap-2"
+                    >
+                        <i class="fas fa-plus text-xs"></i>
+                        <span>Create Workflow</span>
                     </button>
                 </div>
             </div>
@@ -3078,95 +3299,169 @@ new #[Layout('components.layouts.app')] class extends Component
     {{-- Priority Change Modal --}}
     @if ($showPriorityForm && $workflowContentId)
         <div class="modal-overlay z-[60]" x-data x-on:keydown.escape.window="$wire.set('showPriorityForm', false)">
-            <div class="modal-box max-w-md" x-on:click.stop>
-                <div class="modal-header">
-                    <h3 class="text-lg font-bold text-gray-900">Change Priority</h3>
-                    <button wire:click="$set('showPriorityForm', false)" class="btn btn-ghost btn-icon btn-sm">
+            <div
+                class="modal-box max-w-lg overflow-hidden rounded-2xl shadow-2xl border border-gray-100"
+                x-on:click.stop
+            >
+                <div class="modal-header px-6 py-5 flex items-center justify-between border-b border-gray-100 bg-white">
+                    <div class="flex items-center gap-3">
+                        <div
+                            class="w-10 h-10 rounded-xl bg-amber-50 text-amber-500 flex items-center justify-center font-bold shrink-0"
+                        >
+                            <i class="fas fa-flag text-lg"></i>
+                        </div>
+                        <div>
+                            <h3 class="text-lg font-bold text-gray-900 leading-snug">Change Priority</h3>
+                            <p class="text-xs text-gray-500 font-normal">Update priority level for this workflow task</p>
+                        </div>
+                    </div>
+                    <button
+                        wire:click="$set('showPriorityForm', false)"
+                        class="btn btn-ghost btn-icon btn-sm text-gray-400 hover:text-gray-600"
+                    >
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
                         </svg>
                     </button>
                 </div>
 
-                <div class="modal-body space-y-3">
-                    <p class="text-sm text-gray-600">Select new priority level:</p>
+                <div class="modal-body p-6 space-y-4">
+                    <p class="text-xs font-bold uppercase tracking-wider text-gray-400 mb-3 block">Select New Priority Level</p>
 
-                    <div class="space-y-2">
+                    <div class="grid grid-cols-1 gap-3">
                         {{-- Low Priority --}}
                         <label
-                            class="flex items-center gap-3 p-3 rounded-lg border-2 cursor-pointer transition-all {{ $workflowPriority === 'low' ? 'border-gray-400 bg-gray-50' : 'border-gray-200 hover:border-gray-300' }}"
+                            class="flex items-center justify-between p-4 rounded-xl border-2 cursor-pointer transition-all duration-150 group select-none {{ $workflowPriority === 'low' ? 'border-slate-400 bg-slate-50 shadow-sm ring-2 ring-slate-400/20' : 'border-gray-200/90 hover:border-slate-300 hover:bg-slate-50/50' }}"
                         >
+                            <div class="flex items-center gap-3.5">
+                                <div
+                                    class="w-10 h-10 rounded-xl bg-slate-100 text-slate-600 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform"
+                                >
+                                    <i class="fas fa-arrow-down text-sm"></i>
+                                </div>
+                                <div>
+                                    <div class="flex items-center gap-2">
+                                        <span class="text-sm font-bold text-gray-900">Low Priority</span>
+                                        <span
+                                            class="px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 text-[10px] font-bold uppercase tracking-wider"
+                                            >Low</span
+                                        >
+                                    </div>
+                                    <p class="text-xs text-gray-500 mt-0.5">Standard turnaround time, non-critical task</p>
+                                </div>
+                            </div>
                             <input
                                 type="radio"
                                 wire:model.live="workflowPriority"
                                 value="low"
-                                class="w-4 h-4 text-gray-500 focus:ring-2 focus:ring-gray-400"
+                                class="w-4 h-4 text-slate-600 focus:ring-slate-400"
                             />
-                            <svg class="w-5 h-5 text-gray-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                                <path d="M3 6a3 3 0 013-3h10a1 1 0 01.8 1.6L14.25 8l2.55 3.4A1 1 0 0116 13H6a1 1 0 00-1 1v3a1 1 0 11-2 0V6z" />
-                            </svg>
-                            <span class="text-sm font-semibold text-gray-900">Low</span>
                         </label>
 
                         {{-- Medium Priority --}}
                         <label
-                            class="flex items-center gap-3 p-3 rounded-lg border-2 cursor-pointer transition-all {{ $workflowPriority === 'medium' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-blue-300' }}"
+                            class="flex items-center justify-between p-4 rounded-xl border-2 cursor-pointer transition-all duration-150 group select-none {{ $workflowPriority === 'medium' ? 'border-blue-500 bg-blue-50/90 shadow-sm ring-2 ring-blue-500/20' : 'border-gray-200/90 hover:border-blue-300 hover:bg-blue-50/40' }}"
                         >
+                            <div class="flex items-center gap-3.5">
+                                <div
+                                    class="w-10 h-10 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform"
+                                >
+                                    <i class="fas fa-minus text-sm"></i>
+                                </div>
+                                <div>
+                                    <div class="flex items-center gap-2">
+                                        <span class="text-sm font-bold text-gray-900">Medium Priority</span>
+                                        <span
+                                            class="px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 text-[10px] font-bold uppercase tracking-wider"
+                                            >Default</span
+                                        >
+                                    </div>
+                                    <p class="text-xs text-gray-500 mt-0.5">Normal production queue & standard pipeline</p>
+                                </div>
+                            </div>
                             <input
                                 type="radio"
                                 wire:model.live="workflowPriority"
                                 value="medium"
-                                class="w-4 h-4 text-blue-500 focus:ring-2 focus:ring-blue-400"
+                                class="w-4 h-4 text-blue-600 focus:ring-blue-400"
                             />
-                            <svg class="w-5 h-5 text-blue-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                                <path d="M3 6a3 3 0 013-3h10a1 1 0 01.8 1.6L14.25 8l2.55 3.4A1 1 0 0116 13H6a1 1 0 00-1 1v3a1 1 0 11-2 0V6z" />
-                            </svg>
-                            <span class="text-sm font-semibold text-gray-900">Medium</span>
                         </label>
 
                         {{-- High Priority --}}
                         <label
-                            class="flex items-center gap-3 p-3 rounded-lg border-2 cursor-pointer transition-all {{ $workflowPriority === 'high' ? 'border-orange-500 bg-orange-50' : 'border-gray-200 hover:border-orange-300' }}"
+                            class="flex items-center justify-between p-4 rounded-xl border-2 cursor-pointer transition-all duration-150 group select-none {{ $workflowPriority === 'high' ? 'border-amber-500 bg-amber-50/90 shadow-sm ring-2 ring-amber-500/20' : 'border-gray-200/90 hover:border-amber-300 hover:bg-amber-50/40' }}"
                         >
+                            <div class="flex items-center gap-3.5">
+                                <div
+                                    class="w-10 h-10 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform"
+                                >
+                                    <i class="fas fa-arrow-up text-sm"></i>
+                                </div>
+                                <div>
+                                    <div class="flex items-center gap-2">
+                                        <span class="text-sm font-bold text-gray-900">High Priority</span>
+                                        <span
+                                            class="px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 text-[10px] font-bold uppercase tracking-wider"
+                                            >Fast Track</span
+                                        >
+                                    </div>
+                                    <p class="text-xs text-gray-500 mt-0.5">Expedited review and fast team assignment</p>
+                                </div>
+                            </div>
                             <input
                                 type="radio"
                                 wire:model.live="workflowPriority"
                                 value="high"
-                                class="w-4 h-4 text-orange-500 focus:ring-2 focus:ring-orange-400"
+                                class="w-4 h-4 text-amber-600 focus:ring-amber-400"
                             />
-                            <svg class="w-5 h-5 text-orange-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                                <path d="M3 6a3 3 0 013-3h10a1 1 0 01.8 1.6L14.25 8l2.55 3.4A1 1 0 0116 13H6a1 1 0 00-1 1v3a1 1 0 11-2 0V6z" />
-                            </svg>
-                            <span class="text-sm font-semibold text-gray-900">High</span>
                         </label>
 
                         {{-- Urgent Priority --}}
                         <label
-                            class="flex items-center gap-3 p-3 rounded-lg border-2 cursor-pointer transition-all {{ $workflowPriority === 'urgent' ? 'border-red-500 bg-red-50' : 'border-gray-200 hover:border-red-300' }}"
+                            class="flex items-center justify-between p-4 rounded-xl border-2 cursor-pointer transition-all duration-150 group select-none {{ $workflowPriority === 'urgent' ? 'border-red-500 bg-red-50/90 shadow-sm ring-2 ring-red-500/20' : 'border-gray-200/90 hover:border-red-300 hover:bg-red-50/40' }}"
                         >
+                            <div class="flex items-center gap-3.5">
+                                <div
+                                    class="w-10 h-10 rounded-xl bg-red-100 text-red-600 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform"
+                                >
+                                    <i class="fas fa-bolt text-sm animate-pulse"></i>
+                                </div>
+                                <div>
+                                    <div class="flex items-center gap-2">
+                                        <span class="text-sm font-bold text-gray-900">Urgent Priority</span>
+                                        <span
+                                            class="px-2 py-0.5 rounded-full bg-red-100 text-red-700 text-[10px] font-bold uppercase tracking-wider"
+                                            >Immediate</span
+                                        >
+                                    </div>
+                                    <p class="text-xs text-gray-500 mt-0.5">Requires immediate attention and action</p>
+                                </div>
+                            </div>
                             <input
                                 type="radio"
                                 wire:model.live="workflowPriority"
                                 value="urgent"
-                                class="w-4 h-4 text-red-500 focus:ring-2 focus:ring-red-400"
+                                class="w-4 h-4 text-red-600 focus:ring-red-400"
                             />
-                            <svg class="w-5 h-5 text-red-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                                <path d="M3 6a3 3 0 013-3h10a1 1 0 01.8 1.6L14.25 8l2.55 3.4A1 1 0 0116 13H6a1 1 0 00-1 1v3a1 1 0 11-2 0V6z" />
-                            </svg>
-                            <span class="text-sm font-semibold text-gray-900">Urgent</span>
                         </label>
                     </div>
                 </div>
 
-                <div class="modal-footer flex items-center justify-end gap-2 border-t border-gray-100 pt-4 mt-4">
-                    <button wire:click="$set('showPriorityForm', false)" class="btn btn-secondary btn-sm">
+                <div
+                    class="modal-footer bg-gray-50/70 border-t border-gray-100 px-6 py-4 flex items-center justify-end gap-3 rounded-b-2xl"
+                >
+                    <button
+                        wire:click="$set('showPriorityForm', false)"
+                        class="btn btn-secondary px-5 py-2.5 text-xs font-semibold rounded-xl"
+                    >
                         Cancel
                     </button>
-                    <button wire:click="updateContentPriority" class="btn btn-primary btn-sm">
-                        <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-                        </svg>
-                        Update Priority
+                    <button
+                        wire:click="updateContentPriority"
+                        class="btn btn-primary px-5 py-2.5 text-xs font-semibold rounded-xl flex items-center gap-2"
+                    >
+                        <i class="fas fa-check text-xs"></i>
+                        <span>Update Priority</span>
                     </button>
                 </div>
             </div>
