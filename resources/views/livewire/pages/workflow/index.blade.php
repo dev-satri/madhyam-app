@@ -23,6 +23,7 @@ use Illuminate\Support\Facades\Storage;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\On;
+use Livewire\Attributes\Url;
 use Livewire\Volt\Component;
 use Livewire\WithFileUploads;
 
@@ -32,13 +33,22 @@ new #[Layout('components.layouts.app')] class extends Component
 
     protected static bool $syncingContent = false;
 
+    #[Url(keep: true)]
     public string $search = '';
 
+    #[Url(keep: true)]
     public string $clientFilter = '';
 
+    #[Url(keep: true)]
     public string $typeFilter = '';
 
+    #[Url(keep: true)]
     public string $priorityFilter = '';
+
+    #[Url(keep: true)]
+    public string $sortBy = 'priority_desc';
+
+    public bool $showShortcutsModal = false;
 
     public bool $showForm = false;
 
@@ -118,6 +128,15 @@ new #[Layout('components.layouts.app')] class extends Component
         if (! empty($this->stages) && ! $this->formStage) {
             $this->formStage = $this->stages[0]['key'] ?? '';
         }
+
+        if (! request()->has('sortBy') && session()->has('workflow_sort_by')) {
+            $this->sortBy = session('workflow_sort_by');
+        }
+    }
+
+    public function updatedSortBy(string $value): void
+    {
+        session(['workflow_sort_by' => $value]);
     }
 
     public function updatedFormAttachmentsJson(string $value): void
@@ -172,6 +191,11 @@ new #[Layout('components.layouts.app')] class extends Component
         return collect($this->stages);
     }
 
+    public function toggleShortcutsModal(): void
+    {
+        $this->showShortcutsModal = ! $this->showShortcutsModal;
+    }
+
     public function getFilteredItems()
     {
         $query = Workflow::with(['client', 'stageInfo', 'content']);
@@ -201,10 +225,29 @@ new #[Layout('components.layouts.app')] class extends Component
             $query->where('priority', $this->priorityFilter);
         }
 
-        return $query->orderByRaw("FIELD(priority, 'urgent', 'high', 'medium', 'low')")
-            ->orderBy('sort_order')
-            ->orderBy('created_at', 'desc')
-            ->get();
+        switch ($this->sortBy) {
+            case 'created_asc':
+                $query->orderBy('created_at', 'asc');
+                break;
+            case 'created_desc':
+                $query->orderBy('created_at', 'desc');
+                break;
+            case 'priority_asc':
+                $query->orderByRaw("CASE priority WHEN 'low' THEN 1 WHEN 'medium' THEN 2 WHEN 'high' THEN 3 WHEN 'urgent' THEN 4 ELSE 5 END ASC")
+                    ->orderBy('created_at', 'desc');
+                break;
+            case 'deadline_asc':
+                $query->orderByRaw("CASE WHEN deadline IS NULL THEN 1 ELSE 0 END ASC, deadline ASC")
+                    ->orderBy('created_at', 'desc');
+                break;
+            case 'priority_desc':
+            default:
+                $query->orderByRaw("CASE priority WHEN 'urgent' THEN 1 WHEN 'high' THEN 2 WHEN 'medium' THEN 3 WHEN 'low' THEN 4 ELSE 5 END ASC")
+                    ->orderBy('created_at', 'desc');
+                break;
+        }
+
+        return $query->orderBy('sort_order')->get();
     }
 
     public function getItemsForStage(string $stageKey)
@@ -1374,30 +1417,73 @@ new #[Layout('components.layouts.app')] class extends Component
     }
 }; ?>
 
-<div>
+<div
+    x-data="{
+        handleGlobalKeys(e) {
+            const target = e.target;
+            const isInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable;
+            
+            // Focus Search on '/' or 'Ctrl+K' / 'Cmd+K'
+            if ((e.key === '/' && !isInput) || ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k')) {
+                e.preventDefault();
+                const searchInput = document.getElementById('workflow-search-input') || document.querySelector('input[placeholder*=\'Search\']');
+                if (searchInput) {
+                    searchInput.focus();
+                    if (searchInput.select) searchInput.select();
+                }
+            }
+            
+            // Open Add Item modal on 'Alt+N' or 'Cmd+N'
+            if ((e.altKey || e.metaKey) && e.key.toLowerCase() === 'n' && !isInput) {
+                e.preventDefault();
+                $wire.create();
+            }
+
+            // Toggle Shortcuts modal on '?'
+            if (e.key === '?' && !isInput) {
+                e.preventDefault();
+                $wire.toggleShortcutsModal();
+            }
+        }
+    }"
+    @keydown.window="handleGlobalKeys($event)"
+>
     {{-- ========== HEADER ========== --}}
     <div class="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-            <h1 class="text-2xl font-extrabold text-gray-900">Workflow</h1>
+            <h1 class="text-2xl font-extrabold text-gray-900 tracking-tight">Workflow</h1>
             <p class="text-sm text-gray-500 mt-1">Manage your content workflow pipeline</p>
         </div>
         <div class="flex items-center gap-2">
-            <button wire:click="openStageManager" class="btn btn-secondary">
-                <i class="fas fa-cog text-xs"></i> Manage Stages
+            <button wire:click="toggleShortcutsModal" type="button" class="btn btn-secondary text-xs px-3 py-2 inline-flex items-center gap-1.5" title="Keyboard Shortcuts (?)">
+                <svg class="w-3.5 h-3.5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"></path></svg>
+                <span class="hidden sm:inline font-medium">Shortcuts</span>
+                <kbd class="px-1.5 py-0.5 text-[10px] font-mono bg-gray-100 text-gray-600 rounded border border-gray-300">?</kbd>
             </button>
-            <button wire:click="create" class="btn btn-primary"><i class="fas fa-plus text-xs"></i> Add Item</button>
+            <button wire:click="openStageManager" class="btn btn-secondary text-xs px-3 py-2 inline-flex items-center gap-1.5">
+                <svg class="w-3.5 h-3.5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                <span>Manage Stages</span>
+            </button>
+            <button wire:click="create" class="btn btn-primary text-xs px-3 py-2 inline-flex items-center gap-1.5">
+                <svg class="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                <span>Add Item</span>
+                <kbd class="hidden sm:inline-block ml-0.5 px-1.5 py-0.5 text-[10px] font-mono bg-indigo-500 text-white rounded opacity-90">Alt+N</kbd>
+            </button>
         </div>
     </div>
 
     {{-- ========== FILTERS BAR ========== --}}
-    <div class="mb-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 items-end">
+    <div class="mb-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 items-end">
         <div>
-            <label class="form-label">Search</label>
-            <x-search-input wire="search" placeholder="Search workflows..." />
+            <div class="flex items-center justify-between mb-1">
+                <label class="form-label mb-0">Search</label>
+                <kbd class="px-1.5 py-0.5 text-[10px] font-mono bg-gray-100 text-gray-500 rounded border border-gray-200">/ or Ctrl+K</kbd>
+            </div>
+            <x-search-input id="workflow-search-input" wire="search" placeholder="Search workflows..." />
         </div>
         <div>
-            <label class="form-label">Client</label
-            ><select wire:model.live="clientFilter" class="form-select">
+            <label class="form-label mb-1">Client</label>
+            <select wire:model.live="clientFilter" class="form-select">
                 <option value="">All Clients</option>
                 @foreach ($this->getClientList() as $client)
                     <option value="{{ $client->id }}">{{ $client->name }}</option>
@@ -1405,8 +1491,8 @@ new #[Layout('components.layouts.app')] class extends Component
             </select>
         </div>
         <div>
-            <label class="form-label">Type</label
-            ><select wire:model.live="typeFilter" class="form-select">
+            <label class="form-label mb-1">Type</label>
+            <select wire:model.live="typeFilter" class="form-select">
                 <option value="">All Types</option>
                 <option value="reel">Reel</option>
                 <option value="post">Post</option>
@@ -1417,13 +1503,28 @@ new #[Layout('components.layouts.app')] class extends Component
             </select>
         </div>
         <div>
-            <label class="form-label">Priority</label
-            ><select wire:model.live="priorityFilter" class="form-select">
+            <label class="form-label mb-1">Priority</label>
+            <select wire:model.live="priorityFilter" class="form-select">
                 <option value="">All Priorities</option>
                 <option value="low">Low</option>
                 <option value="medium">Medium</option>
                 <option value="high">High</option>
                 <option value="urgent">Urgent</option>
+            </select>
+        </div>
+        <div>
+            <label class="form-label flex items-center justify-between mb-1">
+                <span class="inline-flex items-center gap-1">
+                    <svg class="w-3.5 h-3.5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12"></path></svg>
+                    Sort By
+                </span>
+            </label>
+            <select wire:model.live="sortBy" class="form-select font-medium text-gray-800 bg-white border-gray-300 focus:border-indigo-500 focus:ring-indigo-500">
+                <option value="priority_desc">Priority: High → Low</option>
+                <option value="priority_asc">Priority: Low → High</option>
+                <option value="created_desc">Date Created: Newest First</option>
+                <option value="created_asc">Date Created: Oldest First</option>
+                <option value="deadline_asc">Deadline: Earliest First</option>
             </select>
         </div>
     </div>
@@ -2481,6 +2582,75 @@ new #[Layout('components.layouts.app')] class extends Component
                             </span>
                         </button>
                     </div>
+                </div>
+            </div>
+        </div>
+    @endif
+
+    {{-- ========== KEYBOARD SHORTCUTS MODAL ========== --}}
+    @if ($showShortcutsModal)
+        <div
+            class="modal-overlay z-50"
+            wire:click.self="toggleShortcutsModal"
+            x-on:keydown.escape.window="$wire.set('showShortcutsModal', false)"
+        >
+            <div class="modal-box max-w-lg">
+                <div class="modal-header">
+                    <div class="flex items-center gap-2.5">
+                        <div class="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold text-sm">
+                            <svg class="w-4 h-4 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"></path></svg>
+                        </div>
+                        <div>
+                            <h3 class="text-base font-bold text-gray-900">Keyboard Shortcuts</h3>
+                            <p class="text-xs text-gray-500">Fast navigation & productivity hotkeys</p>
+                        </div>
+                    </div>
+                    <button
+                        wire:click="toggleShortcutsModal"
+                        type="button"
+                        class="flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors"
+                    >
+                        <svg class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                    </button>
+                </div>
+                <div class="modal-body space-y-3 py-2">
+                    <div class="flex items-center justify-between py-2.5 border-b border-gray-100">
+                        <div class="flex items-center gap-2.5">
+                            <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                            <span class="text-sm text-gray-700 font-medium">Focus Search Input</span>
+                        </div>
+                        <div class="flex items-center gap-1.5">
+                            <kbd class="px-2 py-1 text-xs font-mono font-semibold text-gray-800 bg-gray-100 border border-gray-200 rounded">/</kbd>
+                            <span class="text-xs text-gray-400">or</span>
+                            <kbd class="px-2 py-1 text-xs font-mono font-semibold text-gray-800 bg-gray-100 border border-gray-200 rounded">Ctrl + K</kbd>
+                        </div>
+                    </div>
+                    <div class="flex items-center justify-between py-2.5 border-b border-gray-100">
+                        <div class="flex items-center gap-2.5">
+                            <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                            <span class="text-sm text-gray-700 font-medium">Create New Workflow Item</span>
+                        </div>
+                        <kbd class="px-2 py-1 text-xs font-mono font-semibold text-gray-800 bg-gray-100 border border-gray-200 rounded">Alt + N</kbd>
+                    </div>
+                    <div class="flex items-center justify-between py-2.5 border-b border-gray-100">
+                        <div class="flex items-center gap-2.5">
+                            <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                            <span class="text-sm text-gray-700 font-medium">Toggle Shortcuts Help</span>
+                        </div>
+                        <kbd class="px-2 py-1 text-xs font-mono font-semibold text-gray-800 bg-gray-100 border border-gray-200 rounded">?</kbd>
+                    </div>
+                    <div class="flex items-center justify-between py-2.5">
+                        <div class="flex items-center gap-2.5">
+                            <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                            <span class="text-sm text-gray-700 font-medium">Close Active Modal / Cancel</span>
+                        </div>
+                        <kbd class="px-2 py-1 text-xs font-mono font-semibold text-gray-800 bg-gray-100 border border-gray-200 rounded">Esc</kbd>
+                    </div>
+                </div>
+                <div class="flex items-center justify-end border-t border-gray-100 pt-3">
+                    <button wire:click="toggleShortcutsModal" type="button" class="btn btn-secondary text-xs">
+                        Close
+                    </button>
                 </div>
             </div>
         </div>

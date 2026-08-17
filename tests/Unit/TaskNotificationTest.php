@@ -2,9 +2,14 @@
 
 namespace Tests\Unit;
 
+use App\Models\Client;
+use App\Models\ClientAccount;
+use App\Models\Comment;
+use App\Models\Content;
 use App\Models\Task;
 use App\Models\TaskComment;
 use App\Models\User;
+use App\Notifications\ContentCommentNotification;
 use App\Notifications\TaskAssignedNotification;
 use App\Notifications\TaskCommentNotification;
 use App\Notifications\TaskCompletedNotification;
@@ -354,13 +359,13 @@ class TaskNotificationTest extends TestCase
 
     public function test_skips_self_actor_matching_email(): void
     {
-        $client = \App\Models\Client::create([
+        $client = Client::create([
             'name' => 'Test Client',
             'email' => 'shared@example.com',
             'status' => 'active',
         ]);
 
-        $clientAccount = \App\Models\ClientAccount::create([
+        $clientAccount = ClientAccount::create([
             'client_id' => $client->id,
             'email' => 'shared@example.com',
             'name' => 'Shared User',
@@ -371,22 +376,22 @@ class TaskNotificationTest extends TestCase
             'email' => 'SHARED@example.com',
         ]);
 
-        $content = \App\Models\Content::create([
+        $content = Content::create([
             'title' => 'Test Content',
             'client_id' => $client->id,
             'status' => 'draft',
             'date' => now()->toDateString(),
         ]);
 
-        $comment = \App\Models\Comment::create([
-            'commentable_type' => \App\Models\Content::class,
+        $comment = Comment::create([
+            'commentable_type' => Content::class,
             'commentable_id' => $content->id,
             'user_id' => $clientAccount->id,
-            'user_type' => \App\Models\ClientAccount::class,
+            'user_type' => ClientAccount::class,
             'body' => 'Test comment',
         ]);
 
-        $notification = new \App\Notifications\ContentCommentNotification($comment, $content, $clientAccount);
+        $notification = new ContentCommentNotification($comment, $content, $clientAccount);
 
         $this->assertFalse($notification->shouldSend($user, 'mail'));
     }

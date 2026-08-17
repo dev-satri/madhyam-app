@@ -5,14 +5,13 @@ namespace App\Notifications;
 use App\Models\ClientAccount;
 use App\Models\Content;
 use App\Notifications\Channels\InAppDatabaseChannel;
+use App\Notifications\Concerns\SkipsSelfActor;
 use Carbon\Carbon;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 use Illuminate\Support\Str;
-
-use App\Notifications\Concerns\SkipsSelfActor;
 
 class ClientContentRequestNotification extends Notification implements ShouldQueue
 {
