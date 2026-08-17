@@ -20,11 +20,25 @@ trait SkipsSelfActor
             return true;
         }
 
-        // Only suppress when actor and notifiable are the same model type & key
-        if (get_class($notifiable) !== get_class($this->actor)) {
-            return true;
+        // Exact object match
+        if ($notifiable === $this->actor) {
+            return false;
         }
 
-        return $notifiable->getKey() !== $this->actor->getKey();
+        // Same model class and primary key match
+        if (get_class($notifiable) === get_class($this->actor) && method_exists($notifiable, 'getKey') && method_exists($this->actor, 'getKey')) {
+            if ((string) $notifiable->getKey() === (string) $this->actor->getKey()) {
+                return false;
+            }
+        }
+
+        // Same email address match across different model types (e.g. User vs ClientAccount)
+        if (isset($notifiable->email, $this->actor->email) && ! empty($notifiable->email) && ! empty($this->actor->email)) {
+            if (strtolower(trim($notifiable->email)) === strtolower(trim($this->actor->email))) {
+                return false;
+            }
+        }
+
+        return true;
     }
 }

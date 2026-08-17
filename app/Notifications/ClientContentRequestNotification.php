@@ -12,13 +12,15 @@ use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 use Illuminate\Support\Str;
 
+use App\Notifications\Concerns\SkipsSelfActor;
+
 class ClientContentRequestNotification extends Notification implements ShouldQueue
 {
-    use Queueable;
+    use Queueable, SkipsSelfActor;
 
     public function __construct(public Content $content, public ClientAccount $client)
     {
-        //
+        $this->actor = $client;
     }
 
     public function via(object $notifiable): array

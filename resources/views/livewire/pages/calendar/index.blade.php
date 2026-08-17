@@ -1358,8 +1358,12 @@ new #[Layout('components.layouts.app')] class extends Component
         $recipientIds = $recipientIds->merge($adminIds);
         $recipientIds = $recipientIds->filter(fn ($id) => (int) $id !== (int) $actorId)->unique();
 
+        $actor = Auth::user();
         if ($recipientIds->isNotEmpty()) {
             $recipients = User::whereIn('id', $recipientIds)->where('status', 'active')->get();
+            if ($actor && ! empty($actor->email)) {
+                $recipients = $recipients->reject(fn ($u) => strtolower(trim($u->email)) === strtolower(trim($actor->email)));
+            }
             foreach ($recipients as $recipient) {
                 $recipient->notify($notification);
             }
@@ -1370,6 +1374,9 @@ new #[Layout('components.layouts.app')] class extends Component
             $clientRecipients = ClientAccount::where('client_id', $content->client_id)
                 ->where('status', 'active')
                 ->get();
+            if ($actor && ! empty($actor->email)) {
+                $clientRecipients = $clientRecipients->reject(fn ($c) => strtolower(trim($c->email)) === strtolower(trim($actor->email)));
+            }
             foreach ($clientRecipients as $clientRecipient) {
                 $clientRecipient->notify($notification);
             }

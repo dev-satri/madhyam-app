@@ -429,9 +429,27 @@ new #[Layout('components.layouts.app')] class extends Component
 
         if ($recipientIds->isNotEmpty()) {
             $notification = new ContentCommentNotification($comment, $content, $account);
-            $recipients = User::whereIn('id', $recipientIds)->where('status', 'active')->get();
+            $recipients = User::whereIn('id', $recipientIds)
+                ->where('status', 'active')
+                ->get()
+                ->reject(fn ($u) => strtolower(trim($u->email)) === strtolower(trim($account->email)));
+
             foreach ($recipients as $recipient) {
                 $recipient->notify($notification);
+            }
+        }
+
+        // Also notify other client accounts linked to this content's client (excluding self)
+        if ($content->client_id) {
+            $notification = new ContentCommentNotification($comment, $content, $account);
+            $clientRecipients = ClientAccount::where('client_id', $content->client_id)
+                ->where('status', 'active')
+                ->where('id', '!=', $account->id)
+                ->get()
+                ->reject(fn ($c) => strtolower(trim($c->email)) === strtolower(trim($account->email)));
+
+            foreach ($clientRecipients as $clientRecipient) {
+                $clientRecipient->notify($notification);
             }
         }
 
