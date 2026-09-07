@@ -14,7 +14,7 @@ return [
 
     'temporary_file_upload' => [
         'disk' => null,        // Example: 'local', 's3'               | Default: 'default'
-        'rules' => ['file', 'max:204800'], // 200MB in KB
+        'rules' => ['file', 'max:5242880'], // 5GB in KB (5 * 1024 * 1024)
         'directory' => null,   // Example: 'tmp'                       | Default: 'livewire-tmp'
         'middleware' => null,  // Example: 'throttle:5,1'              | Default: 'throttle:60,1'
         'preview_mimes' => [   // Supported file types for temporary pre-signed file URLs
@@ -24,7 +24,7 @@ return [
             'pdf', 'doc', 'docx', 'xls', 'xlsx',
             'ppt', 'pptx', 'txt', 'csv', 'zip',
         ],
-        'max_upload_time' => 300, // 5 minutes — generous for large files
+        'max_upload_time' => 1800, // 30 minutes — generous for large files
         'cleanup' => true,
     ],
 

@@ -1121,14 +1121,18 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function getPickableFiles(?string $search = null, ?int $clientId = null, ?int $folderId = null): array
     {
-        $q = File::select('id', 'name', 'type', 'size')
+        $q = File::select('id', 'name', 'type', 'size', 'folder_id')
             ->orderBy('name');
 
-        if ($folderId) {
+        // When a specific folder is selected, show only files in that folder
+        if ($folderId !== null && $folderId > 0) {
             $q->where('folder_id', $folderId);
         } elseif ($folderId === 0) {
+            // When root folder (0) is selected, show only root level files
             $q->whereNull('folder_id');
         }
+        // If $folderId is null (not set), show all files from all folders
+        
         if ($search) {
             $q->where('name', 'like', "%{$search}%");
         }

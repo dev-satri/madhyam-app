@@ -100,7 +100,7 @@ Route::middleware('auth:web')->group(function () {
         // XHR file upload endpoint — provides real-time progress via XMLHttpRequest
         Route::post('files/xhr-upload', function (Request $request) {
             $request->validate([
-                'file' => 'required|file|max:204800', // 200MB
+                'file' => 'required|file|max:5242880', // 5GB (5 * 1024 * 1024 KB)
                 'folder_id' => 'nullable|integer',
                 'client_id' => 'nullable|integer',
                 'tags' => 'nullable|string|max:500',
