@@ -299,6 +299,21 @@ class GoogleDriveService
             $metadata['parents'] = [$parentId];
         }
 
+        // Determine file size
+        if (is_resource($content)) {
+            $stat = fstat($content);
+            $fileSize = $stat['size'] ?? 0;
+        } elseif (is_string($content)) {
+            $fileSize = strlen($content);
+        } else {
+            $fileSize = 0;
+        }
+
+        // For files larger than 5MB, use resumable upload to avoid memory issues
+        if ($fileSize > 5 * 1024 * 1024) {
+            return $this->uploadFileResumable($name, $content, $folderId, $mimeType, $fileSize);
+        }
+
         $http = Http::retry(2, 1000);
         if (config('app.env') !== 'production') {
             $http = $http->withoutVerifying();
@@ -306,7 +321,7 @@ class GoogleDriveService
 
         // Handle both file handles (resource) and string content
         if (is_resource($content)) {
-            // For large files, read the stream content
+            // For small files, it's safe to read into memory
             $fileContent = stream_get_contents($content);
         } else {
             $fileContent = $content;
@@ -322,6 +337,83 @@ class GoogleDriveService
         }
 
         return $response->json();
+    }
+
+    private function uploadFileResumable(string $name, $content, ?string $folderId, string $mimeType, int $fileSize): array
+    {
+        $accessToken = $this->getAccessToken();
+
+        $metadata = ['name' => $name];
+        if ($folderId) {
+            $metadata['parents'] = [$folderId];
+        }
+
+        // Step 1: Initiate resumable upload session
+        $http = Http::retry(2, 1000);
+        if (config('app.env') !== 'production') {
+            $http = $http->withoutVerifying();
+        }
+
+        $response = $http->withToken($accessToken)
+            ->withHeaders([
+                'X-Upload-Content-Type' => $mimeType,
+                'X-Upload-Content-Length' => $fileSize,
+            ])
+            ->post(self::DRIVE_UPLOAD_BASE . '/files?uploadType=resumable', $metadata);
+
+        if ($response->failed()) {
+            throw new \RuntimeException('Failed to initiate resumable upload: ' . $response->body());
+        }
+
+        $uploadUrl = $response->header('Location');
+
+        if (! $uploadUrl) {
+            throw new \RuntimeException('No upload URL received from Google Drive');
+        }
+
+        // Step 2: Upload file in chunks
+        $chunkSize = 5 * 1024 * 1024; // 5MB chunks
+        $uploadedBytes = 0;
+
+        if (is_resource($content)) {
+            rewind($content); // Ensure we're at the start of the stream
+        }
+
+        while ($uploadedBytes < $fileSize) {
+            $chunkEnd = min($uploadedBytes + $chunkSize - 1, $fileSize - 1);
+            
+            // Read chunk
+            if (is_resource($content)) {
+                $chunk = fread($content, $chunkSize);
+            } else {
+                $chunk = substr($content, $uploadedBytes, $chunkSize);
+            }
+
+            $http = Http::retry(2, 1000);
+            if (config('app.env') !== 'production') {
+                $http = $http->withoutVerifying();
+            }
+
+            $response = $http->withHeaders([
+                'Content-Length' => strlen($chunk),
+                'Content-Range' => "bytes {$uploadedBytes}-{$chunkEnd}/{$fileSize}",
+            ])->withBody($chunk, $mimeType)->put($uploadUrl);
+
+            // Check response
+            if ($response->status() === 308) {
+                // Resume incomplete - continue with next chunk
+                $uploadedBytes = $chunkEnd + 1;
+            } elseif ($response->successful()) {
+                // Upload complete
+                return $response->json();
+            } else {
+                throw new \RuntimeException('Failed to upload chunk: ' . $response->body());
+            }
+
+            $uploadedBytes = $chunkEnd + 1;
+        }
+
+        throw new \RuntimeException('Upload completed but no success response received');
     }
 
     public function deleteFile(string $fileId): bool
