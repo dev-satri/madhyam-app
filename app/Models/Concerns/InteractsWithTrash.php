@@ -12,6 +12,10 @@ trait InteractsWithTrash
      */
     public function delete(): bool
     {
+        if ($this->isForceDeleting()) {
+            return parent::delete();
+        }
+
         if ($this->trashed()) {
             return false;
         }

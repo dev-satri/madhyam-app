@@ -190,7 +190,7 @@ new #[Layout('components.layouts.app')] class extends Component
         $crumbs = [['id' => 0, 'name' => config('app.name', 'Madhyam')]];
         $current = $this->currentFolderId;
         while ($current) {
-            $folder = DB::table('folders')->where('id', $current)->first();
+            $folder = DB::table('folders')->where('id', $current)->whereNull('deleted_at')->first();
             if ($folder) {
                 array_unshift($crumbs, ['id' => $folder->id, 'name' => $folder->name]);
                 $current = $folder->parent_id ?? 0;
@@ -203,7 +203,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function getFolders()
     {
-        $query = DB::table('folders');
+        $query = DB::table('folders')->whereNull('deleted_at');
         if ($this->currentFolderId) {
             $query->where('parent_id', $this->currentFolderId);
         } else {
@@ -222,6 +222,7 @@ new #[Layout('components.layouts.app')] class extends Component
                 ->keyBy('folder_id');
 
             $subfolderCounts = DB::table('folders')
+                ->whereNull('deleted_at')
                 ->whereIn('parent_id', $folderIds)
                 ->selectRaw('parent_id, COUNT(*) as cnt')
                 ->groupBy('parent_id')
@@ -332,7 +333,7 @@ new #[Layout('components.layouts.app')] class extends Component
     public function openFolderForm(?int $id = null): void
     {
         if ($id) {
-            $folder = DB::table('folders')->where('id', $id)->first();
+            $folder = DB::table('folders')->where('id', $id)->whereNull('deleted_at')->first();
             if ($folder) {
                 $this->editingFolderId = $id;
                 $this->folderName = $folder->name;
@@ -366,8 +367,34 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function deleteFolder(int $id): void
     {
-        Folder::findOrFail($id)->delete();
+        $folder = Folder::findOrFail($id);
+
+        // Recursively soft-delete all child folders
+        $this->softDeleteChildFolders($id);
+
+        // Move files inside this folder to root (unassign folder)
+        DB::table('files')->where('folder_id', $id)->whereNull('deleted_at')->update([
+            'folder_id' => null,
+            'updated_at' => now(),
+        ]);
+
+        $folder->delete();
         $this->dispatch('toast', message: 'Folder deleted', type: 'success');
+    }
+
+    private function softDeleteChildFolders(int $parentId): void
+    {
+        $children = Folder::where('parent_id', $parentId)->get();
+        foreach ($children as $child) {
+            // Move files inside child folder to root
+            DB::table('files')->where('folder_id', $child->id)->whereNull('deleted_at')->update([
+                'folder_id' => null,
+                'updated_at' => now(),
+            ]);
+            // Recurse into grandchildren
+            $this->softDeleteChildFolders($child->id);
+            $child->delete();
+        }
     }
 
     public function moveFile(int $fileId, int $folderId): void
@@ -376,7 +403,7 @@ new #[Layout('components.layouts.app')] class extends Component
         if (!$file) return;
 
         if ($folderId > 0) {
-            $folder = DB::table('folders')->where('id', $folderId)->first();
+            $folder = DB::table('folders')->where('id', $folderId)->whereNull('deleted_at')->first();
             if (!$folder) return;
         }
 
@@ -391,18 +418,18 @@ new #[Layout('components.layouts.app')] class extends Component
     {
         if ($folderId === $newParentId) return;
 
-        $folder = DB::table('folders')->where('id', $folderId)->first();
+        $folder = DB::table('folders')->where('id', $folderId)->whereNull('deleted_at')->first();
         if (!$folder) return;
 
         if ($newParentId > 0) {
-            $target = DB::table('folders')->where('id', $newParentId)->first();
+            $target = DB::table('folders')->where('id', $newParentId)->whereNull('deleted_at')->first();
             if (!$target) return;
 
             $ancestors = collect([$newParentId]);
             $pid = $target->parent_id;
             while ($pid) {
                 $ancestors->push($pid);
-                $parent = DB::table('folders')->where('id', $pid)->first();
+                $parent = DB::table('folders')->where('id', $pid)->whereNull('deleted_at')->first();
                 $pid = $parent ? ($parent->parent_id ?? null) : null;
             }
             if ($ancestors->contains($folderId)) {
@@ -1901,7 +1928,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                         <h4 class="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Move to</h4>
                                         <select x-model="moveFolderId" class="form-select text-xs py-1.5 w-full">
                                             <option value="0">Root ({{ config('app.name', 'Madhyam') }})</option>
-                                            @foreach(DB::table('folders')->orderBy('name')->get() as $f)
+                                            @foreach(DB::table('folders')->whereNull('deleted_at')->orderBy('name')->get() as $f)
                                                 <option value="{{ $f->id }}">{{ $f->name }}</option>
                                             @endforeach
                                         </select>

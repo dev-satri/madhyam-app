@@ -162,7 +162,7 @@
             var file = e.detail;
             if (!file || !file.url) return;
             var item = {
-                id: file.id || null,
+                id: file.id || file.drive_file_id || null,
                 name: file.name || 'Drive File',
                 url: file.url,
                 type: 'drive'
@@ -170,7 +170,12 @@
             if (!this.multiple) {
                 this.selected = [item];
             } else {
-                this.selected.push(item);
+                var exists = this.selected.some(function(s) {
+                    return s.url === item.url || (s.id && item.id && s.id === item.id);
+                });
+                if (!exists) {
+                    this.selected.push(item);
+                }
             }
         },
         removeSelected(idx) {
@@ -263,6 +268,7 @@
         >
             <div
                 class="bg-white rounded-t-3xl sm:rounded-2xl w-full sm:max-w-2xl max-h-[90vh] flex flex-col overflow-hidden shadow-2xl animate-fade-in"
+                @click.stop
             >
                 {{-- Header --}}
                 <div class="flex items-center justify-between px-5 py-4 border-b border-gray-100 shrink-0">
@@ -276,6 +282,7 @@
                         </div>
                     </div>
                     <button
+                        type="button"
                         @click="open = false"
                         class="w-9 h-9 flex items-center justify-center rounded-xl hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
                     >

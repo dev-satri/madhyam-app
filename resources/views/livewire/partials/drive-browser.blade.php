@@ -19,29 +19,29 @@
                 <input
                     type="text"
                     wire:model.live.debounce.300ms="search"
-                    placeholder="Search files..."
-                    class="form-input text-sm"
+                    placeholder="Search Google Drive..."
+                    class="form-input text-sm w-full"
                     style="padding-left: 2.5rem"
                 />
             </div>
             <div class="flex gap-2 flex-shrink-0">
-                <button wire:click="$set('showNewFolderForm', true)" class="btn btn-secondary btn-sm whitespace-nowrap">
+                <button type="button" wire:click="$set('showNewFolderForm', true)" class="btn btn-secondary btn-sm whitespace-nowrap">
                     <i class="fas fa-folder-plus mr-1"></i> New Folder
                 </button>
-                <button wire:click="loadFiles" class="btn btn-secondary btn-sm" wire:loading.attr="disabled">
-                    <i class="fas fa-sync-alt"></i>
+                <button type="button" wire:click="loadFiles" class="btn btn-secondary btn-sm" wire:loading.attr="disabled">
+                    <i class="fas fa-sync-alt" wire:loading.class="fa-spin"></i>
                 </button>
             </div>
         </div>
 
-        {{-- New Folder Form --}}
+        {{-- New Folder Form (DIV instead of FORM to prevent nested form submissions) --}}
         @if ($this->showNewFolderForm)
             <div class="bg-blue-50 border border-blue-200 rounded-xl p-4">
                 <div class="flex items-center gap-2 mb-2">
                     <i class="fas fa-folder-plus text-blue-500 text-sm"></i>
                     <span class="text-sm font-semibold text-blue-800">Create New Folder</span>
                 </div>
-                <form wire:submit="createFolder" class="flex gap-2">
+                <div class="flex gap-2" @keydown.enter.prevent="$wire.createFolder()">
                     <input
                         type="text"
                         wire:model="newFolderName"
@@ -49,7 +49,7 @@
                         placeholder="Folder name"
                         autofocus
                     />
-                    <button type="submit" class="btn btn-primary btn-sm">Create</button>
+                    <button type="button" wire:click="createFolder" class="btn btn-primary btn-sm">Create</button>
                     <button
                         type="button"
                         wire:click="$set('showNewFolderForm', false); $set('newFolderName', '')"
@@ -57,7 +57,7 @@
                     >
                         Cancel
                     </button>
-                </form>
+                </div>
             </div>
         @endif
 
@@ -66,14 +66,16 @@
             <div class="flex items-center gap-1.5 text-sm text-gray-500 flex-wrap">
                 @if (!$this->search)
                     <button
+                        type="button"
                         wire:click="navigateToFolder(-1)"
-                        class="hover:text-[var(--brand)] transition-colors font-medium"
+                        class="hover:text-[var(--brand)] transition-colors font-medium flex items-center gap-1"
                     >
-                        <i class="fab fa-google-drive mr-1"></i> My Drive
+                        <i class="fab fa-google-drive"></i> My Drive
                     </button>
                     @foreach ($this->folderPath as $index => $folder)
                         <i class="fas fa-chevron-right text-[10px] text-gray-300"></i>
                         <button
+                            type="button"
                             wire:click="navigateToFolder({{ $index }})"
                             class="hover:text-[var(--brand)] transition-colors {{ $index === count($this->folderPath) - 1 ? 'font-semibold text-gray-800' : '' }}"
                         >
@@ -84,6 +86,7 @@
                     <span class="text-gray-400">Search results for</span>
                     <span class="font-semibold text-gray-700">"{{ $this->search }}"</span>
                     <button
+                        type="button"
                         wire:click="$set('search', ''); loadFiles()"
                         class="text-[var(--brand)] hover:underline ml-2"
                     >
@@ -96,8 +99,8 @@
         {{-- File List --}}
         @if ($this->isLoading)
             <div class="text-center py-12 text-gray-400">
-                <i class="fas fa-spinner fa-spin text-2xl mb-2 block"></i>
-                <p class="text-sm">Loading...</p>
+                <i class="fas fa-spinner fa-spin text-2xl mb-2 block text-[var(--brand)]"></i>
+                <p class="text-sm">Loading Drive files...</p>
             </div>
         @elseif (collect($this->files)->isEmpty())
             <div class="text-center py-12 text-gray-400">
@@ -126,6 +129,7 @@
                         {{-- Icon --}}
                         @if ($isFolder)
                             <button
+                                type="button"
                                 wire:click="openFolder('{{ $file['id'] }}', '{{ addslashes($file['name']) }}')"
                                 class="flex-shrink-0 w-9 h-9 rounded-lg bg-amber-50 flex items-center justify-center hover:bg-amber-100 transition-colors"
                             >
@@ -151,14 +155,14 @@
                         {{-- Name --}}
                         <div class="flex-1 min-w-0">
                             @if ($isRenaming)
-                                <form wire:submit="saveRename" class="flex gap-2">
+                                <div class="flex gap-2" @keydown.enter.prevent="$wire.saveRename()">
                                     <input
                                         type="text"
                                         wire:model="renamingName"
                                         class="form-input text-sm py-1 flex-1"
                                         autofocus
                                     />
-                                    <button type="submit" class="btn btn-primary btn-sm py-1 px-2">
+                                    <button type="button" wire:click="saveRename" class="btn btn-primary btn-sm py-1 px-2">
                                         <i class="fas fa-check text-xs"></i>
                                     </button>
                                     <button
@@ -168,15 +172,16 @@
                                     >
                                         <i class="fas fa-times text-xs"></i>
                                     </button>
-                                </form>
+                                </div>
                             @else
                                 <button
+                                    type="button"
                                     @if ($isFolder)
                                         wire:click="openFolder('{{ $file['id'] }}', '{{ addslashes($file['name']) }}')"
                                     @else
                                         wire:click="selectFile({{ json_encode($file) }})"
                                     @endif
-                                    class="text-left w-full"
+                                    class="text-left w-full cursor-pointer"
                                 >
                                     <p class="text-sm font-medium text-gray-800 truncate hover:text-[var(--brand)] transition-colors">{{ $file['name'] ?? 'Unnamed' }}</p>
                                     @if (!$isFolder && isset($file['size']))
@@ -201,6 +206,7 @@
                                     </a>
                                 @endif
                                 <button
+                                    type="button"
                                     wire:click="startRename({{ json_encode($file) }})"
                                     class="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-400 hover:text-[var(--brand)] transition-colors"
                                     title="Rename"
@@ -209,6 +215,7 @@
                                 </button>
                                 @if (!$isFolder)
                                     <button
+                                        type="button"
                                         wire:click="startMove({{ json_encode($file) }})"
                                         class="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-400 hover:text-[var(--brand)] transition-colors"
                                         title="Move"
@@ -217,6 +224,7 @@
                                     </button>
                                 @endif
                                 <button
+                                    type="button"
                                     x-on:click="confirmDelete = {{ json_encode($file) }}"
                                     class="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors"
                                     title="Delete"
@@ -233,7 +241,7 @@
         {{-- Selection Footer --}}
         @if ($this->selectedFile)
             <div
-                class="sticky bottom-0 left-0 right-0 bg-white/95 backdrop-blur-sm border-t border-gray-100 py-3.5 mt-4 z-20 shadow-[0_-8px_20px_-6px_rgba(0,0,0,0.1)] -mx-4 px-4 sm:-mx-6 sm:px-6"
+                class="sticky bottom-0 left-0 right-0 bg-white/95 backdrop-blur-sm border-t border-gray-200 py-3.5 mt-4 z-20 shadow-[0_-8px_20px_-6px_rgba(0,0,0,0.1)] -mx-4 px-4 sm:-mx-6 sm:px-6"
             >
                 <div class="flex items-center justify-between">
                     <div class="flex items-center gap-3 min-w-0">
@@ -246,9 +254,9 @@
                         </div>
                     </div>
                     <div class="flex items-center gap-2 flex-shrink-0">
-                        <button wire:click="resetSelection" class="btn btn-secondary btn-sm">Cancel</button>
-                        <button wire:click="confirmSelection" class="btn btn-primary btn-sm">
-                            <i class="fas fa-check mr-1"></i> Select File
+                        <button type="button" wire:click="resetSelection" class="btn btn-secondary btn-sm">Cancel</button>
+                        <button type="button" wire:click="confirmSelection" class="btn btn-primary btn-sm">
+                            <i class="fas fa-check mr-1"></i> Add to Selection
                         </button>
                     </div>
                 </div>
@@ -262,7 +270,7 @@
                 x-on:click.self="confirmDelete = null"
                 x-on:keydown.escape.window="confirmDelete = null"
             >
-                <div class="modal-box w-full max-w-sm mx-4">
+                <div class="modal-box w-full max-w-sm mx-4" @click.stop>
                     <div class="p-6 text-center">
                         <div class="w-14 h-14 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-4">
                             <i class="fas fa-trash-alt text-red-600 text-xl"></i>
@@ -272,8 +280,9 @@
                         <p class="text-xs text-red-500 mt-2">This action cannot be undone.</p>
                     </div>
                     <div class="flex justify-center gap-2 px-6 pb-6">
-                        <button x-on:click="confirmDelete = null" class="btn btn-secondary btn-sm">Cancel</button>
+                        <button type="button" x-on:click="confirmDelete = null" class="btn btn-secondary btn-sm">Cancel</button>
                         <button
+                            type="button"
                             x-on:click="
                                 $wire.deleteFile(confirmDelete);
                                 confirmDelete = null;
@@ -299,15 +308,16 @@
                 wire:click.self="$set('showMoveModal', false)"
                 x-on:keydown.escape.window="$wire.set('showMoveModal', false)"
             >
-                <div class="modal-box w-full max-w-md mx-4">
+                <div class="modal-box w-full max-w-md mx-4" @click.stop>
                     <div class="sticky top-0 bg-white flex items-center justify-between p-4 border-b">
                         <h3 class="font-bold text-gray-900">Move "{{ $this->movingFileName }}"</h3>
-                        <button wire:click="$set('showMoveModal', false)" class="text-gray-400 hover:text-gray-600">
+                        <button type="button" wire:click="$set('showMoveModal', false)" class="text-gray-400 hover:text-gray-600">
                             <i class="fas fa-times"></i>
                         </button>
                     </div>
                     <div class="p-4 max-h-64 overflow-y-auto">
                         <button
+                            type="button"
                             wire:click="moveToFolder('root')"
                             class="w-full text-left flex items-center gap-3 p-3 rounded-xl hover:bg-gray-50 transition-colors"
                         >
@@ -318,6 +328,7 @@
                         </button>
                         @foreach ($moveFolders as $folder)
                             <button
+                                type="button"
                                 wire:click="moveToFolder('{{ $folder['id'] }}')"
                                 class="w-full text-left flex items-center gap-3 p-3 rounded-xl hover:bg-gray-50 transition-colors"
                             >
