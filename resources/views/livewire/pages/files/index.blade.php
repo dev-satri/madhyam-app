@@ -47,6 +47,11 @@ new #[Layout('components.layouts.app')] class extends Component
     public string $folderProgressFile = '';
     public array $folderErrors = [];
     public bool $folderCancelled = false;
+    public bool $driveUploading = false;
+    public int $driveProgressCurrent = 0;
+    public int $driveProgressTotal = 0;
+    public string $driveProgressFile = '';
+    public int $driveProgressPercent = 0;
 
     // Supported file types configuration
     private const SUPPORTED_EXTENSIONS = [
@@ -652,11 +657,34 @@ new #[Layout('components.layouts.app')] class extends Component
             }
         }
 
+        // Initialize progress tracking
+        $this->driveUploading = true;
+        $this->driveProgressCurrent = 0;
+        $this->driveProgressTotal = count($this->pendingFiles);
+        $this->driveProgressFile = '';
+        $this->driveProgressPercent = 0;
+
         $uploaded = 0;
         $errors = 0;
         $errorMessages = [];
+        $fileIndex = 0;
 
         foreach ($this->pendingFiles as $file) {
+            $fileIndex++;
+            
+            // Update progress
+            $this->driveProgressCurrent = $fileIndex;
+            $this->driveProgressFile = $file->getClientOriginalName();
+            $this->driveProgressPercent = round(($fileIndex / $this->driveProgressTotal) * 100);
+            
+            // Dispatch progress event for real-time UI update
+            $this->dispatch('drive-upload-progress', [
+                'current' => $this->driveProgressCurrent,
+                'total' => $this->driveProgressTotal,
+                'file' => $this->driveProgressFile,
+                'percent' => $this->driveProgressPercent,
+            ]);
+
             try {
                 $ext = strtolower($file->getClientOriginalExtension());
                 $type = match(true) {
@@ -712,6 +740,13 @@ new #[Layout('components.layouts.app')] class extends Component
                 ]);
             }
         }
+
+        // Reset progress tracking
+        $this->driveUploading = false;
+        $this->driveProgressCurrent = 0;
+        $this->driveProgressTotal = 0;
+        $this->driveProgressFile = '';
+        $this->driveProgressPercent = 0;
 
         $this->pendingFiles = [];
         $this->uploadTags = '';
@@ -2111,6 +2146,50 @@ new #[Layout('components.layouts.app')] class extends Component
                                     </div>
                                 </template>
 
+                                {{-- Drive Upload Progress --}}
+                                @if($driveUploading)
+                                    <div class="space-y-3" wire:key="drive-progress">
+                                        <div class="bg-blue-50/80 border border-blue-200/60 rounded-xl p-4 shadow-sm">
+                                            <div class="flex items-center justify-between mb-2.5">
+                                                <div class="flex items-center gap-2">
+                                                    <div class="relative">
+                                                        <i class="fab fa-google-drive text-blue-500 text-lg upload-icon-spin"></i>
+                                                    </div>
+                                                    <span class="text-sm font-semibold text-gray-800">Uploading to Google Drive...</span>
+                                                </div>
+                                                <span class="text-sm font-bold tabular-nums text-blue-600" wire:key="progress-percent">{{ $driveProgressPercent }}%</span>
+                                            </div>
+                                            <div class="w-full bg-gray-200 rounded-full h-2.5 overflow-hidden mb-2.5">
+                                                <div class="h-full bg-gradient-to-r from-blue-500 to-blue-600 rounded-full transition-all duration-300 ease-out"
+                                                     style="width: {{ $driveProgressPercent }}%"></div>
+                                            </div>
+                                            <div class="flex items-center justify-between">
+                                                <span class="text-xs text-gray-600 tabular-nums">
+                                                    <i class="fas fa-file-alt mr-1"></i>
+                                                    {{ $driveProgressCurrent }} / {{ $driveProgressTotal }} files
+                                                </span>
+                                                <span class="text-xs text-gray-500 flex items-center gap-1">
+                                                    <i class="fas fa-hourglass-half animate-pulse"></i>
+                                                    Please wait...
+                                                </span>
+                                            </div>
+                                        </div>
+
+                                        {{-- Current file being uploaded --}}
+                                        @if($driveProgressFile)
+                                        <div class="flex items-center gap-2 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2.5" wire:key="current-file-{{ $driveProgressCurrent }}">
+                                            <div class="flex-shrink-0">
+                                                <i class="fas fa-cloud-upload-alt text-blue-500 text-sm upload-icon-spin"></i>
+                                            </div>
+                                            <div class="flex-1 min-w-0">
+                                                <p class="text-xs text-gray-500 mb-0.5">Currently uploading:</p>
+                                                <p class="text-xs font-medium text-gray-700 truncate" title="{{ $driveProgressFile }}">{{ $driveProgressFile }}</p>
+                                            </div>
+                                        </div>
+                                        @endif
+                                    </div>
+                                @endif
+
                                 {{-- Premium Upload Progress Indicator --}}
                                 <div x-show="upOn && !folderUploading"
                                      x-transition:enter="transition ease-out duration-300"
@@ -2343,7 +2422,7 @@ new #[Layout('components.layouts.app')] class extends Component
                             </div>
                         </div>
                         <div class="sticky bottom-0 bg-white flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-2 p-4 border-t flex-shrink-0 rounded-b-2xl">
-                            <button wire:click="$set('showUpload', false)" class="btn btn-secondary order-2 sm:order-1" x-show="!folderUploading">Cancel</button>
+                            <button wire:click="$set('showUpload', false)" class="btn btn-secondary order-2 sm:order-1" x-show="!folderUploading && !$wire.driveUploading">Cancel</button>
                             @if($uploadMode === 'local')
                                 {{-- Regular file upload button --}}
                                 <button wire:click="uploadFiles" class="btn btn-primary order-1 sm:order-2" x-bind:disabled="$wire.pendingFiles.length === 0 || upOn || folderMode" wire:loading.attr="disabled" x-show="!folderMode">
@@ -2356,9 +2435,9 @@ new #[Layout('components.layouts.app')] class extends Component
                                 </button>
                             @elseif($uploadMode === 'drive-upload')
                                 {{-- Regular file upload button --}}
-                                <button wire:click="uploadToGoogleDrive" class="btn btn-primary order-1 sm:order-2" wire:loading.attr="disabled" x-bind:disabled="$wire.pendingFiles.length === 0 || upOn || folderMode" x-show="!folderMode">
+                                <button wire:click="uploadToGoogleDrive" class="btn btn-primary order-1 sm:order-2 relative overflow-hidden" wire:loading.attr="disabled" x-bind:disabled="$wire.pendingFiles.length === 0 || upOn || folderMode || $wire.driveUploading" x-show="!folderMode && !$wire.driveUploading">
                                     <span wire:loading.remove wire:target="uploadToGoogleDrive"><i class="fab fa-google text-sm mr-1"></i> Upload to Drive</span>
-                                    <span wire:loading wire:target="uploadToGoogleDrive"><i class="fas fa-spinner fa-spin mr-1"></i> Processing...</span>
+                                    <span wire:loading wire:target="uploadToGoogleDrive"><i class="fas fa-spinner fa-spin mr-1"></i> Starting upload...</span>
                                 </button>
                                 {{-- Folder upload button (Drive) --}}
                                 <button wire:click="uploadFolderToDrive" class="btn btn-primary order-1 sm:order-2" x-bind:disabled="$wire.pendingFiles.length === 0 || folderUploading" x-show="folderMode && !folderUploading">
