@@ -48,6 +48,57 @@ new #[Layout('components.layouts.app')] class extends Component
     public array $folderErrors = [];
     public bool $folderCancelled = false;
 
+    // Supported file types configuration
+    private const SUPPORTED_EXTENSIONS = [
+        // Images
+        'jpg', 'jpeg', 'png', 'gif', 'bmp', 'svg', 'webp', 'ico', 'tiff', 'tif',
+        // Videos
+        'mp4', 'mov', 'avi', 'mkv', 'webm', 'flv', 'wmv', 'mpeg', 'mpg', '3gp', 'm4v',
+        // Audio
+        'mp3', 'wav', 'ogg', 'flac', 'aac', 'm4a', 'wma', 'opus',
+        // Documents
+        'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'rtf', 'odt', 'ods', 'odp',
+        // Archives
+        'zip', 'rar', '7z', 'tar', 'gz', 'bz2', 'xz',
+        // Code & Data
+        'json', 'xml', 'csv', 'sql', 'html', 'css', 'js', 'php', 'py', 'java', 'cpp', 'c', 'h',
+        // Other
+        'eps', 'ai', 'psd', 'sketch', 'fig',
+    ];
+
+    private function validateFileTypes(): bool
+    {
+        if (empty($this->pendingFiles)) {
+            return true;
+        }
+
+        $invalidFiles = [];
+        foreach ($this->pendingFiles as $file) {
+            $ext = strtolower($file->getClientOriginalExtension());
+            if (!in_array($ext, self::SUPPORTED_EXTENSIONS)) {
+                $invalidFiles[] = $file->getClientOriginalName() . " (.{$ext})";
+            }
+        }
+
+        if (!empty($invalidFiles)) {
+            $fileList = implode(', ', array_slice($invalidFiles, 0, 3));
+            if (count($invalidFiles) > 3) {
+                $fileList .= ' and ' . (count($invalidFiles) - 3) . ' more';
+            }
+
+            $supportedList = implode(', ', array_slice(self::SUPPORTED_EXTENSIONS, 0, 20));
+            $supportedList .= '... and more';
+
+            $this->dispatch('toast', 
+                message: "Unsupported file type(s): {$fileList}. Supported formats: {$supportedList}", 
+                type: 'error'
+            );
+            return false;
+        }
+
+        return true;
+    }
+
     public function mount(): void
     {
         $this->currentFolderId = request()->query('folder', 0);
@@ -474,6 +525,11 @@ new #[Layout('components.layouts.app')] class extends Component
             return;
         }
 
+        // Validate file types
+        if (!$this->validateFileTypes()) {
+            return;
+        }
+
         // Check file sizes before attempting upload (5GB limit per file)
         $maxFileSize = 5 * 1024 * 1024 * 1024; // 5GB in bytes
         foreach ($this->pendingFiles as $file) {
@@ -559,6 +615,11 @@ new #[Layout('components.layouts.app')] class extends Component
     {
         if (empty($this->pendingFiles)) {
             $this->dispatch('toast', message: 'No files selected', type: 'warning');
+            return;
+        }
+
+        // Validate file types
+        if (!$this->validateFileTypes()) {
             return;
         }
 
@@ -671,6 +732,11 @@ new #[Layout('components.layouts.app')] class extends Component
     {
         if (empty($this->pendingFiles)) {
             $this->dispatch('toast', message: 'No files selected', type: 'warning');
+            return;
+        }
+
+        // Validate file types
+        if (!$this->validateFileTypes()) {
             return;
         }
 
@@ -827,6 +893,11 @@ new #[Layout('components.layouts.app')] class extends Component
     {
         if (empty($this->pendingFiles)) {
             $this->dispatch('toast', message: 'No files selected', type: 'warning');
+            return;
+        }
+
+        // Validate file types
+        if (!$this->validateFileTypes()) {
             return;
         }
 
@@ -1044,11 +1115,57 @@ new #[Layout('components.layouts.app')] class extends Component
         $this->dispatch('toast', message: 'File deleted', type: 'success');
     }
 
-    public function downloadFile(int $id): \Symfony\Component\HttpFoundation\StreamedResponse
+    public function downloadFile(int $id)
     {
         $file = DB::table('files')->where('id', $id)->first();
-        abort_unless($file, 404);
-        return Storage::disk('public')->download($file->path, $file->name);
+        
+        if (!$file) {
+            $this->dispatch('toast', message: 'File not found', type: 'error');
+            return null;
+        }
+
+        try {
+            // Handle different storage types
+            if ($file->storage_type === 'drive' || $file->storage_type === 'external') {
+                // For Google Drive and external files, redirect to external URL
+                if (!empty($file->external_url)) {
+                    return redirect($file->external_url);
+                } else {
+                    $this->dispatch('toast', message: 'External file URL not available', type: 'error');
+                    return null;
+                }
+            } elseif ($file->storage_type === 'local') {
+                // For local files, check if file exists in storage
+                if (empty($file->path)) {
+                    $this->dispatch('toast', message: 'File path is empty', type: 'error');
+                    return null;
+                }
+
+                if (!Storage::disk('public')->exists($file->path)) {
+                    $this->dispatch('toast', message: 'File not found in storage. It may have been deleted.', type: 'error');
+                    \Illuminate\Support\Facades\Log::error('File not found in storage', [
+                        'file_id' => $id,
+                        'file_name' => $file->name,
+                        'file_path' => $file->path,
+                    ]);
+                    return null;
+                }
+
+                // Download the file
+                return Storage::disk('public')->download($file->path, $file->name);
+            } else {
+                $this->dispatch('toast', message: 'Unknown storage type: ' . $file->storage_type, type: 'error');
+                return null;
+            }
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error('Download failed', [
+                'file_id' => $id,
+                'file_name' => $file->name ?? 'unknown',
+                'error' => $e->getMessage(),
+            ]);
+            $this->dispatch('toast', message: 'Failed to download file: ' . $e->getMessage(), type: 'error');
+            return null;
+        }
     }
 
     public function getFileUrl(int $id): ?string
@@ -2087,7 +2204,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                     {{-- Regular file input --}}
                                     <label class="btn btn-secondary btn-sm cursor-pointer" x-show="!folderMode">
                                         <i class="fas fa-folder-open text-sm"></i> Browse Files
-                                        <input type="file" wire:model="pendingFiles" x-ref="fileInput" multiple class="hidden" accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.txt,.zip">
+                                        <input type="file" wire:model="pendingFiles" x-ref="fileInput" multiple class="hidden">
                                     </label>
 
                                     {{-- Folder input --}}
