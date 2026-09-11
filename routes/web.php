@@ -94,6 +94,30 @@ Route::middleware('auth:web')->group(function () {
             $file = DB::table('files')->where('id', $id)->first();
             abort_unless($file, 404);
 
+            if ($file->storage_type === 'drive' || $file->storage_type === 'external') {
+                if ($file->storage_type === 'drive' && !empty($file->drive_file_id)) {
+                    try {
+                        $driveService = app(\App\Services\GoogleDriveService::class);
+                        return $driveService->streamDownload($file->drive_file_id, $file->name);
+                    } catch (\Exception $e) {
+                        \Illuminate\Support\Facades\Log::warning('Drive stream download failed, redirecting to URL', [
+                            'file_id' => $id,
+                            'error' => $e->getMessage(),
+                        ]);
+                    }
+                }
+
+                if (!empty($file->external_url)) {
+                    return redirect($file->external_url);
+                }
+
+                abort(404, 'File URL not available');
+            }
+
+            if (empty($file->path) || !Storage::disk('public')->exists($file->path)) {
+                abort(404, 'File not found in local storage');
+            }
+
             return Storage::disk('public')->download($file->path, $file->name);
         })->name('files.download');
 

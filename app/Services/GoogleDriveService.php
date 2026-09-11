@@ -336,7 +336,12 @@ class GoogleDriveService
             throw new \RuntimeException('Failed to upload file: ' . $response->body());
         }
 
-        return $response->json();
+        $result = $response->json();
+        if (!empty($result['id'])) {
+            $this->makeFilePubliclyReadable($result['id']);
+        }
+
+        return $result;
     }
 
     private function uploadFileResumable(string $name, $content, ?string $folderId, string $mimeType, int $fileSize): array
@@ -405,7 +410,11 @@ class GoogleDriveService
                 $uploadedBytes = $chunkEnd + 1;
             } elseif ($response->successful()) {
                 // Upload complete
-                return $response->json();
+                $result = $response->json();
+                if (!empty($result['id'])) {
+                    $this->makeFilePubliclyReadable($result['id']);
+                }
+                return $result;
             } else {
                 throw new \RuntimeException('Failed to upload chunk: ' . $response->body());
             }
@@ -458,6 +467,52 @@ class GoogleDriveService
     public function getDownloadUrl(string $fileId): string
     {
         return self::DRIVE_API_BASE . '/files/' . $fileId . '?alt=media&access_token=' . $this->getAccessToken();
+    }
+
+    public function makeFilePubliclyReadable(string $fileId): bool
+    {
+        try {
+            $response = $this->driveRequest('post', self::DRIVE_API_BASE . '/files/' . $fileId . '/permissions', [
+                'role' => 'reader',
+                'type' => 'anyone',
+            ]);
+
+            return $response->successful();
+        } catch (\Exception $e) {
+            Log::warning('Failed to set public read permission on Drive file: ' . $e->getMessage(), [
+                'file_id' => $fileId,
+            ]);
+
+            return false;
+        }
+    }
+
+    public function streamDownload(string $fileId, string $filename)
+    {
+        $accessToken = $this->getAccessToken();
+        if (! $accessToken) {
+            throw new \RuntimeException('Google Drive not connected');
+        }
+
+        $url = self::DRIVE_API_BASE . '/files/' . $fileId . '?alt=media';
+
+        return response()->streamDownload(function () use ($url, $accessToken) {
+            $http = Http::withToken($accessToken);
+            if (config('app.env') !== 'production') {
+                $http = $http->withoutVerifying();
+            }
+
+            $response = $http->withOptions(['stream' => true])->get($url);
+            $body = $response->toPsrResponse()->getBody();
+
+            while (! $body->eof()) {
+                echo $body->read(1024 * 64);
+                if (ob_get_level() > 0) {
+                    ob_flush();
+                }
+                flush();
+            }
+        }, $filename);
     }
 
     public function searchFiles(string $query): array

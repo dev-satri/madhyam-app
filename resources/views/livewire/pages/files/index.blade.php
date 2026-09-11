@@ -21,6 +21,7 @@ new #[Layout('components.layouts.app')] class extends Component
     public string $search = '';
     public string $sortBy = 'name';
     public string $sortDir = 'asc';
+
     public int $currentFolderId = 0;
     public bool $showUpload = false;
     public bool $showFolderForm = false;
@@ -53,23 +54,8 @@ new #[Layout('components.layouts.app')] class extends Component
     public string $driveProgressFile = '';
     public int $driveProgressPercent = 0;
 
-    // Supported file types configuration
-    private const SUPPORTED_EXTENSIONS = [
-        // Images
-        'jpg', 'jpeg', 'png', 'gif', 'bmp', 'svg', 'webp', 'ico', 'tiff', 'tif',
-        // Videos
-        'mp4', 'mov', 'avi', 'mkv', 'webm', 'flv', 'wmv', 'mpeg', 'mpg', '3gp', 'm4v',
-        // Audio
-        'mp3', 'wav', 'ogg', 'flac', 'aac', 'm4a', 'wma', 'opus',
-        // Documents
-        'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'rtf', 'odt', 'ods', 'odp',
-        // Archives
-        'zip', 'rar', '7z', 'tar', 'gz', 'bz2', 'xz',
-        // Code & Data
-        'json', 'xml', 'csv', 'sql', 'html', 'css', 'js', 'php', 'py', 'java', 'cpp', 'c', 'h',
-        // Other
-        'eps', 'ai', 'psd', 'sketch', 'fig',
-    ];
+    // Blocked executable extensions for security
+    private const BLOCKED_EXTENSIONS = ['exe', 'bat', 'cmd', 'sh', 'com', 'msi', 'dll', 'vbs', 'ps1'];
 
     private function validateFileTypes(): bool
     {
@@ -77,25 +63,17 @@ new #[Layout('components.layouts.app')] class extends Component
             return true;
         }
 
-        $invalidFiles = [];
+        $blocked = [];
         foreach ($this->pendingFiles as $file) {
             $ext = strtolower($file->getClientOriginalExtension());
-            if (!in_array($ext, self::SUPPORTED_EXTENSIONS)) {
-                $invalidFiles[] = $file->getClientOriginalName() . " (.{$ext})";
+            if (in_array($ext, self::BLOCKED_EXTENSIONS)) {
+                $blocked[] = $file->getClientOriginalName();
             }
         }
 
-        if (!empty($invalidFiles)) {
-            $fileList = implode(', ', array_slice($invalidFiles, 0, 3));
-            if (count($invalidFiles) > 3) {
-                $fileList .= ' and ' . (count($invalidFiles) - 3) . ' more';
-            }
-
-            $supportedList = implode(', ', array_slice(self::SUPPORTED_EXTENSIONS, 0, 20));
-            $supportedList .= '... and more';
-
+        if (!empty($blocked)) {
             $this->dispatch('toast', 
-                message: "Unsupported file type(s): {$fileList}. Supported formats: {$supportedList}", 
+                message: 'Executable files are not allowed: ' . implode(', ', array_slice($blocked, 0, 3)), 
                 type: 'error'
             );
             return false;
@@ -275,6 +253,8 @@ new #[Layout('components.layouts.app')] class extends Component
             $q->whereNull('files.folder_id');
         }
 
+
+
         if ($this->search) {
             $q->where(function ($q) {
                 $q->where('files.name', 'like', "%{$this->search}%")
@@ -293,14 +273,15 @@ new #[Layout('components.layouts.app')] class extends Component
             }, $this->sortDir)
             ->get()
             ->map(function ($f) {
+                $f->is_drive = in_array($f->storage_type, ['drive', 'external']);
                 $f->size_label = $this->formatSize($f->size);
-                $f->type_icon = match($f->type) {
+                $f->type_icon = $f->is_drive ? 'fa-google-drive' : match($f->type) {
                     'image' => 'fa-file-image',
                     'video' => 'fa-file-video',
                     'audio' => 'fa-file-audio',
                     default => 'fa-file',
                 };
-                $f->type_color = match($f->type) {
+                $f->type_color = $f->is_drive ? 'text-blue-500' : match($f->type) {
                     'image' => 'text-blue-500',
                     'video' => 'text-purple-500',
                     'audio' => 'text-pink-500',
@@ -319,6 +300,12 @@ new #[Layout('components.layouts.app')] class extends Component
     public function getStats(): array
     {
         $files = DB::table('files')->whereNull('deleted_at');
+        if ($this->currentFolderId) {
+            $files->where('folder_id', $this->currentFolderId);
+        } else {
+            $files->whereNull('folder_id');
+        }
+
         $totalSize = (clone $files)->sum('size');
         $expiring = DB::table('file_expiries')
             ->where('expiry_date', '<=', now()->addDays(3))
@@ -328,6 +315,7 @@ new #[Layout('components.layouts.app')] class extends Component
             'total' => (clone $files)->count(),
             'storage' => $this->formatSize($totalSize),
             'expiring' => $expiring,
+
             'images' => (clone $files)->where('type', 'image')->count(),
             'videos' => (clone $files)->where('type', 'video')->count(),
             'audio' => (clone $files)->where('type', 'audio')->count(),
@@ -472,7 +460,7 @@ new #[Layout('components.layouts.app')] class extends Component
             'path' => '',
             'type' => $type,
             'size' => is_numeric($size) ? (int) $size : 0,
-            'storage_type' => 'external',
+            'storage_type' => 'drive',
             'external_url' => $url,
             'folder_id' => $this->currentFolderId ?: null,
             'client_id' => $this->folderClientId ?: null,
@@ -1159,48 +1147,13 @@ new #[Layout('components.layouts.app')] class extends Component
             return null;
         }
 
-        try {
-            // Handle different storage types
-            if ($file->storage_type === 'drive' || $file->storage_type === 'external') {
-                // For Google Drive and external files, redirect to external URL
-                if (!empty($file->external_url)) {
-                    return redirect($file->external_url);
-                } else {
-                    $this->dispatch('toast', message: 'External file URL not available', type: 'error');
-                    return null;
-                }
-            } elseif ($file->storage_type === 'local') {
-                // For local files, check if file exists in storage
-                if (empty($file->path)) {
-                    $this->dispatch('toast', message: 'File path is empty', type: 'error');
-                    return null;
-                }
-
-                if (!Storage::disk('public')->exists($file->path)) {
-                    $this->dispatch('toast', message: 'File not found in storage. It may have been deleted.', type: 'error');
-                    \Illuminate\Support\Facades\Log::error('File not found in storage', [
-                        'file_id' => $id,
-                        'file_name' => $file->name,
-                        'file_path' => $file->path,
-                    ]);
-                    return null;
-                }
-
-                // Download the file
-                return Storage::disk('public')->download($file->path, $file->name);
-            } else {
-                $this->dispatch('toast', message: 'Unknown storage type: ' . $file->storage_type, type: 'error');
-                return null;
-            }
-        } catch (\Exception $e) {
-            \Illuminate\Support\Facades\Log::error('Download failed', [
-                'file_id' => $id,
-                'file_name' => $file->name ?? 'unknown',
-                'error' => $e->getMessage(),
-            ]);
-            $this->dispatch('toast', message: 'Failed to download file: ' . $e->getMessage(), type: 'error');
-            return null;
+        // For local files, download directly from storage
+        if ($file->storage_type === 'local' && $file->path && Storage::disk('public')->exists($file->path)) {
+            return Storage::disk('public')->download($file->path, $file->name);
         }
+
+        // For drive/external files, redirect through the download route
+        return redirect()->route('files.download', $id);
     }
 
     public function getFileUrl(int $id): ?string
@@ -1329,8 +1282,8 @@ new #[Layout('components.layouts.app')] class extends Component
                 @endif
             </div>
 
-            {{-- Breadcrumb + Search + View Toggle --}}
-            <div class="flex flex-col sm:flex-row gap-3 items-start sm:items-center mb-4 pb-3 border-b border-gray-200">
+            {{-- Breadcrumb + Storage Filter + Search + View Toggle --}}
+            <div class="flex flex-col lg:flex-row gap-3 items-start lg:items-center justify-between mb-4 pb-3 border-b border-gray-200">
                 {{-- Breadcrumbs --}}
                 <nav class="flex items-center gap-0.5 text-sm flex-1 min-w-0">
                     @foreach($this->breadcrumbs as $i => $crumb)
@@ -1341,6 +1294,7 @@ new #[Layout('components.layouts.app')] class extends Component
                         </button>
                     @endforeach
                 </nav>
+
 
                 <div class="flex gap-2 items-center w-full sm:w-auto">
                     <x-search-input wire="search" placeholder="Search" compact class="w-full sm:w-52" />
@@ -1503,7 +1457,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
                         {{-- Table Body --}}
                         @foreach($this->files as $file)
-                            <div class="group border-b border-gray-50 {{ $loop->last ? 'border-b-0' : '' }} {{ $file->storage_type === 'external' ? 'bg-blue-50/30' : '' }}">
+                            <div class="group border-b border-gray-50 {{ $loop->last ? 'border-b-0' : '' }} {{ in_array($file->storage_type, ['drive', 'external']) ? 'bg-blue-50/20' : '' }}">
 
                                 {{-- Desktop: grid row --}}
                                 <div class="hidden sm:grid grid-cols-12 gap-2 px-4 py-2.5 hover:bg-blue-50/50 transition-colors items-center cursor-grab active:cursor-grabbing"
@@ -1512,8 +1466,8 @@ new #[Layout('components.layouts.app')] class extends Component
                                      x-on:dragend="$el.classList.remove('opacity-50')">
                                     <div class="col-span-4 flex items-center gap-3 min-w-0 cursor-pointer" wire:click="openPreview({{ $file->id }})">
                                         <div class="flex-shrink-0 w-9 h-9 rounded-lg flex items-center justify-center
-                                            {{ $file->storage_type === 'external' ? 'bg-blue-100' : ($file->type === 'image' ? 'bg-blue-50' : ($file->type === 'video' ? 'bg-purple-50' : ($file->type === 'audio' ? 'bg-pink-50' : 'bg-gray-50'))) }}">
-                                            @if($file->storage_type === 'external')
+                                            {{ in_array($file->storage_type, ['drive', 'external']) ? 'bg-blue-100' : ($file->type === 'image' ? 'bg-blue-50' : ($file->type === 'video' ? 'bg-purple-50' : ($file->type === 'audio' ? 'bg-pink-50' : 'bg-gray-50'))) }}">
+                                            @if(in_array($file->storage_type, ['drive', 'external']))
                                                 <i class="fab fa-google-drive text-blue-500 text-sm"></i>
                                             @else
                                                 <i class="fas {{ $file->type_icon }} {{ $file->type_color }} text-sm"></i>
@@ -1522,8 +1476,10 @@ new #[Layout('components.layouts.app')] class extends Component
                                         <div class="min-w-0">
                                             <div class="flex items-center gap-1.5">
                                                 <span class="text-sm font-medium text-gray-800 truncate">{{ $file->name }}</span>
-                                                @if($file->storage_type === 'external')
+                                                @if(in_array($file->storage_type, ['drive', 'external']))
                                                     <span class="badge badge-info text-[9px] py-0 px-1.5"><i class="fab fa-google-drive mr-0.5"></i> Drive</span>
+                                                @else
+                                                    <span class="badge badge-neutral text-[9px] py-0 px-1.5"><i class="fas fa-hard-drive mr-0.5"></i> Local</span>
                                                 @endif
                                             </div>
                                             <div class="flex items-center gap-2 mt-0.5">
@@ -1551,15 +1507,18 @@ new #[Layout('components.layouts.app')] class extends Component
                                         @if(!$file->extended && isset($file->expiry_class) && $file->expiry_class !== 'badge-danger')
                                             <button wire:click.stop="extendExpiry({{ $file->id }})" class="w-7 h-7 rounded flex items-center justify-center text-gray-400 hover:text-blue-500 hover:bg-blue-50" title="Extend expiry +5d"><i class="fas fa-clock text-xs"></i></button>
                                         @endif
-                                        @if($file->storage_type === 'external')
-                                            <a href="{{ $file->external_url }}" target="_blank" rel="noopener noreferrer" class="w-7 h-7 rounded flex items-center justify-center text-gray-400 hover:text-blue-500 hover:bg-blue-50" title="Open in Drive"><i class="fab fa-google-drive text-xs"></i></a>
-                                            <button wire:click.stop type="button"
-                                                x-data="{ copied: false }"
-                                                x-on:click="navigator.clipboard.writeText('{{ $file->external_url }}'); copied = true; setTimeout(() => copied = false, 2000)"
-                                                class="w-7 h-7 rounded flex items-center justify-center text-gray-400 hover:text-green-500 hover:bg-green-50" title="Copy Drive link">
-                                                <i x-show="!copied" class="fas fa-link text-xs"></i>
-                                                <i x-show="copied" class="fas fa-check text-xs text-green-500"></i>
-                                            </button>
+                                        @if(in_array($file->storage_type, ['drive', 'external']))
+                                            @if($file->external_url)
+                                                <a href="{{ $file->external_url }}" target="_blank" rel="noopener noreferrer" class="w-7 h-7 rounded flex items-center justify-center text-gray-400 hover:text-blue-500 hover:bg-blue-50" title="Open in Drive"><i class="fab fa-google-drive text-xs"></i></a>
+                                                <button wire:click.stop type="button"
+                                                    x-data="{ copied: false }"
+                                                    x-on:click="navigator.clipboard.writeText('{{ $file->external_url }}'); copied = true; setTimeout(() => copied = false, 2000)"
+                                                    class="w-7 h-7 rounded flex items-center justify-center text-gray-400 hover:text-green-500 hover:bg-green-50" title="Copy Drive link">
+                                                    <i x-show="!copied" class="fas fa-link text-xs"></i>
+                                                    <i x-show="copied" class="fas fa-check text-xs text-green-500"></i>
+                                                </button>
+                                            @endif
+                                            <a href="{{ route('files.download', $file->id) }}" class="w-7 h-7 rounded flex items-center justify-center text-gray-400 hover:text-green-500 hover:bg-green-50" title="Download"><i class="fas fa-download text-xs"></i></a>
                                         @else
                                             <a href="{{ route('files.download', $file->id) }}" class="w-7 h-7 rounded flex items-center justify-center text-gray-400 hover:text-green-500 hover:bg-green-50" title="Download"><i class="fas fa-download text-xs"></i></a>
                                         @endif
@@ -1574,8 +1533,8 @@ new #[Layout('components.layouts.app')] class extends Component
                                      x-on:dragend="$el.classList.remove('opacity-50')">
                                     <div class="flex items-start gap-3 cursor-pointer" wire:click="openPreview({{ $file->id }})">
                                         <div class="flex-shrink-0 w-10 h-10 rounded-lg flex items-center justify-center
-                                            {{ $file->storage_type === 'external' ? 'bg-blue-100' : ($file->type === 'image' ? 'bg-blue-50' : ($file->type === 'video' ? 'bg-purple-50' : ($file->type === 'audio' ? 'bg-pink-50' : 'bg-gray-50'))) }}">
-                                            @if($file->storage_type === 'external')
+                                            {{ in_array($file->storage_type, ['drive', 'external']) ? 'bg-blue-100' : ($file->type === 'image' ? 'bg-blue-50' : ($file->type === 'video' ? 'bg-purple-50' : ($file->type === 'audio' ? 'bg-pink-50' : 'bg-gray-50'))) }}">
+                                            @if(in_array($file->storage_type, ['drive', 'external']))
                                                 <i class="fab fa-google-drive text-blue-500"></i>
                                             @else
                                                 <i class="fas {{ $file->type_icon }} {{ $file->type_color }}"></i>
@@ -1584,8 +1543,10 @@ new #[Layout('components.layouts.app')] class extends Component
                                         <div class="flex-1 min-w-0">
                                             <div class="flex items-center gap-1.5">
                                                 <span class="text-sm font-medium text-gray-800 truncate">{{ $file->name }}</span>
-                                                @if($file->storage_type === 'external')
+                                                @if(in_array($file->storage_type, ['drive', 'external']))
                                                     <span class="badge badge-info text-[9px] py-0 px-1.5"><i class="fab fa-google-drive mr-0.5"></i> Drive</span>
+                                                @else
+                                                    <span class="badge badge-neutral text-[9px] py-0 px-1.5"><i class="fas fa-hard-drive mr-0.5"></i> Local</span>
                                                 @endif
                                             </div>
                                             <div class="flex items-center gap-2 mt-0.5 flex-wrap">
@@ -1605,15 +1566,18 @@ new #[Layout('components.layouts.app')] class extends Component
                                         @if(!$file->extended && isset($file->expiry_class) && $file->expiry_class !== 'badge-danger')
                                             <button wire:click.stop="extendExpiry({{ $file->id }})" class="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-blue-500 hover:bg-blue-50" title="Extend expiry +5d"><i class="fas fa-clock text-sm"></i></button>
                                         @endif
-                                        @if($file->storage_type === 'external')
-                                            <a href="{{ $file->external_url }}" target="_blank" rel="noopener noreferrer" class="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-blue-500 hover:bg-blue-50" title="Open in Drive"><i class="fab fa-google-drive text-sm"></i></a>
-                                            <button wire:click.stop type="button"
-                                                x-data="{ copied: false }"
-                                                x-on:click="navigator.clipboard.writeText('{{ $file->external_url }}'); copied = true; setTimeout(() => copied = false, 2000)"
-                                                class="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-green-500 hover:bg-green-50" title="Copy Drive link">
-                                                <i x-show="!copied" class="fas fa-link text-sm"></i>
-                                                <i x-show="copied" class="fas fa-check text-sm text-green-500"></i>
-                                            </button>
+                                        @if(in_array($file->storage_type, ['drive', 'external']))
+                                            @if($file->external_url)
+                                                <a href="{{ $file->external_url }}" target="_blank" rel="noopener noreferrer" class="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-blue-500 hover:bg-blue-50" title="Open in Drive"><i class="fab fa-google-drive text-sm"></i></a>
+                                                <button wire:click.stop type="button"
+                                                    x-data="{ copied: false }"
+                                                    x-on:click="navigator.clipboard.writeText('{{ $file->external_url }}'); copied = true; setTimeout(() => copied = false, 2000)"
+                                                    class="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-green-500 hover:bg-green-50" title="Copy Drive link">
+                                                    <i x-show="!copied" class="fas fa-link text-sm"></i>
+                                                    <i x-show="copied" class="fas fa-check text-sm text-green-500"></i>
+                                                </button>
+                                            @endif
+                                            <a href="{{ route('files.download', $file->id) }}" class="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-green-500 hover:bg-green-50" title="Download"><i class="fas fa-download text-sm"></i></a>
                                         @else
                                             <a href="{{ route('files.download', $file->id) }}" class="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-green-500 hover:bg-green-50" title="Download"><i class="fas fa-download text-sm"></i></a>
                                         @endif
@@ -1622,7 +1586,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                 </div>
 
                                 {{-- Drive Link Row (visible inline for external files) --}}
-                                @if($file->storage_type === 'external' && $file->external_url)
+                                @if(in_array($file->storage_type, ['drive', 'external']) && $file->external_url)
                                     <div class="px-4 pb-2.5 pt-0">
                                         <div class="flex items-center gap-2 ml-12">
                                             <i class="fab fa-google-drive text-blue-400 text-xs flex-shrink-0"></i>
@@ -1702,11 +1666,11 @@ new #[Layout('components.layouts.app')] class extends Component
                     <div class="relative w-full max-w-5xl mx-4 bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
 
                         {{-- Top Bar --}}
-                        <div class="flex items-center justify-between px-5 py-3 border-b border-gray-200 {{ $pf->storage_type === 'external' ? 'bg-blue-50/80' : 'bg-gray-50/80' }}">
+                        <div class="flex items-center justify-between px-5 py-3 border-b border-gray-200 {{ in_array($pf->storage_type, ['drive', 'external']) ? 'bg-blue-50/80' : 'bg-gray-50/80' }}">
                             <div class="flex items-center gap-3 min-w-0">
                                 <div class="flex-shrink-0 w-9 h-9 rounded-lg flex items-center justify-center
-                                    {{ $pf->storage_type === 'external' ? 'bg-blue-100 text-blue-500' : ($pf->type === 'image' ? 'bg-blue-100 text-blue-500' : ($pf->type === 'video' ? 'bg-purple-100 text-purple-500' : ($pf->type === 'audio' ? 'bg-pink-100 text-pink-500' : 'bg-gray-100 text-gray-500'))) }}">
-                                    @if($pf->storage_type === 'external')
+                                    {{ in_array($pf->storage_type, ['drive', 'external']) ? 'bg-blue-100 text-blue-500' : ($pf->type === 'image' ? 'bg-blue-100 text-blue-500' : ($pf->type === 'video' ? 'bg-purple-100 text-purple-500' : ($pf->type === 'audio' ? 'bg-pink-100 text-pink-500' : 'bg-gray-100 text-gray-500'))) }}">
+                                    @if(in_array($pf->storage_type, ['drive', 'external']))
                                         <i class="fab fa-google-drive"></i>
                                     @else
                                         <i class="fas {{ $pf->type === 'image' ? 'fa-file-image' : ($pf->type === 'video' ? 'fa-file-video' : ($pf->type === 'audio' ? 'fa-file-audio' : 'fa-file-alt')) }}"></i>
@@ -1715,17 +1679,24 @@ new #[Layout('components.layouts.app')] class extends Component
                                 <div class="min-w-0">
                                     <div class="flex items-center gap-2">
                                         <h3 class="text-sm font-bold text-gray-900 truncate">{{ $pf->name }}</h3>
-                                        @if($pf->storage_type === 'external')
+                                        @if(in_array($pf->storage_type, ['drive', 'external']))
                                             <span class="badge badge-info text-[9px] py-0.5 px-1.5"><i class="fab fa-google-drive mr-0.5"></i> Drive</span>
+                                        @else
+                                            <span class="badge badge-neutral text-[9px] py-0.5 px-1.5"><i class="fas fa-hard-drive mr-0.5"></i> Local</span>
                                         @endif
                                     </div>
-                                    <p class="text-[11px] text-gray-400">{{ strtoupper(pathinfo($pf->name, PATHINFO_EXTENSION)) }} &middot; {{ $pf->storage_type === 'external' ? 'External Link' : $this->formatSize($pf->size) }}</p>
+                                    <p class="text-[11px] text-gray-400">{{ strtoupper(pathinfo($pf->name, PATHINFO_EXTENSION)) }} &middot; {{ in_array($pf->storage_type, ['drive', 'external']) ? 'Google Drive · ' . $this->formatSize($pf->size) : $this->formatSize($pf->size) }}</p>
                                 </div>
                             </div>
                             <div class="flex items-center gap-2">
-                                @if($pf->storage_type === 'external')
-                                    <a href="{{ $pf->external_url }}" target="_blank" rel="noopener noreferrer" class="px-3 py-1.5 rounded-lg bg-blue-500 text-white text-xs font-semibold hover:bg-blue-600 transition-colors">
-                                        <i class="fas fa-external-link-alt mr-1"></i> Open in Drive
+                                @if(in_array($pf->storage_type, ['drive', 'external']))
+                                    @if($pf->external_url)
+                                        <a href="{{ $pf->external_url }}" target="_blank" rel="noopener noreferrer" class="px-3 py-1.5 rounded-lg bg-blue-500 text-white text-xs font-semibold hover:bg-blue-600 transition-colors">
+                                            <i class="fas fa-external-link-alt mr-1"></i> Open in Drive
+                                        </a>
+                                    @endif
+                                    <a href="{{ route('files.download', $pf->id) }}" class="px-3 py-1.5 rounded-lg bg-gray-100 text-gray-700 text-xs font-semibold hover:bg-gray-200 transition-colors">
+                                        <i class="fas fa-download mr-1"></i> Download
                                     </a>
                                 @else
                                     <button wire:click="downloadFile({{ $pf->id }})" class="px-3 py-1.5 rounded-lg bg-[var(--brand)] text-white text-xs font-semibold hover:opacity-90 transition-opacity">
@@ -1742,7 +1713,7 @@ new #[Layout('components.layouts.app')] class extends Component
                         <div class="flex flex-1 min-h-0 overflow-hidden">
                             {{-- Preview Area --}}
                             <div class="flex-1 flex items-center justify-center p-6 bg-gray-900/5 min-h-[300px]">
-                                @if($pf->storage_type === 'external')
+                                @if(in_array($pf->storage_type, ['drive', 'external']))
                                     {{-- External file (Google Drive link) --}}
                                     <div class="flex flex-col items-center gap-5 w-full max-w-lg">
                                         <div class="w-32 h-36 rounded-2xl bg-gradient-to-br from-blue-500 via-blue-600 to-blue-700 flex items-center justify-center shadow-xl">
@@ -1751,9 +1722,10 @@ new #[Layout('components.layouts.app')] class extends Component
                                                 <p class="text-[11px] font-bold text-white/90 uppercase tracking-wide">Google Drive</p>
                                             </div>
                                         </div>
-                                        <p class="text-sm text-gray-500 text-center">This file is stored on Google Drive</p>
+                                        <p class="text-sm text-gray-500 text-center">This file is stored on your connected Google Drive</p>
 
                                         {{-- Drive Link Card --}}
+                                        @if($pf->external_url)
                                         <div class="w-full bg-gradient-to-r from-blue-50 to-blue-100/50 border-2 border-blue-200 rounded-xl p-4">
                                             <div class="flex items-center gap-3">
                                                 <div class="flex-shrink-0 w-10 h-10 rounded-lg bg-blue-500 flex items-center justify-center">
@@ -1768,13 +1740,21 @@ new #[Layout('components.layouts.app')] class extends Component
                                                 </div>
                                             </div>
                                         </div>
+                                        @endif
 
                                         {{-- Action Buttons --}}
-                                        <div class="flex items-center gap-3">
+                                        <div class="flex items-center gap-3 flex-wrap justify-center">
+                                            @if($pf->external_url)
                                             <a href="{{ $pf->external_url }}" target="_blank" rel="noopener noreferrer"
                                                class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-500 text-white text-sm font-bold hover:bg-blue-600 shadow-lg shadow-blue-500/25 transition-all hover:shadow-xl hover:shadow-blue-500/30">
                                                 <i class="fas fa-external-link-alt"></i> Open in Google Drive
                                             </a>
+                                            @endif
+                                            <a href="{{ route('files.download', $pf->id) }}"
+                                               class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-bold hover:bg-emerald-700 shadow-lg shadow-emerald-600/25 transition-all">
+                                                <i class="fas fa-download"></i> Download File
+                                            </a>
+                                            @if($pf->external_url)
                                             <button type="button"
                                                 x-data="{ copied: false }"
                                                 x-on:click="navigator.clipboard.writeText('{{ $pf->external_url }}'); copied = true; setTimeout(() => copied = false, 2000)"
@@ -1783,6 +1763,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                                 <i x-show="copied" class="fas fa-check text-green-500"></i>
                                                 <span x-text="copied ? 'Copied!' : 'Copy Link'"></span>
                                             </button>
+                                            @endif
                                         </div>
                                     </div>
                                 @elseif($pf->type === 'image')
@@ -1823,10 +1804,10 @@ new #[Layout('components.layouts.app')] class extends Component
                                         <div class="space-y-2">
                                             <div class="flex items-center justify-between text-sm">
                                                 <span class="text-gray-500">Storage</span>
-                                                @if($pf->storage_type === 'external')
+                                                @if(in_array($pf->storage_type, ['drive', 'external']))
                                                     <span class="badge badge-info text-[10px]"><i class="fab fa-google-drive mr-1"></i>Google Drive</span>
                                                 @else
-                                                    <span class="badge badge-success text-[10px]"><i class="fas fa-hard-drive mr-1"></i>Local</span>
+                                                    <span class="badge badge-success text-[10px]"><i class="fas fa-hard-drive mr-1"></i>Local Storage</span>
                                                 @endif
                                             </div>
                                             <div class="flex items-center justify-between text-sm">
@@ -1839,12 +1820,12 @@ new #[Layout('components.layouts.app')] class extends Component
                                             </div>
                                             <div class="flex items-center justify-between text-sm">
                                                 <span class="text-gray-500">Size</span>
-                                                <span class="text-gray-800 font-mono text-xs">{{ $pf->storage_type === 'external' ? 'External' : $this->formatSize($pf->size) }}</span>
+                                                <span class="text-gray-800 font-mono text-xs">{{ $this->formatSize($pf->size) }}</span>
                                             </div>
                                         </div>
                                     </div>
 
-                                    @if($pf->storage_type === 'external' && $pf->external_url)
+                                    @if(in_array($pf->storage_type, ['drive', 'external']) && $pf->external_url)
                                         <hr class="border-gray-100">
                                         <div>
                                             <h4 class="text-[10px] font-bold text-blue-500 uppercase tracking-wider mb-2"><i class="fab fa-google-drive mr-1"></i>Google Drive Link</h4>
@@ -1953,6 +1934,34 @@ new #[Layout('components.layouts.app')] class extends Component
                          dragging: false,
                          upP: 0, upOn: false, upDone: false, upB: 0, upT: 0,
                          upStartTime: 0, upSpeed: 0, upEta: 0, upLastB: 0, upLastTime: 0,
+                         driveSubmitting: false,
+                         driveStep: 1,
+                         driveStatus: '',
+                         driveDone: false,
+                         folderSubmitting: false,
+                         startDriveUpload() {
+                             if (this.driveSubmitting) return;
+                             this.driveSubmitting = true;
+                             this.driveStep = 1;
+                             this.driveStatus = 'Connecting to Google Drive...';
+
+                             setTimeout(() => { if (this.driveSubmitting && !this.driveDone) { this.driveStep = 2; this.driveStatus = 'Transferring file data to Drive...'; } }, 1000);
+                             setTimeout(() => { if (this.driveSubmitting && !this.driveDone) { this.driveStep = 3; this.driveStatus = 'Configuring access permissions...'; } }, 3000);
+
+                             $wire.uploadToGoogleDrive().then(() => {
+                                 this.driveStep = 3;
+                                 this.driveStatus = 'Upload completed successfully!';
+                                 this.driveDone = true;
+                                 setTimeout(() => {
+                                     this.driveSubmitting = false;
+                                     this.driveDone = false;
+                                 }, 1000);
+                             }).catch((err) => {
+                                 console.error(err);
+                                 this.driveSubmitting = false;
+                                 this.driveDone = false;
+                             });
+                         },
                          fmt(bytes) {
                              if (!bytes) return '0 B';
                              const k = 1024, s = ['B','KB','MB','GB'];
@@ -2435,10 +2444,14 @@ new #[Layout('components.layouts.app')] class extends Component
                                 </button>
                             @elseif($uploadMode === 'drive-upload')
                                 {{-- Regular file upload button --}}
-                                <button wire:click="uploadToGoogleDrive" class="btn btn-primary order-1 sm:order-2 relative overflow-hidden" wire:loading.attr="disabled" x-bind:disabled="$wire.pendingFiles.length === 0 || upOn || folderMode || $wire.driveUploading" x-show="!folderMode && !$wire.driveUploading">
-                                    <span wire:loading.remove wire:target="uploadToGoogleDrive"><i class="fab fa-google text-sm mr-1"></i> Upload to Drive</span>
-                                    <span wire:loading wire:target="uploadToGoogleDrive"><i class="fas fa-spinner fa-spin mr-1"></i> Starting upload...</span>
+                                <button @click="startDriveUpload()" class="btn btn-primary order-1 sm:order-2 relative overflow-hidden" x-bind:disabled="$wire.pendingFiles.length === 0 || upOn || folderMode || driveSubmitting || $wire.driveUploading" x-show="!folderMode && !$wire.driveUploading && !driveSubmitting">
+                                    <i class="fab fa-google text-sm mr-1"></i> Upload to Drive
                                 </button>
+                                {{-- Staged Drive upload status --}}
+                                <div x-show="driveSubmitting && !$wire.driveUploading" x-transition class="order-1 sm:order-2 flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-50 border border-blue-200 text-sm text-blue-700 font-medium">
+                                    <i class="fas fa-spinner fa-spin text-blue-500"></i>
+                                    <span x-text="driveStatus"></span>
+                                </div>
                                 {{-- Folder upload button (Drive) --}}
                                 <button wire:click="uploadFolderToDrive" class="btn btn-primary order-1 sm:order-2" x-bind:disabled="$wire.pendingFiles.length === 0 || folderUploading" x-show="folderMode && !folderUploading">
                                     <i class="fab fa-google text-sm mr-1"></i> Upload Folder to Drive

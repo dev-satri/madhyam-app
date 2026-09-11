@@ -25,7 +25,17 @@ class File extends Model
 
     public function isExternal(): bool
     {
-        return $this->storage_type === 'external';
+        return in_array($this->storage_type, ['external', 'drive']);
+    }
+
+    public function isDrive(): bool
+    {
+        return $this->storage_type === 'drive';
+    }
+
+    public function isLocal(): bool
+    {
+        return $this->storage_type === 'local';
     }
 
     public function getUrl(): ?string
