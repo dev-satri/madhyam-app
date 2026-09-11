@@ -474,6 +474,18 @@ new #[Layout('components.layouts.app')] class extends Component
             return;
         }
 
+        // Check file sizes before attempting upload (5GB limit per file)
+        $maxFileSize = 5 * 1024 * 1024 * 1024; // 5GB in bytes
+        foreach ($this->pendingFiles as $file) {
+            $fileSize = $file->getSize();
+            $fileSizeGB = round($fileSize / (1024 * 1024 * 1024), 2);
+            
+            if ($fileSize > $maxFileSize) {
+                $this->dispatch('toast', message: "File '{$file->getClientOriginalName()}' exceeds the 5GB size limit ({$fileSizeGB}GB). Please reduce the file size and try again.", type: 'error');
+                return;
+            }
+        }
+
         if ($this->folderClientId) {
             $info = $this->getStorageInfo();
             $totalNewBytes = array_sum(array_map(fn ($f) => $f->getSize(), $this->pendingFiles));
@@ -489,42 +501,52 @@ new #[Layout('components.layouts.app')] class extends Component
         $uploaded = 0;
 
         foreach ($this->pendingFiles as $file) {
-            $path = $file->store('files/' . now()->format('Y/m'), 'public');
-            $ext = strtolower($file->getClientOriginalExtension());
-            $type = match(true) {
-                in_array($ext, ['jpg','jpeg','png','gif','svg','webp']) => 'image',
-                in_array($ext, ['mp4','mov','avi','mkv','webm']) => 'video',
-                in_array($ext, ['mp3','wav','ogg','flac']) => 'audio',
-                default => 'document',
-            };
+            try {
+                $path = $file->store('files/' . now()->format('Y/m'), 'public');
+                $ext = strtolower($file->getClientOriginalExtension());
+                $type = match(true) {
+                    in_array($ext, ['jpg','jpeg','png','gif','svg','webp']) => 'image',
+                    in_array($ext, ['mp4','mov','avi','mkv','webm']) => 'video',
+                    in_array($ext, ['mp3','wav','ogg','flac']) => 'audio',
+                    default => 'document',
+                };
 
-            $fileId = DB::table('files')->insertGetId([
-                'name' => $file->getClientOriginalName(),
-                'path' => $path,
-                'type' => $type,
-                'size' => $file->getSize(),
-                'storage_type' => 'local',
-                'folder_id' => $this->currentFolderId ?: null,
-                'client_id' => $this->folderClientId ?: null,
-                'tags' => $this->uploadTags ?: null,
-                'uploaded_by' => Auth::id(),
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]);
+                $fileId = DB::table('files')->insertGetId([
+                    'name' => $file->getClientOriginalName(),
+                    'path' => $path,
+                    'type' => $type,
+                    'size' => $file->getSize(),
+                    'storage_type' => 'local',
+                    'folder_id' => $this->currentFolderId ?: null,
+                    'client_id' => $this->folderClientId ?: null,
+                    'tags' => $this->uploadTags ?: null,
+                    'uploaded_by' => Auth::id(),
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
 
-            DB::table('file_expiries')->insert([
-                'file_id' => $fileId,
-                'expiry_date' => now()->addDays($retentionDays),
-                'extended' => false,
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]);
+                DB::table('file_expiries')->insert([
+                    'file_id' => $fileId,
+                    'expiry_date' => now()->addDays($retentionDays),
+                    'extended' => false,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
 
-            if ($this->folderClientId) {
-                PackageService::recordFile($this->folderClientId, $file->getSize());
+                if ($this->folderClientId) {
+                    PackageService::recordFile($this->folderClientId, $file->getSize());
+                }
+
+                $uploaded++;
+            } catch (\Exception $e) {
+                \Illuminate\Support\Facades\Log::error('File upload failed', [
+                    'file' => $file->getClientOriginalName(),
+                    'error' => $e->getMessage(),
+                    'size' => $file->getSize(),
+                ]);
+                $this->dispatch('toast', message: "Failed to upload '{$file->getClientOriginalName()}': {$e->getMessage()}", type: 'error');
+                return;
             }
-
-            $uploaded++;
         }
 
         $this->pendingFiles = [];
@@ -546,6 +568,18 @@ new #[Layout('components.layouts.app')] class extends Component
             return;
         }
 
+        // Check file sizes before attempting upload (5GB limit per file)
+        $maxFileSize = 5 * 1024 * 1024 * 1024; // 5GB in bytes
+        foreach ($this->pendingFiles as $file) {
+            $fileSize = $file->getSize();
+            $fileSizeGB = round($fileSize / (1024 * 1024 * 1024), 2);
+            
+            if ($fileSize > $maxFileSize) {
+                $this->dispatch('toast', message: "File '{$file->getClientOriginalName()}' exceeds the 5GB size limit ({$fileSizeGB}GB). Please reduce the file size and try again.", type: 'error');
+                return;
+            }
+        }
+
         $driveService = app(GoogleDriveService::class);
         $quota = $driveService->getStorageQuota();
 
@@ -559,6 +593,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
         $uploaded = 0;
         $errors = 0;
+        $errorMessages = [];
 
         foreach ($this->pendingFiles as $file) {
             try {
@@ -570,12 +605,20 @@ new #[Layout('components.layouts.app')] class extends Component
                     default => 'document',
                 };
 
+                // Use file resource handle instead of loading entire file into memory
+                $fileHandle = fopen($file->getRealPath(), 'r');
+                if ($fileHandle === false) {
+                    throw new \RuntimeException('Unable to open file for reading');
+                }
+
                 $driveResult = $driveService->uploadFile(
                     $file->getClientOriginalName(),
-                    file_get_contents($file->getRealPath()),
+                    $fileHandle,
                     null,
                     $file->getMimeType()
                 );
+
+                fclose($fileHandle);
 
                 $driveFileId = $driveResult['id'] ?? null;
                 $webViewLink = $driveResult['webViewLink'] ?? ("https://drive.google.com/file/d/{$driveFileId}/view");
@@ -599,9 +642,12 @@ new #[Layout('components.layouts.app')] class extends Component
                 $uploaded++;
             } catch (\Exception $e) {
                 $errors++;
+                $errorMessage = $e->getMessage();
+                $errorMessages[] = $file->getClientOriginalName();
                 \Illuminate\Support\Facades\Log::error('Google Drive upload failed', [
                     'file' => $file->getClientOriginalName(),
-                    'error' => $e->getMessage(),
+                    'error' => $errorMessage,
+                    'size' => $file->getSize(),
                 ]);
             }
         }
@@ -611,7 +657,11 @@ new #[Layout('components.layouts.app')] class extends Component
         $this->showUpload = false;
 
         if ($errors > 0) {
-            $this->dispatch('toast', message: "$uploaded file(s) uploaded, $errors failed", type: 'warning');
+            $failedFiles = implode(', ', array_slice($errorMessages, 0, 3));
+            if (count($errorMessages) > 3) {
+                $failedFiles .= ' and ' . (count($errorMessages) - 3) . ' more';
+            }
+            $this->dispatch('toast', message: "$uploaded file(s) uploaded, $errors failed: {$failedFiles}", type: 'warning');
         } else {
             $this->dispatch('toast', message: "$uploaded file(s) uploaded to Google Drive", type: 'success');
         }
@@ -628,6 +678,18 @@ new #[Layout('components.layouts.app')] class extends Component
         if (! $connection || ! $connection->isActive()) {
             $this->dispatch('toast', message: 'Google Drive is not connected. Please connect first.', type: 'error');
             return;
+        }
+
+        // Check file sizes before attempting upload (5GB limit per file)
+        $maxFileSize = 5 * 1024 * 1024 * 1024; // 5GB in bytes
+        foreach ($this->pendingFiles as $file) {
+            $fileSize = $file->getSize();
+            $fileSizeGB = round($fileSize / (1024 * 1024 * 1024), 2);
+            
+            if ($fileSize > $maxFileSize) {
+                $this->dispatch('toast', message: "File '{$file->getClientOriginalName()}' exceeds the 5GB size limit ({$fileSizeGB}GB). Please reduce the file size and try again.", type: 'error');
+                return;
+            }
         }
 
         $driveService = app(GoogleDriveService::class);
@@ -672,12 +734,20 @@ new #[Layout('components.layouts.app')] class extends Component
             try {
                 $parentFolderId = $this->resolveDriveFolder($relativePath, $driveService, $folderPathMap);
 
+                // Use file resource handle instead of loading entire file into memory
+                $fileHandle = fopen($file->getRealPath(), 'r');
+                if ($fileHandle === false) {
+                    throw new \RuntimeException('Unable to open file for reading');
+                }
+
                 $driveResult = $driveService->uploadFile(
                     $fileName,
-                    file_get_contents($file->getRealPath()),
+                    $fileHandle,
                     $parentFolderId,
                     $file->getMimeType()
                 );
+
+                fclose($fileHandle);
 
                 $driveFileId = $driveResult['id'] ?? null;
                 $webViewLink = $driveResult['webViewLink'] ?? ("https://drive.google.com/file/d/{$driveFileId}/view");
@@ -725,6 +795,7 @@ new #[Layout('components.layouts.app')] class extends Component
                 \Illuminate\Support\Facades\Log::error('Google Drive folder upload failed', [
                     'file' => $relativePath,
                     'error' => $e->getMessage(),
+                    'size' => $file->getSize(),
                 ]);
             }
         }
@@ -757,6 +828,18 @@ new #[Layout('components.layouts.app')] class extends Component
         if (empty($this->pendingFiles)) {
             $this->dispatch('toast', message: 'No files selected', type: 'warning');
             return;
+        }
+
+        // Check file sizes before attempting upload (5GB limit per file)
+        $maxFileSize = 5 * 1024 * 1024 * 1024; // 5GB in bytes
+        foreach ($this->pendingFiles as $file) {
+            $fileSize = $file->getSize();
+            $fileSizeGB = round($fileSize / (1024 * 1024 * 1024), 2);
+            
+            if ($fileSize > $maxFileSize) {
+                $this->dispatch('toast', message: "File '{$file->getClientOriginalName()}' exceeds the 5GB size limit ({$fileSizeGB}GB). Please reduce the file size and try again.", type: 'error');
+                return;
+            }
         }
 
         if ($this->folderClientId) {
@@ -838,6 +921,11 @@ new #[Layout('components.layouts.app')] class extends Component
                 $this->folderProgressCurrent++;
             } catch (\Exception $e) {
                 $this->folderErrors[] = $relativePath . ': ' . $e->getMessage();
+                \Illuminate\Support\Facades\Log::error('Folder upload failed', [
+                    'file' => $relativePath,
+                    'error' => $e->getMessage(),
+                    'size' => $file->getSize(),
+                ]);
             }
         }
 

@@ -304,9 +304,17 @@ class GoogleDriveService
             $http = $http->withoutVerifying();
         }
 
+        // Handle both file handles (resource) and string content
+        if (is_resource($content)) {
+            // For large files, read the stream content
+            $fileContent = stream_get_contents($content);
+        } else {
+            $fileContent = $content;
+        }
+
         $response = $http->withToken($accessToken)
             ->attach('metadata', json_encode($metadata), null, ['Content-Type' => 'application/json'])
-            ->attach('file', $content, $name, ['Content-Type' => $mimeType])
+            ->attach('file', $fileContent, $name, ['Content-Type' => $mimeType])
             ->post(self::DRIVE_UPLOAD_BASE . '/files?uploadType=multipart');
 
         if ($response->failed()) {
