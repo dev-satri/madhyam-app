@@ -606,6 +606,9 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function uploadToGoogleDrive(): void
     {
+        @set_time_limit(0);
+        @ini_set('max_execution_time', '0');
+
         if (empty($this->pendingFiles)) {
             $this->dispatch('toast', message: 'No files selected', type: 'warning');
             return;
@@ -753,6 +756,9 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function uploadFolderToDrive(): void
     {
+        @set_time_limit(0);
+        @ini_set('max_execution_time', '0');
+
         if (empty($this->pendingFiles)) {
             $this->dispatch('toast', message: 'No files selected', type: 'warning');
             return;

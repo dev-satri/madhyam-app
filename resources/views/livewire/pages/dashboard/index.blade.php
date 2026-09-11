@@ -76,24 +76,36 @@ new #[Layout('components.layouts.app')] class extends Component
         };
 
         if ($this->isAdmin) {
+            $totalClients = DB::table('clients')->whereNull('deleted_at')->count();
+            $activeClients = DB::table('clients')->whereNull('deleted_at')->where('status', 'active')->count();
+
+            // Total and active (in-flight) projects/workflows
+            $totalProjects = DB::table('workflows')->whereNull('deleted_at')->count();
+            $activeProjects = DB::table('workflows')->whereNull('deleted_at')->whereNotIn('stage', ['published'])->count();
+
             $this->stats = [
                 'type' => 'admin',
-                'clients' => DB::table('clients')
-                    ->whereNull('deleted_at')
-                    ->where('status', 'active')
-                    ->where('created_at', '>=', $dateFilter)
-                    ->count(),
-                'projects' => DB::table('workflows')->where('created_at', '>=', $dateFilter)->count(),
-                'approvals' => DB::table('approvals')->whereNull('deleted_at')->where('created_at', '>=', $dateFilter)->where('status', 'pending')->count(),
-                'revenue' => DB::table('invoice_payments')->where('created_at', '>=', $dateFilter)->sum('amount'),
+                'clients' => $activeClients,
+                'total_clients' => $totalClients,
+                'projects' => $activeProjects,
+                'total_projects' => $totalProjects,
+                'approvals' => DB::table('approvals')->whereNull('deleted_at')->where('status', 'pending')->count(),
+                'revenue' => DB::table('invoice_payments')->where('created_at', '>=', $dateFilter)->where('created_at', '<=', $rangeEnd)->sum('amount'),
             ];
         } else {
+            $totalTasks = DB::table('tasks')->whereNull('deleted_at')->whereRaw('JSON_CONTAINS(assignee, ?)', [json_encode($userId)])->count();
+            $activeTasks = DB::table('tasks')->whereNull('deleted_at')->whereRaw('JSON_CONTAINS(assignee, ?)', [json_encode($userId)])->where('status', '!=', 'completed')->count();
+            $totalWorkflows = DB::table('workflows')->whereNull('deleted_at')->whereRaw('JSON_CONTAINS(assignee, ?)', [json_encode($userId)])->count();
+            $activeWorkflows = DB::table('workflows')->whereNull('deleted_at')->whereRaw('JSON_CONTAINS(assignee, ?)', [json_encode($userId)])->whereNotIn('stage', ['published'])->count();
+
             $this->stats = [
                 'type' => 'staff',
-                'tasks' => DB::table('tasks')->whereRaw('JSON_CONTAINS(assignee, ?)', [json_encode($userId)])->where('created_at', '>=', $dateFilter)->count(),
-                'workflows' => DB::table('workflows')->whereRaw('JSON_CONTAINS(assignee, ?)', [json_encode($userId)])->where('created_at', '>=', $dateFilter)->count(),
-                'approvals' => DB::table('approvals')->whereNull('deleted_at')->where('submitted_by', $userId)->where('created_at', '>=', $dateFilter)->where('status', 'pending')->count(),
-                'overdue' => DB::table('tasks')->whereRaw('JSON_CONTAINS(assignee, ?)', [json_encode($userId)])->where('due_date', '<', now())->where('status', '!=', 'completed')->count(),
+                'tasks' => $activeTasks,
+                'total_tasks' => $totalTasks,
+                'workflows' => $activeWorkflows,
+                'total_workflows' => $totalWorkflows,
+                'approvals' => DB::table('approvals')->whereNull('deleted_at')->where('submitted_by', $userId)->where('status', 'pending')->count(),
+                'overdue' => DB::table('tasks')->whereNull('deleted_at')->whereRaw('JSON_CONTAINS(assignee, ?)', [json_encode($userId)])->where('due_date', '<', now())->where('status', '!=', 'completed')->count(),
             ];
         }
 
@@ -118,7 +130,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
         if ($this->isAdmin) {
             $this->taskDistribution = DB::table('tasks')
-                ->where('created_at', '>=', $dateFilter)
+                ->whereNull('deleted_at')
                 ->select('status', DB::raw('COUNT(*) as count'))
                 ->groupBy('status')
                 ->get()
@@ -127,7 +139,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
             // Flat-count JSON-array platform column, expanding "all" sentinel to every canonical platform
             $platformRows = DB::table('contents')
-                ->where('created_at', '>=', $dateFilter)
+                ->whereNull('deleted_at')
                 ->pluck('platform');
             $platformCounts = [];
             foreach ($platformRows as $raw) {
@@ -143,6 +155,7 @@ new #[Layout('components.layouts.app')] class extends Component
             $this->platformData = $platformCounts;
 
             $this->stageData = DB::table('workflows')
+                ->whereNull('deleted_at')
                 ->select('stage', DB::raw('COUNT(*) as count'))
                 ->groupBy('stage')
                 ->get()
@@ -150,8 +163,8 @@ new #[Layout('components.layouts.app')] class extends Component
                 ->toArray();
         } else {
             $this->taskDistribution = DB::table('tasks')
+                ->whereNull('deleted_at')
                 ->whereRaw('JSON_CONTAINS(assignee, ?)', [json_encode($userId)])
-                ->where('created_at', '>=', $dateFilter)
                 ->select('status', DB::raw('COUNT(*) as count'))
                 ->groupBy('status')
                 ->get()
@@ -168,29 +181,30 @@ new #[Layout('components.layouts.app')] class extends Component
             // Build comprehensive workload from tasks, workflows, and content planner
             $users = UserVisibility::apply(DB::table('users'))->get();
             
-            $this->workload = $users->map(function ($user) use ($dateFilter) {
+            $this->workload = $users->map(function ($user) {
                 $userId = $user->id;
                 
                 // Count tasks for this user
                 $taskAssigned = DB::table('tasks')
+                    ->whereNull('deleted_at')
                     ->whereRaw('JSON_CONTAINS(assignee, ?)', [json_encode($userId)])
                     ->whereIn('status', ['todo', 'in-progress'])
-                    ->where('created_at', '>=', $dateFilter)
                     ->count();
                     
                 $taskInProgress = DB::table('tasks')
+                    ->whereNull('deleted_at')
                     ->whereRaw('JSON_CONTAINS(assignee, ?)', [json_encode($userId)])
                     ->where('status', 'in-progress')
-                    ->where('created_at', '>=', $dateFilter)
                     ->count();
                     
                 $taskCompleted = DB::table('tasks')
+                    ->whereNull('deleted_at')
                     ->whereRaw('JSON_CONTAINS(assignee, ?)', [json_encode($userId)])
                     ->where('status', 'completed')
-                    ->where('created_at', '>=', $dateFilter)
                     ->count();
                     
                 $taskOverdue = DB::table('tasks')
+                    ->whereNull('deleted_at')
                     ->whereRaw('JSON_CONTAINS(assignee, ?)', [json_encode($userId)])
                     ->where('due_date', '<', now())
                     ->where('status', '!=', 'completed')
@@ -198,24 +212,25 @@ new #[Layout('components.layouts.app')] class extends Component
                 
                 // Count workflows for this user
                 $workflowAssigned = DB::table('workflows')
+                    ->whereNull('deleted_at')
                     ->whereRaw('JSON_CONTAINS(assignee, ?)', [json_encode($userId)])
-                    ->whereIn('stage', ['todo', 'in-progress', 'scripting'])
-                    ->where('created_at', '>=', $dateFilter)
+                    ->whereNotIn('stage', ['published'])
                     ->count();
                     
                 $workflowInProgress = DB::table('workflows')
+                    ->whereNull('deleted_at')
                     ->whereRaw('JSON_CONTAINS(assignee, ?)', [json_encode($userId)])
                     ->where('stage', 'in-progress')
-                    ->where('created_at', '>=', $dateFilter)
                     ->count();
                     
                 $workflowCompleted = DB::table('workflows')
+                    ->whereNull('deleted_at')
                     ->whereRaw('JSON_CONTAINS(assignee, ?)', [json_encode($userId)])
                     ->where('stage', 'published')
-                    ->where('created_at', '>=', $dateFilter)
                     ->count();
-                    
+                
                 $workflowOverdue = DB::table('workflows')
+                    ->whereNull('deleted_at')
                     ->whereRaw('JSON_CONTAINS(assignee, ?)', [json_encode($userId)])
                     ->whereNotNull('deadline')
                     ->where('deadline', '<', now())
@@ -226,22 +241,19 @@ new #[Layout('components.layouts.app')] class extends Component
                 $contentAssigned = DB::table('contents')
                     ->whereNull('deleted_at')
                     ->whereRaw('JSON_CONTAINS(assignee, ?)', [json_encode($userId)])
-                    ->whereIn('status', ['draft', 'scripting'])
-                    ->where('created_at', '>=', $dateFilter)
+                    ->whereIn('status', ['draft', 'scripting', 'ready-for-production'])
                     ->count();
                     
                 $contentInProgress = DB::table('contents')
                     ->whereNull('deleted_at')
                     ->whereRaw('JSON_CONTAINS(assignee, ?)', [json_encode($userId)])
                     ->where('status', 'scripting')
-                    ->where('created_at', '>=', $dateFilter)
                     ->count();
                     
                 $contentCompleted = DB::table('contents')
                     ->whereNull('deleted_at')
                     ->whereRaw('JSON_CONTAINS(assignee, ?)', [json_encode($userId)])
                     ->where('status', 'published')
-                    ->where('created_at', '>=', $dateFilter)
                     ->count();
                     
                 $contentOverdue = DB::table('contents')
@@ -269,17 +281,18 @@ new #[Layout('components.layouts.app')] class extends Component
 
         if ($this->isAdmin) {
             $workflowDeadlines = DB::table('workflows')
+                ->whereNull('deleted_at')
+                ->whereNotIn('stage', ['published'])
                 ->whereNotNull('deadline')
-                ->where('deadline', '>=', $now)
-                ->where('deadline', '<=', $rangeEnd)
+                ->where('deadline', '>=', $now->copy()->startOfDay())
                 ->orderBy('deadline')
                 ->limit(10)
                 ->get()
                 ->map(fn ($w) => (object) ['type' => 'workflow', 'title' => $w->title, 'date' => $w->deadline, 'client_id' => $w->client_id]);
             $taskDeadlines = DB::table('tasks')
+                ->whereNull('deleted_at')
                 ->whereNotNull('due_date')
-                ->where('due_date', '>=', $now)
-                ->where('due_date', '<=', $rangeEnd)
+                ->where('due_date', '>=', $now->copy()->startOfDay())
                 ->where('status', '!=', 'completed')
                 ->orderBy('due_date')
                 ->limit(10)
@@ -287,19 +300,20 @@ new #[Layout('components.layouts.app')] class extends Component
                 ->map(fn ($t) => (object) ['type' => 'task', 'title' => $t->title, 'date' => $t->due_date]);
         } else {
             $workflowDeadlines = DB::table('workflows')
+                ->whereNull('deleted_at')
                 ->whereRaw('JSON_CONTAINS(assignee, ?)', [json_encode($userId)])
+                ->whereNotIn('stage', ['published'])
                 ->whereNotNull('deadline')
-                ->where('deadline', '>=', $now)
-                ->where('deadline', '<=', $rangeEnd)
+                ->where('deadline', '>=', $now->copy()->startOfDay())
                 ->orderBy('deadline')
                 ->limit(10)
                 ->get()
                 ->map(fn ($w) => (object) ['type' => 'workflow', 'title' => $w->title, 'date' => $w->deadline]);
             $taskDeadlines = DB::table('tasks')
+                ->whereNull('deleted_at')
                 ->whereRaw('JSON_CONTAINS(assignee, ?)', [json_encode($userId)])
                 ->whereNotNull('due_date')
-                ->where('due_date', '>=', $now)
-                ->where('due_date', '<=', $rangeEnd)
+                ->where('due_date', '>=', $now->copy()->startOfDay())
                 ->where('status', '!=', 'completed')
                 ->orderBy('due_date')
                 ->limit(10)
@@ -311,8 +325,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
         $actQ = DB::table('activity_logs')
             ->leftJoin('users', 'activity_logs.user_id', '=', 'users.id')
-            ->select('activity_logs.*', 'users.name as user_name')
-            ->where('activity_logs.time', '>=', $dateFilter);
+            ->select('activity_logs.*', 'users.name as user_name');
 
         // Hide super-admin activity rows from non-super-admin viewers.
         // Left-joined rows (deleted users / system actions) still show through the null check.
@@ -341,31 +354,31 @@ new #[Layout('components.layouts.app')] class extends Component
             // Team Performance: Count both tasks AND workflows
             $users = UserVisibility::apply(DB::table('users'))->get();
             
-            $this->teamPerformance = $users->map(function ($user) use ($dateFilter) {
+            $this->teamPerformance = $users->map(function ($user) {
                 $userId = $user->id;
                 
                 // Count tasks
                 $totalTasks = DB::table('tasks')
+                    ->whereNull('deleted_at')
                     ->whereRaw('JSON_CONTAINS(assignee, ?)', [json_encode($userId)])
-                    ->where('created_at', '>=', $dateFilter)
                     ->count();
                     
                 $completedTasks = DB::table('tasks')
+                    ->whereNull('deleted_at')
                     ->whereRaw('JSON_CONTAINS(assignee, ?)', [json_encode($userId)])
                     ->where('status', 'completed')
-                    ->where('created_at', '>=', $dateFilter)
                     ->count();
                 
-                // Count workflows (including those that skipped approval)
+                // Count workflows
                 $totalWorkflows = DB::table('workflows')
+                    ->whereNull('deleted_at')
                     ->whereRaw('JSON_CONTAINS(assignee, ?)', [json_encode($userId)])
-                    ->where('created_at', '>=', $dateFilter)
                     ->count();
                     
                 $completedWorkflows = DB::table('workflows')
+                    ->whereNull('deleted_at')
                     ->whereRaw('JSON_CONTAINS(assignee, ?)', [json_encode($userId)])
                     ->where('stage', 'published')
-                    ->where('created_at', '>=', $dateFilter)
                     ->count();
                 
                 // Combine tasks and workflows
@@ -384,25 +397,25 @@ new #[Layout('components.layouts.app')] class extends Component
         } else {
             // Staff view: Count their own tasks and workflows
             $totalTasks = DB::table('tasks')
+                ->whereNull('deleted_at')
                 ->whereRaw('JSON_CONTAINS(assignee, ?)', [json_encode($userId)])
-                ->where('created_at', '>=', $dateFilter)
                 ->count();
                 
             $completedTasks = DB::table('tasks')
+                ->whereNull('deleted_at')
                 ->whereRaw('JSON_CONTAINS(assignee, ?)', [json_encode($userId)])
                 ->where('status', 'completed')
-                ->where('created_at', '>=', $dateFilter)
                 ->count();
             
             $totalWorkflows = DB::table('workflows')
+                ->whereNull('deleted_at')
                 ->whereRaw('JSON_CONTAINS(assignee, ?)', [json_encode($userId)])
-                ->where('created_at', '>=', $dateFilter)
                 ->count();
                 
             $completedWorkflows = DB::table('workflows')
+                ->whereNull('deleted_at')
                 ->whereRaw('JSON_CONTAINS(assignee, ?)', [json_encode($userId)])
                 ->where('stage', 'published')
-                ->where('created_at', '>=', $dateFilter)
                 ->count();
             
             $total = $totalTasks + $totalWorkflows;
@@ -560,11 +573,27 @@ new #[Layout('components.layouts.app')] class extends Component
                 @if(($stats['type'] ?? 'admin') === 'admin')
                 <div class="stat-card flex items-center gap-4">
                     <div class="stat-icon flex h-11 w-11 items-center justify-center rounded-xl bg-[rgba(var(--brand-rgb),0.08)] text-[var(--brand)]"><i class="fas fa-users text-lg"></i></div>
-                    <div><p class="stat-label text-xs font-medium text-gray-500">Active Clients</p><p class="stat-value text-2xl font-extrabold text-gray-900">{{ number_format($stats['clients'] ?? 0) }}</p></div>
+                    <div>
+                        <p class="stat-label text-xs font-medium text-gray-500">Active Clients</p>
+                        <p class="stat-value text-2xl font-extrabold text-gray-900">
+                            {{ number_format($stats['clients'] ?? 0) }}
+                            @if(isset($stats['total_clients']) && $stats['total_clients'] > 0)
+                                <span class="text-xs font-normal text-gray-400">/ {{ $stats['total_clients'] }}</span>
+                            @endif
+                        </p>
+                    </div>
                 </div>
                 <div class="stat-card flex items-center gap-4">
                     <div class="stat-icon flex h-11 w-11 items-center justify-center rounded-xl bg-blue-50 text-blue-600"><i class="fas fa-project-diagram text-lg"></i></div>
-                    <div><p class="stat-label text-xs font-medium text-gray-500">Active Projects</p><p class="stat-value text-2xl font-extrabold text-gray-900">{{ number_format($stats['projects'] ?? 0) }}</p></div>
+                    <div>
+                        <p class="stat-label text-xs font-medium text-gray-500">Active Projects</p>
+                        <p class="stat-value text-2xl font-extrabold text-gray-900">
+                            {{ number_format($stats['projects'] ?? 0) }}
+                            @if(isset($stats['total_projects']) && $stats['total_projects'] > 0)
+                                <span class="text-xs font-normal text-gray-400">/ {{ $stats['total_projects'] }}</span>
+                            @endif
+                        </p>
+                    </div>
                 </div>
                 <div class="stat-card flex items-center gap-4">
                     <div class="stat-icon flex h-11 w-11 items-center justify-center rounded-xl bg-amber-50 text-amber-600"><i class="fas fa-check-double text-lg"></i></div>
@@ -572,16 +601,32 @@ new #[Layout('components.layouts.app')] class extends Component
                 </div>
                 <div class="stat-card flex items-center gap-4">
                     <div class="stat-icon flex h-11 w-11 items-center justify-center rounded-xl bg-green-50 text-green-600"><i class="fas fa-dollar-sign text-lg"></i></div>
-                    <div><p class="stat-label text-xs font-medium text-gray-500">Revenue</p><p class="stat-value text-2xl font-extrabold text-gray-900">NPR {{ number_format($stats['revenue'] ?? 0) }}</p></div>
+                    <div><p class="stat-label text-xs font-medium text-gray-500">Revenue ({{ ucfirst($range) }})</p><p class="stat-value text-2xl font-extrabold text-gray-900">NPR {{ number_format($stats['revenue'] ?? 0) }}</p></div>
                 </div>
                 @else
                 <div class="stat-card flex items-center gap-4">
                     <div class="stat-icon flex h-11 w-11 items-center justify-center rounded-xl bg-[rgba(var(--brand-rgb),0.08)] text-[var(--brand)]"><i class="fas fa-tasks text-lg"></i></div>
-                    <div><p class="stat-label text-xs font-medium text-gray-500">My Tasks</p><p class="stat-value text-2xl font-extrabold text-gray-900">{{ number_format($stats['tasks'] ?? 0) }}</p></div>
+                    <div>
+                        <p class="stat-label text-xs font-medium text-gray-500">My Active Tasks</p>
+                        <p class="stat-value text-2xl font-extrabold text-gray-900">
+                            {{ number_format($stats['tasks'] ?? 0) }}
+                            @if(isset($stats['total_tasks']) && $stats['total_tasks'] > 0)
+                                <span class="text-xs font-normal text-gray-400">/ {{ $stats['total_tasks'] }}</span>
+                            @endif
+                        </p>
+                    </div>
                 </div>
                 <div class="stat-card flex items-center gap-4">
                     <div class="stat-icon flex h-11 w-11 items-center justify-center rounded-xl bg-blue-50 text-blue-600"><i class="fas fa-project-diagram text-lg"></i></div>
-                    <div><p class="stat-label text-xs font-medium text-gray-500">My Workflows</p><p class="stat-value text-2xl font-extrabold text-gray-900">{{ number_format($stats['workflows'] ?? 0) }}</p></div>
+                    <div>
+                        <p class="stat-label text-xs font-medium text-gray-500">My Workflows</p>
+                        <p class="stat-value text-2xl font-extrabold text-gray-900">
+                            {{ number_format($stats['workflows'] ?? 0) }}
+                            @if(isset($stats['total_workflows']) && $stats['total_workflows'] > 0)
+                                <span class="text-xs font-normal text-gray-400">/ {{ $stats['total_workflows'] }}</span>
+                            @endif
+                        </p>
+                    </div>
                 </div>
                 <div class="stat-card flex items-center gap-4">
                     <div class="stat-icon flex h-11 w-11 items-center justify-center rounded-xl bg-amber-50 text-amber-600"><i class="fas fa-check-double text-lg"></i></div>

@@ -287,6 +287,9 @@ class GoogleDriveService
 
     public function uploadFile(string $name, $content, ?string $folderId = null, string $mimeType = 'application/octet-stream'): array
     {
+        @set_time_limit(0);
+        @ini_set('max_execution_time', '0');
+
         $accessToken = $this->getAccessToken();
 
         if (! $accessToken) {
@@ -314,7 +317,7 @@ class GoogleDriveService
             return $this->uploadFileResumable($name, $content, $folderId, $mimeType, $fileSize);
         }
 
-        $http = Http::retry(2, 1000);
+        $http = Http::timeout(300)->retry(2, 1000);
         if (config('app.env') !== 'production') {
             $http = $http->withoutVerifying();
         }
@@ -346,6 +349,9 @@ class GoogleDriveService
 
     private function uploadFileResumable(string $name, $content, ?string $folderId, string $mimeType, int $fileSize): array
     {
+        @set_time_limit(0);
+        @ini_set('max_execution_time', '0');
+
         $accessToken = $this->getAccessToken();
 
         $metadata = ['name' => $name];
@@ -354,7 +360,7 @@ class GoogleDriveService
         }
 
         // Step 1: Initiate resumable upload session
-        $http = Http::retry(2, 1000);
+        $http = Http::timeout(120)->retry(2, 1000);
         if (config('app.env') !== 'production') {
             $http = $http->withoutVerifying();
         }
@@ -376,8 +382,8 @@ class GoogleDriveService
             throw new \RuntimeException('No upload URL received from Google Drive');
         }
 
-        // Step 2: Upload file in chunks
-        $chunkSize = 5 * 1024 * 1024; // 5MB chunks
+        // Step 2: Upload file in chunks (10MB chunks = multiple of 256KB, faster throughput)
+        $chunkSize = 10 * 1024 * 1024;
         $uploadedBytes = 0;
 
         if (is_resource($content)) {
@@ -385,6 +391,7 @@ class GoogleDriveService
         }
 
         while ($uploadedBytes < $fileSize) {
+            @set_time_limit(0);
             $chunkEnd = min($uploadedBytes + $chunkSize - 1, $fileSize - 1);
             
             // Read chunk
@@ -394,7 +401,7 @@ class GoogleDriveService
                 $chunk = substr($content, $uploadedBytes, $chunkSize);
             }
 
-            $http = Http::retry(2, 1000);
+            $http = Http::timeout(300)->retry(2, 1000);
             if (config('app.env') !== 'production') {
                 $http = $http->withoutVerifying();
             }
