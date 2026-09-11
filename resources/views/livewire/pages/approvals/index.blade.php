@@ -22,11 +22,13 @@ use Livewire\Attributes\On;
 use Livewire\Volt\Component;
 use Livewire\WithFileUploads;
 use Livewire\WithPagination;
+use App\Livewire\Concerns\HasPickableFiles;
 
 new #[Layout('components.layouts.app')] class extends Component
 {
     use WithFileUploads;
     use WithPagination;
+    use HasPickableFiles;
 
     public string $statusFilter = '';
 
@@ -1117,69 +1119,6 @@ new #[Layout('components.layouts.app')] class extends Component
                 $recipient->notify(new ApprovalAttachedNotification($approvalModel, $attachments, $actor));
             }
         }
-    }
-
-    public function getPickableFiles(?string $search = null, ?int $clientId = null, ?int $folderId = null): array
-    {
-        $q = File::select('id', 'name', 'type', 'size', 'folder_id')
-            ->orderBy('name');
-
-        // When a specific folder is selected, show only files in that folder
-        if ($folderId !== null && $folderId > 0) {
-            $q->where('folder_id', $folderId);
-        } elseif ($folderId === 0) {
-            // When root folder (0) is selected, show only root level files
-            $q->whereNull('folder_id');
-        }
-        // If $folderId is null (not set), show all files from all folders
-        
-        if ($search) {
-            $q->where('name', 'like', "%{$search}%");
-        }
-
-        return $q->get()->map(fn ($f) => [
-            'id' => $f->id,
-            'name' => $f->name,
-            'url' => $f->getUrl(),
-            'type' => $f->type,
-            'size_label' => $f->size_readable,
-        ])->toArray();
-    }
-
-    public function getPickableFolders(int $parentId = 0, ?int $clientId = null): array
-    {
-        $q = Folder::select('id', 'name')
-            ->orderBy('name');
-
-        if ($parentId > 0) {
-            $q->where('parent_id', $parentId);
-        } else {
-            $q->whereNull('parent_id');
-        }
-
-        $folders = $q->get()->map(function ($folder) {
-            $fileCount = File::where('folder_id', $folder->id)->count();
-
-            return [
-                'id' => $folder->id,
-                'name' => $folder->name,
-                'file_count' => $fileCount,
-            ];
-        })->toArray();
-
-        $breadcrumbs = [];
-        $current = $parentId;
-        while ($current > 0) {
-            $folder = Folder::select('id', 'name', 'parent_id')->find($current);
-            if ($folder) {
-                array_unshift($breadcrumbs, ['id' => $folder->id, 'name' => $folder->name]);
-                $current = $folder->parent_id ?? 0;
-            } else {
-                break;
-            }
-        }
-
-        return ['folders' => $folders, 'breadcrumbs' => $breadcrumbs];
     }
 
     public function updatedNewFileUpload(): void
