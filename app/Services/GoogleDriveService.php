@@ -156,7 +156,12 @@ class GoogleDriveService
 
     private function driveRequest(string $method, string $url, array $data = []): Response
     {
-        $http = Http::retry(2, 1000);
+        // Increased retry with exponential backoff for more reliability
+        $http = Http::timeout(120)->retry(3, 2000, function ($exception, $request) {
+            // Retry on timeout and 5xx errors
+            return $exception instanceof \Illuminate\Http\Client\ConnectionException
+                || ($exception instanceof \Illuminate\Http\Client\RequestException && $exception->response && $exception->response->status() >= 500);
+        });
 
         if (config('app.env') !== 'production') {
             $http = $http->withoutVerifying();
@@ -341,7 +346,16 @@ class GoogleDriveService
 
         $result = $response->json();
         if (!empty($result['id'])) {
-            $this->makeFilePubliclyReadable($result['id']);
+            // Set permissions asynchronously - don't block if this fails
+            try {
+                $this->makeFilePubliclyReadable($result['id']);
+            } catch (\Exception $e) {
+                Log::warning('Failed to set public permission after upload (file uploaded successfully)', [
+                    'file_id' => $result['id'],
+                    'file_name' => $name,
+                    'error' => $e->getMessage(),
+                ]);
+            }
         }
 
         return $result;
@@ -419,7 +433,15 @@ class GoogleDriveService
                 // Upload complete
                 $result = $response->json();
                 if (!empty($result['id'])) {
-                    $this->makeFilePubliclyReadable($result['id']);
+                    // Set permissions asynchronously - don't block if this fails
+                    try {
+                        $this->makeFilePubliclyReadable($result['id']);
+                    } catch (\Exception $e) {
+                        Log::warning('Failed to set public permission after resumable upload (file uploaded successfully)', [
+                            'file_id' => $result['id'],
+                            'error' => $e->getMessage(),
+                        ]);
+                    }
                 }
                 return $result;
             } else {
@@ -479,15 +501,32 @@ class GoogleDriveService
     public function makeFilePubliclyReadable(string $fileId): bool
     {
         try {
-            $response = $this->driveRequest('post', self::DRIVE_API_BASE . '/files/' . $fileId . '/permissions', [
-                'role' => 'reader',
-                'type' => 'anyone',
-            ]);
+            // Use longer timeout for permission API - this can be slow
+            $http = Http::timeout(60)->retry(3, 2000);
+            
+            if (config('app.env') !== 'production') {
+                $http = $http->withoutVerifying();
+            }
+
+            $response = $http->withToken($this->getAccessToken())
+                ->post(self::DRIVE_API_BASE . '/files/' . $fileId . '/permissions', [
+                    'role' => 'reader',
+                    'type' => 'anyone',
+                ]);
+
+            if ($response->failed()) {
+                Log::warning('Permission API returned error', [
+                    'file_id' => $fileId,
+                    'status' => $response->status(),
+                    'body' => $response->body(),
+                ]);
+            }
 
             return $response->successful();
         } catch (\Exception $e) {
             Log::warning('Failed to set public read permission on Drive file: ' . $e->getMessage(), [
                 'file_id' => $fileId,
+                'exception' => get_class($e),
             ]);
 
             return false;

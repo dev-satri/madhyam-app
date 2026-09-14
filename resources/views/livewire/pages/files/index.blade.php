@@ -498,6 +498,7 @@ new #[Layout('components.layouts.app')] class extends Component
         ]);
 
         $this->showUpload = false;
+        $this->showDriveBrowser = false;
         $this->uploadTags = '';
         $this->dispatch('toast', message: "File \"{$name}\" added from Google Drive", type: 'success');
     }
@@ -2511,7 +2512,7 @@ new #[Layout('components.layouts.app')] class extends Component
                             <button wire:click="$set('showDriveBrowser', false)" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
                         </div>
                         <div class="flex-1 overflow-y-auto p-4 min-h-0">
-                            <div x-on:drive-file-selected.window="if($event.detail.url) { $wire.saveDriveFile($event.detail); $wire.set('showDriveBrowser', false); }">
+                            <div x-on:drive-file-selected.window="if($event.detail.url) $wire.saveDriveFile($event.detail)">
                                 @livewire('partials.drive-browser')
                             </div>
                         </div>
